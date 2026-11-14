@@ -3,6 +3,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::thread;
 
 use chrono::{DateTime, Utc};
 
@@ -24,6 +25,9 @@ pub enum HubError {
     Path(PathError),
     Mods(ModsError),
     Launch(LaunchError),
+    MissingMetadataLink,
+    UnsafeMetadataLink,
+    OpenLink(io::Error),
     Settings(io::Error),
     Network(NetworkError),
     Cache(metadata::MetadataCacheError),
@@ -43,6 +47,14 @@ impl std::fmt::Display for HubError {
             Self::Path(error) => error.fmt(formatter),
             Self::Mods(error) => error.fmt(formatter),
             Self::Launch(error) => error.fmt(formatter),
+            Self::MissingMetadataLink => {
+                write!(formatter, "This catalogue entry has no Nexus page link.")
+            }
+            Self::UnsafeMetadataLink => write!(
+                formatter,
+                "The catalogue link is not an HTTPS URL, so it was not opened."
+            ),
+            Self::OpenLink(error) => write!(formatter, "Could not open the Nexus page: {error}"),
             Self::Settings(error) => write!(formatter, "Could not save settings: {error}"),
             Self::Network(error) => error.fmt(formatter),
             Self::Cache(error) => error.fmt(formatter),
@@ -68,6 +80,8 @@ impl std::error::Error for HubError {
             Self::Path(error) => Some(error),
             Self::Mods(error) => Some(error),
             Self::Launch(error) => Some(error),
+            Self::MissingMetadataLink | Self::UnsafeMetadataLink => None,
+            Self::OpenLink(error) => Some(error),
             Self::Settings(error) => Some(error),
             Self::Network(error) => Some(error),
             Self::Cache(error) => Some(error),
@@ -332,9 +346,38 @@ impl Hub {
             .map(|synced| synced.format("%Y-%m-%d %H:%M").to_string())
     }
 
-    pub fn refresh_metadata(&mut self) -> Result<MetadataRefresh, HubError> {
+    pub fn metadata_needs_refresh(&self) -> bool {
+        self.metadata.is_empty() || self.metadata_cache.is_stale()
+    }
+
+    pub fn open_nexus_download_page(&self, mod_id: &str) -> Result<(), HubError> {
+        let url = self
+            .metadata
+            .iter()
+            .find(|entry| entry.id == mod_id)
+            .and_then(|entry| entry.nexus_download_page_url())
+            .ok_or(HubError::MissingMetadataLink)?;
+        if !network::is_https_url(&url) {
+            return Err(HubError::UnsafeMetadataLink);
+        }
+        let mut child = platform::open_url(&url).map_err(HubError::OpenLink)?;
+        thread::spawn(move || {
+            let _ = child.wait();
+        });
+        self.logs.activity(
+            "Nexus",
+            &format!("Opened the Nexus download page for mod {mod_id}."),
+        );
+        Ok(())
+    }
+
+    pub fn refresh_metadata(&mut self, force: bool) -> Result<MetadataRefresh, HubError> {
         let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
-        let state = self.metadata_cache.load_state();
+        let state = if force {
+            HttpState::default()
+        } else {
+            self.metadata_cache.load_state()
+        };
         let fetch = network.get(
             metadata::METADATA_URL,
             state.etag.as_deref(),
