@@ -7,7 +7,7 @@ Casualties Hub 的重写：Rust 桌面应用，界面用 nsh，功能与上游 0
 
 - 两个 crate：`crates/core`（领域逻辑，不依赖任何 UI）与 `crates/app`（nsh 界面）。`app` 不联网；所有 HTTP 与下载只经 `core::network`。
 - 依赖方向只有 `app → core`；`core` 不引用 `nsh`、不读窗口状态、不改界面信号。
-- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、本地下载目录默认值、打开 URL、Steam 回退、凭据保护（待接）、注册表、卷影提示），调用方不写 `cfg` 分支。
+- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、本地下载目录默认值、打开 URL、Steam 回退、注册表、卷影提示），调用方不写 `cfg` 分支。
 
 ## 2. 核心门面（方案 C）
 
