@@ -19,6 +19,7 @@ fn native(registry: &mut Registry) {
 #[component]
 pub fn App() -> impl IntoElement {
     let ui = Ui::new();
+    ui.start_background_tasks();
     view()
         .flex_col()
         .size_full()

@@ -3,9 +3,11 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
-use cuhub_core::hub::Hub;
-use cuhub_core::mods::InstalledMod;
+use cuhub_core::hub::{Hub, HubError, MetadataRefresh};
+use cuhub_core::metadata::MetadataMod;
+use cuhub_core::mods::{InstalledMod, ModStatus};
 use cuhub_core::settings::Settings;
+use nsh_core::RevealOptions;
 use nsh_core::element::FontAsset;
 use nsh_core::prelude::*;
 
@@ -22,6 +24,43 @@ pub const PAGES: [&str; 6] = [
     "Settings",
 ];
 
+pub const NEXUS_PAGE_SIZE: usize = 50;
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct NexusModRow {
+    pub id: String,
+    pub name: String,
+    pub author: String,
+    pub version: String,
+    pub downloads: String,
+    pub adult: bool,
+    pub has_page: bool,
+    pub can_download: bool,
+    pub status: Option<ModStatus>,
+    pub installed_version: Option<String>,
+}
+
+impl NexusModRow {
+    pub fn row_key(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            self.id,
+            self.name,
+            self.author,
+            self.version,
+            self.downloads,
+            self.state_label(),
+            self.installed_version.as_deref().unwrap_or(""),
+            self.adult,
+            self.has_page
+        )
+    }
+
+    pub fn state_label(&self) -> &'static str {
+        self.status.map(ModStatus::label).unwrap_or("Not installed")
+    }
+}
+
 #[derive(Clone)]
 pub struct Ui {
     pub page: Signal<usize>,
@@ -33,7 +72,14 @@ pub struct Ui {
     pub hub: Arc<Mutex<Hub>>,
     pub settings: Signal<Settings>,
     pub mods: Signal<Vec<InstalledMod>>,
-    pub metadata_count: Signal<usize>,
+    pub nexus_rows: Signal<Vec<NexusModRow>>,
+    pub nexus_page_rows: Signal<Vec<NexusModRow>>,
+    pub nexus_page: Signal<usize>,
+    pub nexus_total: Signal<usize>,
+    pub nexus_refreshing: Signal<bool>,
+    pub nexus_error: Signal<String>,
+    pub nexus_downloading: Signal<Option<String>>,
+    pub nexus_list: ElementRef,
     pub metadata_synced: Signal<String>,
     pub nexus_key_saved: Signal<bool>,
     pub nexus_key_draft: Signal<String>,
@@ -50,7 +96,9 @@ impl Ui {
         let settings = hub.settings().clone();
         let zoom = settings.ui_scale;
         let mods = hub.scan_mods().unwrap_or_default();
-        let metadata_count = hub.metadata().len();
+        let nexus_rows = build_nexus_rows(hub.metadata(), &mods);
+        let nexus_total = nexus_rows.len();
+        let nexus_page_rows = page_slice(&nexus_rows, 0);
         let metadata_synced = hub
             .metadata_last_synced_label()
             .unwrap_or_else(|| String::from("Never"));
@@ -76,7 +124,14 @@ impl Ui {
             hub: Arc::new(Mutex::new(hub)),
             settings: signal(settings),
             mods: signal(mods),
-            metadata_count: signal(metadata_count),
+            nexus_rows: signal(nexus_rows),
+            nexus_page_rows: signal(nexus_page_rows),
+            nexus_page: signal(0usize),
+            nexus_total: signal(nexus_total),
+            nexus_refreshing: signal(false),
+            nexus_error: signal(String::new()),
+            nexus_downloading: signal(None::<String>),
+            nexus_list: element_ref(),
             metadata_synced: signal(metadata_synced),
             nexus_key_saved: signal(nexus_key_saved),
             nexus_key_draft: signal(String::new()),
@@ -91,20 +146,166 @@ impl Ui {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    pub fn refresh_mods(&self) {
-        let result = {
+    pub fn start_background_tasks(&self) {
+        let needs_refresh = {
             let hub = self.hub();
-            hub.scan_mods()
+            hub.metadata_needs_refresh()
+        };
+        if needs_refresh {
+            self.refresh_metadata(false);
+        }
+    }
+
+    pub fn refresh_mods(&self) {
+        let (result, metadata) = {
+            let hub = self.hub();
+            (hub.scan_mods(), hub.metadata().to_vec())
         };
         match result {
             Ok(mods) => {
                 let count = mods.len();
                 self.mods.set(mods);
+                self.rebuild_nexus(&metadata);
                 self.notice
                     .set(format!("Scanned {count} mod(s) in Plugins."));
             }
             Err(error) => self.notice.set(error.to_string()),
         }
+    }
+
+    fn rebuild_nexus(&self, metadata: &[MetadataMod]) {
+        let rows = build_nexus_rows(metadata, &self.mods.get());
+        let total = rows.len();
+        let page = self.nexus_page.get();
+        self.nexus_rows.set(rows);
+        self.nexus_total.set(total);
+        self.set_nexus_page(page);
+    }
+
+    pub fn set_nexus_page(&self, page: usize) {
+        let rows = self.nexus_rows.get();
+        let previous = self.nexus_page.get();
+        let page = page.min(nexus_page_count(rows.len()) - 1);
+        self.nexus_page.set(page);
+        self.nexus_page_rows.set(page_slice(&rows, page));
+        if previous != page {
+            self.nexus_list
+                .reveal(RevealOptions::default().animated(false));
+        }
+    }
+
+    pub fn refresh_metadata(&self, force: bool) {
+        if self.nexus_refreshing.get() {
+            return;
+        }
+        self.nexus_refreshing.set(true);
+        self.nexus_error.set(String::new());
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let result = blocking(move || {
+                let mut hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let refresh = hub.refresh_metadata(force)?;
+                let metadata = hub.metadata().to_vec();
+                let mods = hub.scan_mods().ok();
+                let synced = hub.metadata_last_synced_label();
+                Ok::<_, HubError>((refresh, metadata, mods, synced))
+            })
+            .await;
+            match result {
+                Ok(Ok((refresh, metadata, mods, synced))) => {
+                    if let Some(mods) = mods {
+                        ui.mods.set(mods);
+                    }
+                    ui.rebuild_nexus(&metadata);
+                    ui.metadata_synced
+                        .set(synced.unwrap_or_else(|| String::from("Never")));
+                    ui.nexus_refreshing.set(false);
+                    match refresh {
+                        MetadataRefresh::Updated(count) => ui
+                            .notice
+                            .set(format!("Community catalogue refreshed: {count} entries.")),
+                        MetadataRefresh::NotModified => ui
+                            .notice
+                            .set(String::from("The community catalogue is already current.")),
+                    }
+                }
+                Ok(Err(error)) => {
+                    ui.nexus_error.set(error.to_string());
+                    ui.nexus_refreshing.set(false);
+                    ui.notice.set(format!(
+                        "Could not refresh the community catalogue: {error}"
+                    ));
+                }
+                Err(error) => {
+                    ui.nexus_error
+                        .set(String::from("The catalogue worker stopped."));
+                    ui.nexus_refreshing.set(false);
+                    ui.notice.set(format!(
+                        "Could not refresh the community catalogue: {error}"
+                    ));
+                }
+            }
+        });
+    }
+
+    pub fn download_nexus(&self, mod_id: String) {
+        if self.nexus_downloading.get().is_some() {
+            self.notice
+                .set(String::from("A Nexus download is already running."));
+            return;
+        }
+        if mod_id.trim().is_empty() {
+            self.notice
+                .set(String::from("This catalogue entry has no Nexus mod id."));
+            return;
+        }
+        self.nexus_downloading.set(Some(mod_id.clone()));
+        self.notice
+            .set(String::from("Downloading the latest Nexus file…"));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                hub.download_nexus_latest(&mod_id)
+            })
+            .await;
+            ui.nexus_downloading.set(None);
+            match result {
+                Ok(Ok(download)) => ui.notice.set(format!(
+                    "Downloaded {} to {}.",
+                    download.file_name,
+                    download.path.display()
+                )),
+                Ok(Err(error)) => ui
+                    .notice
+                    .set(format!("Could not download from Nexus: {error}")),
+                Err(error) => ui
+                    .notice
+                    .set(format!("Could not download from Nexus: {error}")),
+            }
+        });
+    }
+
+    pub fn open_nexus_download(&self, mod_id: String) {
+        let result = {
+            let hub = self.hub();
+            hub.open_nexus_download_page(&mod_id)
+        };
+        match result {
+            Ok(()) => self.notice.set(String::from(
+                "Opened the Nexus download page in the browser.",
+            )),
+            Err(error) => self
+                .notice
+                .set(format!("Could not open the Nexus page: {error}")),
+        }
+    }
+
+    pub fn show_mod_details(&self, name: &str) {
+        self.notice
+            .set(format!("Mod details for {name} are not implemented yet."));
     }
 
     pub fn launch_game(&self) {
@@ -251,6 +452,55 @@ impl Ui {
             Err(error) => self.notice.set(format!("Could not save settings: {error}")),
         }
     }
+}
+
+fn build_nexus_rows(metadata: &[MetadataMod], mods: &[InstalledMod]) -> Vec<NexusModRow> {
+    metadata
+        .iter()
+        .map(|entry| {
+            let installed = mods
+                .iter()
+                .find(|installed| installed.metadata_id.as_deref() == Some(entry.id.as_str()));
+            NexusModRow {
+                id: entry.id.clone(),
+                name: if entry.name.trim().is_empty() {
+                    String::from("Unknown mod")
+                } else {
+                    entry.name.clone()
+                },
+                author: if entry.author.trim().is_empty() {
+                    String::from("Unknown author")
+                } else {
+                    entry.author.clone()
+                },
+                version: if entry.version.trim().is_empty() {
+                    String::from("Unknown")
+                } else {
+                    entry.version.clone()
+                },
+                downloads: entry.total_downloads_label(),
+                adult: entry.is_adult_content(),
+                has_page: entry.nexus_download_page_url().is_some(),
+                can_download: !entry.id.trim().is_empty(),
+                status: installed.map(|installed| installed.status),
+                installed_version: installed
+                    .and_then(|installed| installed.installed_version.clone()),
+            }
+        })
+        .collect()
+}
+
+fn page_slice(rows: &[NexusModRow], page: usize) -> Vec<NexusModRow> {
+    let start = page * NEXUS_PAGE_SIZE;
+    if start >= rows.len() {
+        return Vec::new();
+    }
+    let end = (start + NEXUS_PAGE_SIZE).min(rows.len());
+    rows[start..end].to_vec()
+}
+
+pub fn nexus_page_count(total: usize) -> usize {
+    total.div_ceil(NEXUS_PAGE_SIZE).max(1)
 }
 
 pub fn scaled(zoom: &Signal<u8>, base: f32) -> impl Fn() -> Points + Clone + use<> {
