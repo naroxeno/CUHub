@@ -43,7 +43,7 @@ HubEvent::Status            // 外壳状态栏文案
 - UI 只在主线程；`core` 不知道主线程是谁，也不主动推 UI，只返回结果或发事件。
 - 阻塞工作（解压、哈希、PNG 合成、.NET 元数据、目录全扫）走阻塞任务池，不占 UI 线程。
 - 文件监视（`notify`）跑在自己的线程，只做「判定完成 → 投递事件」，不碰界面。
-- 跨线程唤醒 UI 的具体路径由 spike 决定；未定前所有事件先进 `crossbeam` 通道，再由主循环排空。
+- 后台线程不碰 UI 状态：`core` 只返回结果或经 `crossbeam` 通道发事件；`app` 在主线程用 nsh 的 `run_on_main_thread` 或主循环轮询把事件写进 signal。`spawn` 的 future 本身跑在引擎线程，可以直接写 signal。
 
 ## 5. 外部系统边界
 
@@ -84,9 +84,9 @@ HubEvent::Status            // 外壳状态栏文案
 
 ## 7. app 模块
 
-- `shell`：侧栏、顶栏、状态栏、窗口缩放（1x/2x/3x）。
-- `pages`：dashboard、local_mods、multiplayer、skins_backups、hub_home、settings、debug。
-- `components`：面板（1px 双框 + 标题断口）、按钮、列表行、tooltip、进度点、对话框。
+- `shell`：侧栏、顶栏、状态栏、开发者控制台、内容滚动容器。
+- `pages`：dashboard、local_mods、multiplayer、skins_backups、hub_home、settings。
+- `ui`：字体、像素文字、面板（1px 双框 + 标题断口）、按钮与缩放 helper；组件多了再拆 `components`。
 - `palette`：像素调色板 token 与图标着色（固定常量，不做运行时派生）。
 - `assets`：内嵌像素字体、16×16 图标集。
 
@@ -96,14 +96,27 @@ HubEvent::Status            // 外壳状态栏文案
 - 可执行文件旁 `Data/` 可覆盖内嵌目录数据（依赖、不兼容、发布说明、离线公告）。
 - 设置写缩进 JSON；凭据单独加密文件；其余缓存均为可丢弃文件。
 
-## 9. 未决（待 spike）
+## 9. spike 结论与剩余未决
 
-1. HTTP 客户端是否用 nsh 自带；若需 `reqwest`，它自带的 runtime 与 nsh 的异步如何共存。
-2. 后台事件唤醒 UI 线程与信号更新的唯一正确路径。
-3. `Image` 显示内存位图的像素精确性与缩放方式。
-4. 长列表虚拟化与浮层（详情压在网格上）。
-5. Linux 文件对话框在无 portal 环境的行为。
-6. 单文件打包、内嵌资源体积、Windows 交叉编译。
+2026-11-14 用 nsh 0.5.1 跑完 spike（工程在仓库外 `cuhub-spike`，7 页）。细节见 `docs/app/nsh-notes.md`。
+
+已定：
+
+1. 长列表用 `virtual_list`：原生虚拟化，只创建屏幕附近的行；详情/弹层用 `overlay()`，不自己拼 Z 序。300 行实测正常；切页与浮层之后的滚动位置保持仍待确认。
+2. 后台任务不直接写 UI 状态：worker 只发事件（`crossbeam`），`app` 用 `run_on_main_thread` 或主循环 `set_interval` 轮询写入 signal。nsh 提供该 API；无主线程时闭包在引擎线程提交末尾执行。
+3. 内存位图用 `ImageSrc::rgba(w, h, straight RGBA)`，`image(...)` 显示。nsh 按显示尺寸降采样并缓存，**没有 nearest/点采样开关**；像素图放大一律预生成整数倍资源，不依赖运行时缩放（皮肤/图标 M8 前落实）。
+4. 网络：UI 侧可用 nsh `fetch`（受 `capabilities.network.hosts` 约束；不写 `capabilities` 的独立 app 默认全放行）；`core` 的网络层仍用 `reqwest`，因为 ETag、超时、UA 要自己控制。
+5. 字体用 `asset!("fonts/…")` + `registry.assets(assets!())` 打进 bundle，family 取字体 name table（Fusion Pixel 是 `Fusion Pixel 12px Prop zh_hans`）。1x/2x/3x 下 1px 双框与字距已逐档核对，未发虚。
+6. 缩放：nsh 没有 app 级 UI 缩放（`set_zoom` 只管滚动视图，`font_scale` 只放大文字，rem 固定 16pt）；所有尺寸在 app 侧按 1x/2x/3x 乘整数，切换即时生效。
+7. 全窗遮罩：`overlay()` 内放 `absolute().inset(0)` 会塌成内容大小；改用根视图末尾的普通 `absolute` 子层（开发者控制台已验证），需要原生 Escape/backdrop 时用 `nsh_base::dialog() -> Modal`。
+8. 内容区包一层 `scroll()`，3x 在矮窗口下可滚；`virtual_list` 自带滚动，页面改用列表后不要再外套 `scroll`。
+
+剩余未决：
+
+9. `reqwest` 自带 runtime 与 nsh 引擎线程是否冲突——M0 建 `core` 时先做最小验证，且 `core` 不得在 UI 线程阻塞。
+10. Linux 文件对话框在无 portal 环境的行为（选文件、选目录、回收站共用此路径）。
+11. 单文件打包、内嵌资源体积、Windows 交叉编译与 CI。
+12. 平铺合成器会忽略请求的窗口尺寸；自绘标题栏的拖拽与控件区要在浮动窗口下验证。
 
 ## 10. 明确不做
 
