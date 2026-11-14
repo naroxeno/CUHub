@@ -1,6 +1,7 @@
 //! Cuhub domain logic. No UI, no window state, no nsh dependency.
 
 pub mod catalogs;
+pub mod hubconfig;
 pub mod logs;
 pub mod metadata;
 pub mod modlist;
