@@ -1,12 +1,13 @@
 # 交接说明
 
-截至 2026-11-14：core 基座已实现（paths/settings/logs、Steam 发现、modlist、catalogs、version、metadata、network、hubconfig、mods、Hub 门面），79 个单测通过；app 的 Local Mods、Settings、Nexus 概览已接 core，真实游戏目录验证能发现 2 个模组并持久化设置。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-14：core 基座已实现（paths/settings/logs、Steam 发现、modlist、catalogs、version、metadata、network、hubconfig、mods、launch、Hub 门面），81 个单测通过；app 的 Local Mods、Settings、Nexus 概览与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组、反查 app id 4576490 并持久化设置。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
 - jj 仓库（colocated，`main` 分支）；基础规则、app 原型与 core 分模块提交都在 `main`，`@` 是新的空 change。
 - 骨架：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
-- core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`hub`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
+- core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`hub`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
+- 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-only`；与上游一致。
 - app（2026-11-14）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json`，Nexus 概览读缓存目录数量；启动时自动发现 Steam 安装。Multiplayer、Skins & Backups 仍是占位。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
 
@@ -25,13 +26,16 @@
 |---|---|
 | 结构 | 两个 crate：`core`（无 UI）+ `app`（nsh），依赖单向 |
 | 交互形态 | 方案 C：`Hub` 门面 + 最多 5 个事件变体，不用事件总线 |
+| 许可 | 仓库与两个 crate 使用 AGPL-3.0-only（`LICENSE` 为 AGPL-3.0 全文） |
+| 下载 | 模组文件下载也归 `core::network`；`app` 不联网 |
+| 启动 | `core::launch` 经 `steam://rungameid/{appid}` 启动，失败回退 `steam -applaunch`；不直接跑 exe |
 | 平台差异 | `core/src/platform/{windows,linux}.rs`，同名函数导出 |
 | 外观 | 像素风固定调色板（14 个 token），无用户自定义主题；1x/2x/3x 整数缩放，默认 2x |
 | 字体 | Fusion Pixel 12px（OFL），缺字回落 Ark Pixel，再回落等宽 |
 | 无障碍 | 保留高对比模式（O12），P2 |
 | 多人页 | 保留占位页（假数据、明确标注），P2 |
 | 解压 | `zip` / `sevenz-rust` / `rars`（纯 Rust 库，外部 unrar 仅兜底） |
-| .NET 元数据 | `dotnetdll`，解不出则降级只读 Assembly 版本 |
+| .NET 元数据 | 拟 `dotnetdll`（GPL-3.0+，与 AGPL 兼容），尚未加入依赖；解不出则降级只读 Assembly 版本 |
 | 自研 | VDF 解析、SemVer 比较、皮肤合成（`image` + 自算变换） |
 | 来源 | 用户来源表 > 目录字段 > Nexus id；GitHub 内置 tag 解析，其它来源用用户正则 |
 | 整合包 | `CUPK1:` 排在 M8，先做来源解析与缓存 |
@@ -49,18 +53,18 @@
 2. Windows 交叉编译与 CI 是否在 M0 就要。
 3. 首次发布前要确认：是否把产物也传到 Nexus 页面（可选，不阻塞）。
 4. `core::network` 目前是 blocking API；`ARCHITECTURE §2` 说 Hub 层 async。拟由 Hub 把阻塞调用放进 worker，等确认。
-5. 下载是否也归 `core::network`：m00262 说不放 core，m00281 又说 network 放 core；当前 network 已含 `download`，边界待确认。
-6. 上游代码/目录 JSON 是 AGPL-3.0，本仓库尚无 LICENSE；能否搬运内嵌目录与离线公告待确认。
-7. Windows 注册表（`winreg`）、macOS Steam 候选根、`GameLaunchService` 归哪个模块、来源表 `sources.json` schema 均未定。
-8. `.NET` 读取库许可待选：`dotnetdll` 是 GPL-3.0+，候选有 MIT/Apache 的 `dnfile`、`clrmeta`、`fathom-managed`。
-9. 元数据刷新尚未接入 UI：网络调用会阻塞，需 worker + 主线程回写 signal 的方案。
+5. 是否把上游的目录 JSON 与离线公告内嵌进仓库：许可证已解决，但是否搬运仍需拍板。
+6. Windows 注册表（`winreg`）、macOS Steam 候选根、来源表 `sources.json` schema 未定。
+7. `.NET` 读取库：拟用 `dotnetdll`（GPL-3.0+，与 AGPL 兼容），但尚未加入依赖；候选中还有 MIT/Apache 的 `dnfile`、`clrmeta`、`fathom-managed`。
+8. 元数据刷新尚未接入 UI：网络调用会阻塞，需 worker + 主线程回写 signal 的方案。
 
 ## 5. 建议的下一步
 
 1. **core 基座与只读扫描（已完成 2026-11-14）**：paths → settings → logs → steam → modlist → catalogs → version → metadata → network → hubconfig → mods → Hub；79 个单测通过，`cargo clippy --workspace --all-targets -- -D warnings` 通过。
 2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 缓存概览、Steam 自动发现；app 仍不联网。
-3. **下一步**：DLL 版本/GUID 读取（.NET 库许可未定）、元数据后台刷新与封面缓存、启用/禁用与删除（破坏性，先确认）、下载/导入（边界未定）、GameLaunch 归属未定。
-4. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径。
+3. **core 基座收尾（2026-11-14）**：`launch` 已接 Launch Game，AGPL 许可证已落地；真实游戏根反查 app id 4576490 验证通过。
+4. **下一步**：DLL 版本/GUID 读取（等 `dotnetdll` 依赖确认）、元数据后台刷新与封面缓存、启用/禁用与删除（破坏性，先确认）、下载/导入、来源表与解压（边界未定）。
+5. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径。
 
 ## 6. 接手须知
 
