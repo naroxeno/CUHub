@@ -4,7 +4,7 @@ use nsh_core::prelude::*;
 
 use crate::pages;
 use crate::palette::*;
-use crate::ui::{button, panel, pix, pix_c, scaled, Ui, PAGES};
+use crate::ui::{PAGES, Ui, button, panel, pix, pix_c, scaled};
 
 pub fn top_bar(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
@@ -164,26 +164,20 @@ pub fn statusline(ui: &Ui) -> impl IntoElement {
 
 pub fn content(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
-    view()
-        .flex_col()
-        .flex_1()
-        .bg(rgb(BG))
-        .child(
-            scroll()
-                .flex_1()
-                .child(
-                    view()
-                        .flex_col()
-                        .gap(scaled(&z, 12.0))
-                        .p(scaled(&z, 12.0))
-                        .child(page_region(ui, 0))
-                        .child(page_region(ui, 1))
-                        .child(page_region(ui, 2))
-                        .child(page_region(ui, 3))
-                        .child(page_region(ui, 4))
-                        .child(page_region(ui, 5)),
-                ),
-        )
+    view().flex_col().flex_1().bg(rgb(BG)).child(
+        scroll().flex_1().child(
+            view()
+                .flex_col()
+                .gap(scaled(&z, 12.0))
+                .p(scaled(&z, 12.0))
+                .child(page_region(ui, 0))
+                .child(page_region(ui, 1))
+                .child(page_region(ui, 2))
+                .child(page_region(ui, 3))
+                .child(page_region(ui, 4))
+                .child(page_region(ui, 5)),
+        ),
+    )
 }
 
 fn page_region(ui: &Ui, index: usize) -> If {
@@ -210,31 +204,34 @@ pub fn dev_overlay(ui: &Ui) -> impl IntoElement {
     let show = ui.clone();
     let close = ui.clone();
     let done = ui.clone();
-    when(move || show.dev.get(), move || {
-        let z = close.zoom;
-        let page = PAGES[close.page.get()];
-        let zoom = close.zoom.get();
-        view()
-            .absolute()
-            .inset(px(0.0))
-            .w_full()
-            .h_full()
-            .bg(rgba(0x000000CC))
-            .items_center()
-            .justify_center()
-            .child(
-                panel(
-                    &z,
-                    "DEVELOPER CONSOLE",
-                    view()
-                        .flex_col()
-                        .gap(scaled(&z, 8.0))
-                        .child(pix("nsh 0.5.1 · prototype shell", 12.0, TEXT_MUTED, &z))
-                        .child(pix(format!("page = {page}"), 12.0, TEXT, &z))
-                        .child(pix(format!("zoom = {zoom}x"), 12.0, TEXT, &z))
-                        .child(button(&z, "Close", true, move || done.dev.set(false))),
+    when(
+        move || show.dev.get(),
+        move || {
+            let z = close.zoom;
+            let page = PAGES[close.page.get()];
+            let zoom = close.zoom.get();
+            view()
+                .absolute()
+                .inset(px(0.0))
+                .w_full()
+                .h_full()
+                .bg(rgba(0x000000CC))
+                .items_center()
+                .justify_center()
+                .child(
+                    panel(
+                        &z,
+                        "DEVELOPER CONSOLE",
+                        view()
+                            .flex_col()
+                            .gap(scaled(&z, 8.0))
+                            .child(pix("nsh 0.5.1 · prototype shell", 12.0, TEXT_MUTED, &z))
+                            .child(pix(format!("page = {page}"), 12.0, TEXT, &z))
+                            .child(pix(format!("zoom = {zoom}x"), 12.0, TEXT, &z))
+                            .child(button(&z, "Close", true, move || done.dev.set(false))),
+                    )
+                    .w(scaled(&z, 320.0)),
                 )
-                .w(scaled(&z, 320.0)),
-            )
-    })
+        },
+    )
 }
