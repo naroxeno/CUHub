@@ -54,6 +54,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | R 多人页（预览） | 样例数据、过滤、布局占位 | P2 |
 | S 打包发布 | 单文件、内嵌资源、Data 覆盖、双平台、版本注入 | P0 |
 | T 已移除功能 | 自更新、应用内卸载器、HubContent 订阅源、Supabase | 不复刻 |
+| U 来源表与整合包 | 来源优先级、GitHub 内置 tag、用户正则、表校验、CUPK1 整合包 | P2 |
 
 ---
 
@@ -93,7 +94,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **C10 (P0)** 状态徽标：Installed / Update available / Disabled，用文字色区分（accent / warn / danger）+ 卡片左缘 2px 同色竖条，不铺底色。
 - **C11 (P0)** 封面图：异步抓取 + 磁盘缓存（按 URL 的 SHA-256 截断命名），并发上限 4，失败记一次本会话不再重试，只允许 http/https，解码在工作线程，缺失时显示 “No image”。
 - **C12 (P1)** 描述渲染：去 BBCode（`[url=]…[/url]` 留文字、`[br]`/`<br>` 归一为换行、其余标签剥除、HTML 实体解码、3 行以上空行压成 1 行）；仅在作者留空行处出现段间距（单倍行距）。
-- **C13 (P1)** 动作语义：无 Premium key → “Open Download” 打开 Nexus Files 页（`?tab=files`）；有 key → “Download” 走直连；本地副本过期 → “Open Update”；本地已禁用 → “Re-enable in Local Mods”。
+- **C13 (P1)** 动作语义：无 Premium key → “Open Download” 打开 Nexus Files 页（`?tab=files`）；有 key → “Download” 走直连；本地副本过期 → “Open Update”；本地已禁用 → “Re-enable in Local Mods”；模组被来源表指到 GitHub／自定义页时，按 U 的规则换成 “Open release” / “Open source page”（见 U1）。
 - **C14 (P1)** 外链按钮（↗）：打开普通模组页；复制链接进剪贴板。
 - **C15 (P1)** 依赖行：来自依赖目录，“Requires: …”，无数据时 “No known dependencies”。
 - **C16 (P1)** 无游戏目录态：整页替换为空态卡片（No game folder set + 三个按钮）。
@@ -131,7 +132,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E11 (P1)** 第三列（分享码）可手动隐藏/显示（开关持久化）；隐藏时网格第三列宽度归零。
 - **E12 (P1)** 本地搜索框：匹配名称、GUID、依赖标签。
 - **E13 (P1)** Install mod 按钮（选本地压缩包）+ Refresh（重扫并重新比对元数据）。
-- **E14 (P1)** 行内动作按上下文出现：Toggle（Enable/Disable）、DependencyActionLabel（Download / Open Download）、Ignore（依赖）、Out of date（打开 Nexus Files 页）、ShareCodeActionLabel（Open Download / Search Nexus）、Ignore（分享码）、Delete。
+- **E14 (P1)** 行内动作按上下文出现：Toggle（Enable/Disable）、DependencyActionLabel（Download / Open Download）、Ignore（依赖）、Out of date（打开 Nexus Files 页或来源页）、ShareCodeActionLabel（Open Download / Search Nexus）、Ignore（分享码）、Delete；来源为 GitHub 时“Out of date”打开 release 页。
 - **E15 (P1)** 未匹配元数据的模组：名称用文件名去扩展，版本取第一个未禁用 DLL，“Not listed in the community catalogue, so update status is not checked.”。
 - **E16 (P2)** 版本证据缺失、GUID 缺失的模组仍要能显示与操作，不能因缺数据整页失败。
 - **E17 (P1)** 匹配算法：DLL 名与元数据 `DllNames` 忽略大小写求交；优先“归一化名 == DLL 茎名”，其次 `DllNames` 只有一项的，最后按 `DllNames` 数量升序（避免同名不同模组串台，例如自带 CUCoreLib.dll 的模组）。
@@ -315,6 +316,23 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - Supabase 公告、匿名 UUID 安装 ID、活跃安装统计。
 - 旧 WPF Hub / Setup Wizard / HubContent.json 订阅源。
 
+### U. 来源表与整合包（P2）
+
+社区目录是从 Nexus 生成的，GitHub 或自托管的模组多半不在里面；来源表就是给这类模组补一条更新与下载的出路，不替代 Nexus。
+
+- **U1 (P2)** 优先级：用户来源表 > 目录可选字段（`github` / `url`）> 元数据里的 Nexus id > 无来源（只显示本地信息，不给更新判定）。
+- **U2 (P2)** 三种来源：`nexus`（内置，files.json 选文件）、`github`（内置，`releases/latest` 取 tag 与资产）、`custom`（用户写正则）。
+- **U3 (P2)** **只有 GitHub 内置版本解析**：`tag_name` 去掉前缀 `v` 后按 S4 规则与本地 assembly／BepInEx 版本比较；资产由用户给的正则挑，没给就只提供 release 页链接。
+- **U4 (P2)** 自定义来源：`page` URL + `version` 正则（捕获组 1 = 版本）+ 可选 `download` 正则（捕获组 1 = 下载地址，相对地址按 page 解析）。正则用 `regex`，线性时间，允许用户写坏但不会卡死。
+- **U5 (P2)** 抓取约束：只 GET、只 https、只带本应用 UA，不带 cookie 与任何凭据，不跟随到 `file:`/`data:`，响应上限 2 MB，超时 15 s，重定向最多 3 次。
+- **U6 (P2)** 自定义来源一律拒绝 `nexusmods.com` 及其子域，提示改用 `nexus` 类型——既不抓 Nexus，也不伪装成别的东西。
+- **U7 (P2)** 失败态可读：`source unreachable` / `version pattern did not match` / `no asset matched`；保留「Open source page」退路，同一会话不重复重试。
+- **U8 (P2)** 来源表存 `appdata/sources.json`（`schemaVersion` + `entries[]`，每项含 `match`（dllNames / guid / name 任一命中）与 `source`）；也可放可执行文件旁 `Data/sources.json` 全局共享。
+- **U9 (P2)** 表校验：正则编译失败、URL 非 https、`kind` 未知、`match` 全空的条目整条丢弃并报行号，坏条目不拖垮整表。
+- **U10 (P2)** 缓存：来源解析结果 6h + ETag；GitHub 未认证限 60 次/小时，只在「已安装模组且用户打开详情或点检查」时请求。
+- **U11 (P2)** 整合包：`CUPK1:` 分享码 = 来源表子集 + 模组名 / GUID / DLL 名 + 期望版本；导入只列缺失项与来源，逐个走「下载 → 收件箱 → 确认安装」既有流程，不静默安装。
+- **U12 (P2)** 导出与导入都要确认，且只允许 https 来源；导入前把「会从哪些域下载」列出来。
+
 ---
 
 ## 3. 本地数据布局（应用数据根）
@@ -362,6 +380,8 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 |---|---|
 | HTTP + 条件请求 | `reqwest`（rustls）+ `ETag`/`If-Modified-Since`；超时 15–20s；UA `CasualtiesHub/{version}` |
 | JSON | `serde`/`serde_json`；社区的 `[JsonExtensionData]` 容错字段用 `#[serde(flatten)] HashMap<String, Value>` + 大小写不敏感键查找 |
+| 版本提取（自定义来源） | `regex`（线性时间，无回溯爆炸）；用户正则的捕获组 1 即版本／下载地址 |
+| GitHub Releases | 只调 `api.github.com/repos/{o}/{r}/releases/latest`，取 `tag_name` 与资产名；未认证 60 次/小时，必须缓存 |
 | zip / 7z / rar | `zip`、`sevenz-rust`、`rars`（纯 Rust RAR，库依赖，不调外部二进制）；统一抽象成 `ArchiveReader`，出口做 zip-slip 校验；RAR 解不出时再尝试 PATH 上的 `unrar`（可选兜底，需用户已安装） |
 | 目录变化监视 | `notify`（inotify / ReadDirectoryChangesW / FSEvents）；Windows 用独占打开判定完成，Linux 用稳定大小×3 |
 | PNG 解码 + 合成 | `image` 解码 + 自己的变换（平移/旋转/缩放/排序/ZIndex），输出位图给 nsh `Image` |
@@ -400,6 +420,7 @@ cuhub/
       archive.rs    # 分类 / 计划 / 安装 / 覆盖检查
       catalogs.rs   # 依赖 / 不兼容目录
       modlist.rs    # CUH1 编解码
+      sources/      # 来源解析：nexus / github / custom + 来源表 + CUPK1
       protect.rs    # 受保护资源
       backup.rs
       skins.rs      # 槽位发现 + 骨架合成
@@ -426,6 +447,7 @@ cuhub/
 | M5 分享码 + 保护 + 备份 + 皮肤 | H、I、J、K | 生成/导入分享码；保护→破坏→还原；皮肤预览与游戏内一致 |
 | M6 Hub Home + 外观 + 日志 | L、O、Q | 公告频道正确、像素调色板与整数缩放落地、诊断/自检命令可用 |
 | M7 打磨 | P2 项、多人占位、打包发布 | 单文件产物 + README-linux + 资源内嵌 |
+| M8 来源表（P2） | U | GitHub tag 能判更新、自定义正则能读出版本与下载、坏条目被丢弃且有行号、CUPK1 导入只走确认流程 |
 
 ---
 

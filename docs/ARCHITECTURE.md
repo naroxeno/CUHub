@@ -52,6 +52,8 @@ HubEvent::Status            // 外壳状态栏文案
 | 社区元数据 `jimmyking9999999/Metadata-generator`（GitHub raw） | Nexus Dashboard 目录 | 6 小时缓存 + ETag/Last-Modified；失败退回离线缓存；数据可能不全 |
 | Hub 配置 `casualties-hub.github.io` | 公告、外链、发布信息 | 按预发布/正式选频道；只接受 https；30 分钟间隔 |
 | Nexus API v1 | 用户自带 Premium key 的直连下载 | 只有用户自己填了 key 才请求；不伪造 URL、不复用抓包链接 |
+| `api.github.com` | 已安装模组的 release tag 与资产名 | 未认证 60 次/小时；6 小时缓存 + ETag；只取 tag/资产名，不自动安装 |
+| 用户来源表里的任意 https 页面 | 自定义来源的版本与下载地址提取 | 只 GET、不带凭据、响应上限 2 MB、拒绝 `nexusmods.com`，失败只报错不重试风暴 |
 | Steam | 启动游戏（`steam://rungameid`）、库与 appid 发现 | 必须走 Steam，直接跑 exe 在 Proton 下不加载 BepInEx |
 | 游戏目录 `BepInEx/Plugins`、`CustomSprites` | 安装、开关、删除、备份、皮肤 | 所有写入先解析真实大小写再校验在允许根内 |
 | 系统桌面 | 打开 URL/文件夹、剪贴板 | scheme 白名单 http/https/steam |
@@ -73,6 +75,8 @@ HubEvent::Status            // 外壳状态栏文案
 | `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除 |
 | `catalogs` | 依赖与不兼容目录（内嵌 + `Data/` 覆盖） |
 | `modlist` | `CUH1:` 编解码、缺失项匹配 |
+| `sources` | 来源解析与优先级：`nexus` / `github` / `custom`（用户正则） |
+| `sources::table` | `sources.json` 与 `Data/sources.json` 的读取校验、`CUPK1:` 整合包编解码 |
 | `protect` / `backup` | 受保护资源与整目录备份的创建、还原、移除 |
 | `skins` | 槽位发现、精灵查找、骨骼合成（像素精确） |
 | `steam` | 库扫描、VDF 解析、appid 反查、启动回退 |
