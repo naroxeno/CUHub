@@ -7,8 +7,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use reqwest::Url;
-use reqwest::blocking::{Client, Response};
-use reqwest::header::{CONTENT_LENGTH, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
+use reqwest::blocking::{Client, RequestBuilder, Response};
+use reqwest::header::{
+    CONTENT_LENGTH, ETAG, HeaderName, HeaderValue, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
+};
 use reqwest::redirect::Policy;
 
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -55,6 +57,26 @@ impl Network {
         if let Some(value) = last_modified.filter(|value| !value.trim().is_empty()) {
             request = request.header(IF_MODIFIED_SINCE, value);
         }
+        self.send(request, url, max_bytes)
+    }
+
+    pub fn get_with_headers(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        max_bytes: u64,
+    ) -> Result<Fetch, NetworkError> {
+        let url = validate_url(url)?;
+        let request = apply_headers(self.client.get(url.clone()), headers)?;
+        self.send(request, url, max_bytes)
+    }
+
+    fn send(
+        &self,
+        request: RequestBuilder,
+        url: Url,
+        max_bytes: u64,
+    ) -> Result<Fetch, NetworkError> {
         let response = request
             .send()
             .map_err(|error| NetworkError::Request(Box::new(error)))?;
@@ -85,6 +107,16 @@ impl Network {
         destination: &Path,
         max_bytes: u64,
     ) -> Result<u64, NetworkError> {
+        self.download_with_timeout(url, destination, max_bytes, REQUEST_TIMEOUT)
+    }
+
+    pub fn download_with_timeout(
+        &self,
+        url: &str,
+        destination: &Path,
+        max_bytes: u64,
+        timeout: Duration,
+    ) -> Result<u64, NetworkError> {
         let url = validate_url(url)?;
         if destination.exists() {
             return Err(NetworkError::DestinationExists(destination.to_path_buf()));
@@ -95,6 +127,7 @@ impl Network {
             let response = self
                 .client
                 .get(url.clone())
+                .timeout(timeout)
                 .send()
                 .map_err(|error| NetworkError::Request(Box::new(error)))?;
             let status = response.status();
@@ -165,6 +198,7 @@ pub enum NetworkError {
     InvalidUrl(String),
     InsecureUrl(String),
     UrlHasCredentials(String),
+    InvalidHeader { name: String },
     Request(Box<reqwest::Error>),
     HttpStatus { url: String, status: u16 },
     TooLarge { url: String, limit: u64 },
@@ -183,6 +217,9 @@ impl std::fmt::Display for NetworkError {
                     formatter,
                     "{url}: URLs with embedded credentials are not allowed"
                 )
+            }
+            Self::InvalidHeader { name } => {
+                write!(formatter, "{name}: invalid HTTP header name or value")
             }
             Self::Request(error) => write!(formatter, "request failed: {error}"),
             Self::HttpStatus { url, status } => {
@@ -253,6 +290,24 @@ fn validate_url(input: &str) -> Result<Url, NetworkError> {
         return Err(NetworkError::UrlHasCredentials(text.to_owned()));
     }
     Ok(url)
+}
+
+fn apply_headers(
+    mut request: RequestBuilder,
+    headers: &[(&str, &str)],
+) -> Result<RequestBuilder, NetworkError> {
+    for (name, value) in headers {
+        let header_name =
+            HeaderName::from_bytes(name.as_bytes()).map_err(|_| NetworkError::InvalidHeader {
+                name: (*name).to_owned(),
+            })?;
+        let header_value =
+            HeaderValue::from_str(value).map_err(|_| NetworkError::InvalidHeader {
+                name: (*name).to_owned(),
+            })?;
+        request = request.header(header_name, header_value);
+    }
+    Ok(request)
 }
 
 fn header_string(response: &Response, name: reqwest::header::HeaderName) -> Option<String> {
@@ -346,6 +401,15 @@ mod tests {
     fn rejects_embedded_credentials() {
         let error = validate_url("https://user:secret@example.com/a").unwrap_err();
         assert!(matches!(error, NetworkError::UrlHasCredentials(_)));
+    }
+
+    #[test]
+    fn rejects_invalid_header_names_before_requesting() {
+        let network = Network::new().unwrap();
+        let error = network
+            .get_with_headers("https://example.com/", &[("bad header", "value")], 1024)
+            .unwrap_err();
+        assert!(matches!(error, NetworkError::InvalidHeader { ref name } if name == "bad header"));
     }
 
     #[test]

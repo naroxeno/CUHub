@@ -7,7 +7,7 @@ Casualties Hub 的重写：Rust 桌面应用，界面用 nsh，功能与上游 0
 
 - 两个 crate：`crates/core`（领域逻辑，不依赖任何 UI）与 `crates/app`（nsh 界面）。`app` 不联网；所有 HTTP 与下载只经 `core::network`。
 - 依赖方向只有 `app → core`；`core` 不引用 `nsh`、不读窗口状态、不改界面信号。
-- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、本地下载目录默认值、打开 URL、Steam 回退、凭据保护、注册表、卷影提示），调用方不写 `cfg` 分支。
+- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、本地下载目录默认值、打开 URL、Steam 回退、凭据保护（待接）、注册表、卷影提示），调用方不写 `cfg` 分支。
 
 ## 2. 核心门面（方案 C）
 
@@ -71,7 +71,7 @@ HubEvent::Status            // 外壳状态栏文案
 | `network` | 唯一联网层：HTTPS 校验、条件请求（ETag / If-Modified-Since）、重定向/超时/UA、响应上限、下载落盘 |
 | `metadata` | 社区目录缓存、按 DLL 名匹配模组（经 `network` 拉取） |
 | `hubconfig` | 公告频道、缓存、https 过滤（经 `network` 拉取） |
-| `nexus_auth` | key 的保存/读取/清除（DPAPI 或 AES-GCM + 0600） |
+| `nexus_auth` | key 的保存/读取/清除（AES-GCM + 0600；Windows DPAPI 待接） |
 | `nexus` | 直连下载：files.json 选文件、download_link（经 `network`） |
 | `archive` | 分类、安装计划、覆盖检查、staging 后落盘 |
 | `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除 |

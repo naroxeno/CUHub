@@ -9,6 +9,8 @@ pub mod metadata;
 pub mod modlist;
 pub mod mods;
 pub mod network;
+pub mod nexus;
+pub mod nexus_auth;
 pub mod paths;
 pub mod platform;
 pub mod settings;

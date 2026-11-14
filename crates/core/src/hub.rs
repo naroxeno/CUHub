@@ -12,6 +12,7 @@ use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
 use crate::mods::{self, InstalledMod, ModsError};
 use crate::network::{self, Fetch, Network, NetworkError};
+use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
 use crate::paths::{self, PathError};
 use crate::platform;
 use crate::settings::{Settings, SettingsStore};
@@ -26,6 +27,7 @@ pub enum HubError {
     Settings(io::Error),
     Network(NetworkError),
     Cache(metadata::MetadataCacheError),
+    Nexus(NexusError),
     Json(serde_json::Error),
     UnexpectedContent,
     NetworkUnavailable,
@@ -44,6 +46,7 @@ impl std::fmt::Display for HubError {
             Self::Settings(error) => write!(formatter, "Could not save settings: {error}"),
             Self::Network(error) => error.fmt(formatter),
             Self::Cache(error) => error.fmt(formatter),
+            Self::Nexus(error) => error.fmt(formatter),
             Self::Json(error) => write!(
                 formatter,
                 "The community catalogue is not valid JSON: {error}"
@@ -68,6 +71,7 @@ impl std::error::Error for HubError {
             Self::Settings(error) => Some(error),
             Self::Network(error) => Some(error),
             Self::Cache(error) => Some(error),
+            Self::Nexus(error) => Some(error),
             Self::Json(error) => Some(error),
         }
     }
@@ -94,6 +98,12 @@ impl From<LaunchError> for HubError {
 impl From<NetworkError> for HubError {
     fn from(error: NetworkError) -> Self {
         Self::Network(error)
+    }
+}
+
+impl From<NexusError> for HubError {
+    fn from(error: NexusError) -> Self {
+        Self::Nexus(error)
     }
 }
 
@@ -124,6 +134,7 @@ pub struct Hub {
     metadata_cache: MetadataCache,
     metadata: Vec<MetadataMod>,
     network: Option<Network>,
+    nexus: Option<Nexus>,
 }
 
 impl Hub {
@@ -160,6 +171,10 @@ impl Hub {
             }
         };
 
+        let nexus = network
+            .as_ref()
+            .map(|network| Nexus::new(network.clone(), app_data.clone()));
+
         Self {
             app_data,
             settings_store,
@@ -169,6 +184,7 @@ impl Hub {
             metadata_cache,
             metadata,
             network,
+            nexus,
         }
     }
 
@@ -231,6 +247,51 @@ impl Hub {
             &format!("Asked Steam to launch Casualties Unknown (app {app_id})."),
         );
         Ok(app_id)
+    }
+
+    pub fn nexus_has_key(&self) -> bool {
+        self.nexus.as_ref().is_some_and(|nexus| nexus.has_key())
+    }
+
+    pub fn nexus(&self) -> Result<&Nexus, HubError> {
+        self.nexus.as_ref().ok_or(HubError::NetworkUnavailable)
+    }
+
+    pub fn save_nexus_key(&mut self, key: &str) -> Result<(), HubError> {
+        let nexus = self.nexus.as_ref().ok_or(HubError::NetworkUnavailable)?;
+        nexus.save_key(key)?;
+        self.logs.activity("Nexus", "Personal Nexus API key saved.");
+        Ok(())
+    }
+
+    pub fn clear_nexus_key(&mut self) -> Result<(), HubError> {
+        let nexus = self.nexus.as_ref().ok_or(HubError::NetworkUnavailable)?;
+        nexus.clear_key()?;
+        self.logs
+            .activity("Nexus", "Personal Nexus API key cleared.");
+        Ok(())
+    }
+
+    pub fn validate_nexus_key(&self) -> Result<NexusAccount, HubError> {
+        Ok(self.nexus()?.validate_key()?)
+    }
+
+    pub fn download_nexus_latest(&self, mod_id: &str) -> Result<NexusDownload, HubError> {
+        let destination = if self.settings.download_path.trim().is_empty() {
+            platform::downloads_dir()
+        } else {
+            PathBuf::from(self.settings.download_path.trim())
+        };
+        let download = self.nexus()?.download_latest(mod_id, &destination)?;
+        self.logs.activity(
+            "Nexus",
+            &format!(
+                "Downloaded {} for mod {mod_id} to {}.",
+                download.file_name,
+                download.path.display()
+            ),
+        );
+        Ok(download)
     }
 
     pub fn plugins_dir(&self) -> Result<PathBuf, HubError> {

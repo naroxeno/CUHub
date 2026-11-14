@@ -10,7 +10,8 @@ core 里唯一允许发起 HTTP 的模块。app 不联网，也不调用 nsh 的
 - get(url, etag, last_modified, max_bytes) -> Fetch：
   - 返回 Fetched { body, etag, last_modified }，或 304 时返回 NotModified。
   - 有 ETag / Last-Modified 时自动带 If-None-Match / If-Modified-Since。
-- download(url, destination, max_bytes) -> 写入字节数：
+- get_with_headers(url, headers, max_bytes) -> Fetch：与 get 相同的响应处理，额外带调用方给的头（例如 Nexus 的 apikey）；头名/头值在发请求前校验，错误只带头名。
+- download(url, destination, max_bytes) -> 写入字节数；download_with_timeout 允许调用方覆盖单次超时（Nexus 文件下载用 5 分钟）：
   - 先写同目录的隐藏临时文件，成功后 rename 到 destination；中途失败删除临时文件。
   - destination 已存在时直接报错，不覆盖。
 - HttpState 由调用方（metadata、hubconfig）持久化；本模块只收发头部。
@@ -26,7 +27,7 @@ core 里唯一允许发起 HTTP 的模块。app 不联网，也不调用 nsh 的
 
 ## 边界与失败模式
 
-- 不做认证、不注入 Nexus key；需要认证头的调用方在后续 nexus 模块里显式构造请求（尚未实现）。
+- 不做认证、不保存 Nexus key；需要认证头的调用方（nexus）通过 get_with_headers 显式传入，key 由 nexus_auth 读取。
 - `Network` 的 API 是阻塞的；调用方（Hub / worker）负责把它放到阻塞池或后台线程，UI 线程不得直接调用。
 - download 的临时文件与目标在同一文件系统，保证 rename 原子；Windows 上 rename 不覆盖已存在目标，因此先检查 destination.exists()。
 - 网络错误不吞：InvalidUrl / InsecureUrl / UrlHasCredentials / Request / HttpStatus / TooLarge / DestinationExists / Io / Read。
