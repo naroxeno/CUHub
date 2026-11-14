@@ -8,6 +8,7 @@ use std::thread;
 use chrono::{DateTime, Utc};
 
 use crate::catalogs::Catalogs;
+use crate::github::{self, CheckFailure, ReleaseInfo};
 use crate::launch::{self, LaunchError};
 use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
@@ -17,6 +18,8 @@ use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
 use crate::paths::{self, PathError};
 use crate::platform;
 use crate::settings::{Settings, SettingsStore};
+use crate::source_choice::{ChoiceError, SourceChoices};
+use crate::sources::{self, Repo, SourceKind, SourceManifest};
 use crate::steam;
 
 #[derive(Debug)]
@@ -35,6 +38,8 @@ pub enum HubError {
     Json(serde_json::Error),
     UnexpectedContent,
     NetworkUnavailable,
+    Source(ChoiceError),
+    Sources(sources::LoadError),
 }
 
 impl std::fmt::Display for HubError {
@@ -69,6 +74,8 @@ impl std::fmt::Display for HubError {
             Self::NetworkUnavailable => {
                 write!(formatter, "The network client could not be created.")
             }
+            Self::Source(error) => error.fmt(formatter),
+            Self::Sources(error) => error.fmt(formatter),
         }
     }
 }
@@ -77,6 +84,8 @@ impl std::error::Error for HubError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::NoGameFolder | Self::UnexpectedContent | Self::NetworkUnavailable => None,
+            Self::Source(error) => Some(error),
+            Self::Sources(error) => Some(error),
             Self::Path(error) => Some(error),
             Self::Mods(error) => Some(error),
             Self::Launch(error) => Some(error),
@@ -127,6 +136,18 @@ impl From<metadata::MetadataCacheError> for HubError {
     }
 }
 
+impl From<ChoiceError> for HubError {
+    fn from(error: ChoiceError) -> Self {
+        Self::Source(error)
+    }
+}
+
+impl From<sources::LoadError> for HubError {
+    fn from(error: sources::LoadError) -> Self {
+        Self::Sources(error)
+    }
+}
+
 impl From<serde_json::Error> for HubError {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
@@ -139,6 +160,19 @@ pub enum MetadataRefresh {
     Updated(usize),
 }
 
+#[derive(Debug, Clone)]
+pub enum CheckOutcome {
+    Release(ReleaseInfo),
+    Failure(CheckFailure),
+}
+
+const CHECK_MAX_BODY_BYTES: u64 = 1024 * 1024;
+
+const GITHUB_HEADERS: [(&str, &str); 2] = [
+    ("Accept", "application/vnd.github+json"),
+    ("X-GitHub-Api-Version", "2022-11-28"),
+];
+
 pub struct Hub {
     app_data: PathBuf,
     settings_store: SettingsStore,
@@ -149,6 +183,8 @@ pub struct Hub {
     metadata: Vec<MetadataMod>,
     network: Option<Network>,
     nexus: Option<Nexus>,
+    sources: Option<SourceManifest>,
+    source_choices: SourceChoices,
 }
 
 impl Hub {
@@ -189,6 +225,21 @@ impl Hub {
             .as_ref()
             .map(|network| Nexus::new(network.clone(), app_data.clone()));
 
+        let sources = match sources::load_manifest_optional(&sources::manifest_path(&app_data)) {
+            Ok(manifest) => manifest,
+            Err(error) => {
+                logs.error("Sources", &io::Error::other(error.to_string()));
+                None
+            }
+        };
+        let source_choices = match SourceChoices::load(&app_data) {
+            Ok(choices) => choices,
+            Err(error) => {
+                logs.error("Sources", &io::Error::other(error.to_string()));
+                SourceChoices::empty(&app_data)
+            }
+        };
+
         Self {
             app_data,
             settings_store,
@@ -199,6 +250,8 @@ impl Hub {
             metadata,
             network,
             nexus,
+            sources,
+            source_choices,
         }
     }
 
@@ -415,11 +468,98 @@ impl Hub {
         }
     }
 
+    pub fn sources(&self) -> Option<&SourceManifest> {
+        self.sources.as_ref()
+    }
+
+    pub fn source_choice(&self, key: &str) -> Option<SourceKind> {
+        self.source_choices.choice(key)
+    }
+
+    pub fn pin_source(&mut self, key: &str, kind: SourceKind) -> Result<(), HubError> {
+        self.source_choices.set(key, kind)?;
+        self.logs
+            .activity("Sources", &format!("Source choice saved for {key}."));
+        Ok(())
+    }
+
+    pub fn clear_source_pin(&mut self, key: &str) -> Result<(), HubError> {
+        self.source_choices.clear(key)?;
+        self.logs
+            .activity("Sources", &format!("Source choice cleared for {key}."));
+        Ok(())
+    }
+
+    pub fn check_release(&self, repo: &Repo) -> Result<CheckOutcome, HubError> {
+        let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
+        let latest = format!(
+            "https://api.github.com/repos/{}/{}/releases/latest",
+            repo.owner(),
+            repo.name()
+        );
+        match fetch_release(network, &latest) {
+            Ok(release) => Ok(CheckOutcome::Release(release)),
+            Err(CheckFailure::Missing) => {
+                let list = format!(
+                    "https://api.github.com/repos/{}/{}/releases?per_page=1",
+                    repo.owner(),
+                    repo.name()
+                );
+                match fetch_release_list(network, &list) {
+                    Ok(release) => Ok(CheckOutcome::Release(release)),
+                    Err(failure) => Ok(CheckOutcome::Failure(failure)),
+                }
+            }
+            Err(failure) => Ok(CheckOutcome::Failure(failure)),
+        }
+    }
+
     pub fn log_entries(&self) -> Vec<String> {
         self.logs.entries()
     }
 
     pub fn logs(&self) -> &Logs {
         &self.logs
+    }
+}
+
+fn fetch_release(network: &Network, url: &str) -> Result<ReleaseInfo, CheckFailure> {
+    let body = fetch_json(network, url)?;
+    github::parse_release(&body).map_err(|error| CheckFailure::Unreadable {
+        detail: error.to_string(),
+    })
+}
+
+fn fetch_release_list(network: &Network, url: &str) -> Result<ReleaseInfo, CheckFailure> {
+    let body = fetch_json(network, url)?;
+    match github::parse_release_list(&body) {
+        Ok(release) => Ok(release),
+        Err(github::ReleaseError::NoReleases) => Err(CheckFailure::Missing),
+        Err(error) => Err(CheckFailure::Unreadable {
+            detail: error.to_string(),
+        }),
+    }
+}
+
+fn fetch_json(network: &Network, url: &str) -> Result<String, CheckFailure> {
+    match network.get_with_headers(url, &GITHUB_HEADERS, CHECK_MAX_BODY_BYTES) {
+        Ok(Fetch::Fetched { body, .. }) => {
+            String::from_utf8(body).map_err(|error| CheckFailure::Unreadable {
+                detail: error.to_string(),
+            })
+        }
+        Ok(Fetch::NotModified) => Err(CheckFailure::Unreadable {
+            detail: String::from("GitHub answered with an unexpected 304."),
+        }),
+        Err(error) => Err(check_failure(&error)),
+    }
+}
+
+fn check_failure(error: &NetworkError) -> CheckFailure {
+    match error {
+        NetworkError::HttpStatus { status, .. } => CheckFailure::from_status(*status, None),
+        other => CheckFailure::Network {
+            detail: other.to_string(),
+        },
     }
 }

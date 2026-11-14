@@ -55,6 +55,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | S 打包发布 | 单文件、内嵌资源、Data 覆盖、双平台、版本注入 | P0 |
 | T 已移除功能 | 自更新、应用内卸载器、HubContent 订阅源、Supabase | 不复刻 |
 | U 来源表与整合包 | 来源优先级、GitHub 内置 tag、用户正则、表校验、CUPK1 整合包 | P2 |
+| V GitHub 清单与源管理 | 清单 schema 编辑器、Settings 里的源开关与缓存管理 | P2 |
 
 ---
 
@@ -334,6 +335,15 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **U11 (P2)** 整合包：`CUPK1:` 分享码 = 来源表子集 + 模组名 / GUID / DLL 名 + 期望版本；导入只列缺失项与来源，逐个走「下载 → 收件箱 → 确认安装」既有流程，不静默安装。排在 M8：先把来源解析、缓存与失败态跑通，再做整合包。
 - **U12 (P2)** 导出与导入都要确认，且只允许 https 来源；导入前把「会从哪些域下载」列出来。
 
+### V. GitHub 清单与源管理（P2）
+
+社区目录是从 Nexus 生成的，作者只在 GitHub 发版的模组常常不在里面。清单是项目单独维护的公开仓库：`sources.json` 人工维护条目，`releases.json` 由 Actions 预生成；客户端只读，不抓网页、不代提交。V1/V2 是清单的维护面与开关面，清单的读取与匹配随 GitHub 源本体落地。
+
+实现状态（2026-11-15）：GitHub 清单读取、匹配、pin 与手动 Check 已落地（见 `docs/core/sources/overview.md`）；release 结果不缓存，V1/V2 的编辑器、源开关、6h 缓存与 `Open release` 仍未做。清单暂读本地 `<AppData>/Sources/manifest.json`，远程清单仓库待定。
+
+- **V1 (P2)** 清单 schema 编辑器：Settings → Mod sources → Edit manifest 打开，表单与原始 JSON 双视图，切换视图前先校验；表单含 `repo`（`owner/name`）、`name`、`match.guid` / `match.dll` / `match.name`（均多值）、可选 `asset.include` / `asset.exclude` 与 `notes`，`id` 从 `repo` 派生并去重。保存前跑与运行时同一套校验（`schemaVersion`、`owner/name` 形状、`match` 至少一项、正则可编译），错误定位到条目与字段，只拒绝坏条目、不整表报废。结果写成草稿 `appdata/GithubSourcesDraft.json`（粘贴上限 1 MB），不写远端仓库、不写游戏目录；另给 Copy JSON / Save as… 导出，由人自己提 PR。删除条目与覆盖导入要确认，且只影响草稿。编辑器内可对已安装模组做一次只读试匹配，列出每个条目命中的 DLL/GUID（不发网络请求）。
+- **V2 (P2)** Settings 的 Mod 源管理：设置页新增 MOD SOURCES 区块，列出 Nexus 目录（只读、常开）、GitHub 清单（开关 / URL / Last synced / Refresh now / Clear cache）、用户来源表（U8 落地前显示为未配置）；顶部只读显示当前生效的优先级顺序，本版不做拖拽排序。关掉清单只影响解析、不删缓存；URL 必须 https，否则就地拒绝且不保存；写入只碰设置与缓存，不碰游戏目录。
+
 ---
 
 ## 3. 本地数据布局（应用数据根）
@@ -346,6 +356,9 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
   NexusPopularMods.json          # 可选（GraphQL 缓存 8h）
   HubConfigCache.{stable|prerelease}.json
   HubConfigHttpState.{stable|prerelease}.json
+  GithubSourcesCache.json        # GitHub 清单 6h（含源 URL、ETag、抓取时间）
+  GithubReleaseCache.json        # 每个 owner/repo 的 release 与限流余量（6h）
+  GithubSourcesDraft.json        # 清单编辑器草稿（不参与解析）
   ImportedModlist.json
   ProtectedFiles.json
   ProtectedFiles/...             # 受保护资源副本
@@ -422,7 +435,7 @@ cuhub/
       archive.rs    # 分类 / 计划 / 安装 / 覆盖检查
       catalogs.rs   # 依赖 / 不兼容目录
       modlist.rs    # CUH1 编解码
-      sources/      # 来源解析：nexus / github / custom + 来源表 + CUPK1
+      sources/      # 来源解析：nexus / github / custom + 用户表 + GitHub 清单 + CUPK1
       protect.rs    # 受保护资源
       backup.rs
       skins.rs      # 槽位发现 + 骨架合成

@@ -1,12 +1,17 @@
 //! Zoom-aware pixel primitives and the app's hub-backed state.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
-use cuhub_core::hub::{Hub, HubError, MetadataRefresh};
+use cuhub_core::github::{CheckFailure, ReleaseInfo};
+use cuhub_core::hub::{CheckOutcome, Hub, HubError, MetadataRefresh};
 use cuhub_core::metadata::MetadataMod;
 use cuhub_core::mods::{InstalledMod, ModStatus};
 use cuhub_core::settings::Settings;
+use cuhub_core::source_choice::mod_key;
+use cuhub_core::sources::{self, LocalMod, MatchKind, Repo, SourceEntry, SourceKind};
+use cuhub_core::version::HubVersion;
 use nsh_core::RevealOptions;
 use nsh_core::element::FontAsset;
 use nsh_core::prelude::*;
@@ -61,6 +66,35 @@ impl NexusModRow {
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct SourceRow {
+    pub text: String,
+    pub warning: bool,
+    pub can_check: bool,
+    pub repo: Option<Repo>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct LocalModRow {
+    pub key: String,
+    pub source_key: String,
+    pub item: InstalledMod,
+    pub source: SourceRow,
+}
+
+impl LocalModRow {
+    pub fn row_key(&self) -> String {
+        self.key.clone()
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum CheckState {
+    Checking,
+    Release(ReleaseInfo),
+    Failed(CheckFailure),
+}
+
 #[derive(Clone)]
 pub struct Ui {
     pub page: Signal<usize>,
@@ -78,6 +112,8 @@ pub struct Ui {
     pub nexus_total: Signal<usize>,
     pub nexus_refreshing: Signal<bool>,
     pub nexus_error: Signal<String>,
+    pub local_rows: Signal<Vec<LocalModRow>>,
+    pub checks: Signal<BTreeMap<String, CheckState>>,
     pub nexus_downloading: Signal<Option<String>>,
     pub nexus_list: ElementRef,
     pub metadata_synced: Signal<String>,
@@ -96,6 +132,8 @@ impl Ui {
         let settings = hub.settings().clone();
         let zoom = settings.ui_scale;
         let mods = hub.scan_mods().unwrap_or_default();
+        let checks = BTreeMap::new();
+        let local_rows = build_local_rows(&hub, &mods, &checks);
         let nexus_rows = build_nexus_rows(hub.metadata(), &mods);
         let nexus_total = nexus_rows.len();
         let nexus_page_rows = page_slice(&nexus_rows, 0);
@@ -130,6 +168,8 @@ impl Ui {
             nexus_total: signal(nexus_total),
             nexus_refreshing: signal(false),
             nexus_error: signal(String::new()),
+            local_rows: signal(local_rows),
+            checks: signal(checks),
             nexus_downloading: signal(None::<String>),
             nexus_list: element_ref(),
             metadata_synced: signal(metadata_synced),
@@ -166,6 +206,7 @@ impl Ui {
                 let count = mods.len();
                 self.mods.set(mods);
                 self.rebuild_nexus(&metadata);
+                self.rebuild_local_rows();
                 self.notice
                     .set(format!("Scanned {count} mod(s) in Plugins."));
             }
@@ -218,6 +259,7 @@ impl Ui {
                         ui.mods.set(mods);
                     }
                     ui.rebuild_nexus(&metadata);
+                    ui.rebuild_local_rows();
                     ui.metadata_synced
                         .set(synced.unwrap_or_else(|| String::from("Never")));
                     ui.nexus_refreshing.set(false);
@@ -285,6 +327,67 @@ impl Ui {
                     .notice
                     .set(format!("Could not download from Nexus: {error}")),
             }
+        });
+    }
+
+    pub fn rebuild_local_rows(&self) {
+        let rows = {
+            let hub = self.hub();
+            build_local_rows(&hub, &self.mods.get(), &self.checks.get())
+        };
+        self.local_rows.set(rows);
+    }
+
+    pub fn check_source(&self, key: String, repo: Repo) {
+        let mut checks = self.checks.get();
+        if checks.get(&key) == Some(&CheckState::Checking) {
+            return;
+        }
+        checks.insert(key.clone(), CheckState::Checking);
+        self.checks.set(checks);
+        self.rebuild_local_rows();
+        self.notice
+            .set(format!("Checking GitHub for {}…", repo.slug()));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let target = repo.clone();
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                hub.check_release(&target)
+            })
+            .await;
+            let mut checks = ui.checks.get();
+            match result {
+                Ok(Ok(CheckOutcome::Release(release))) => {
+                    ui.notice.set(release_notice(&repo, &release));
+                    checks.insert(key.clone(), CheckState::Release(release));
+                }
+                Ok(Ok(CheckOutcome::Failure(failure))) => {
+                    ui.notice.set(failure_notice(&failure));
+                    checks.insert(key.clone(), CheckState::Failed(failure));
+                }
+                Ok(Err(error)) => {
+                    ui.notice.set(error.to_string());
+                    checks.insert(
+                        key.clone(),
+                        CheckState::Failed(CheckFailure::Network {
+                            detail: error.to_string(),
+                        }),
+                    );
+                }
+                Err(error) => {
+                    ui.notice.set(format!("The GitHub check stopped: {error}"));
+                    checks.insert(
+                        key.clone(),
+                        CheckState::Failed(CheckFailure::Network {
+                            detail: error.to_string(),
+                        }),
+                    );
+                }
+            }
+            ui.checks.set(checks);
+            ui.rebuild_local_rows();
         });
     }
 
@@ -451,6 +554,165 @@ impl Ui {
             }
             Err(error) => self.notice.set(format!("Could not save settings: {error}")),
         }
+    }
+}
+
+struct SourceInput<'a> {
+    entries: &'a [SourceEntry],
+    item: &'a InstalledMod,
+    check: Option<&'a CheckState>,
+    pinned: Option<SourceKind>,
+}
+
+fn build_local_rows(
+    hub: &Hub,
+    mods: &[InstalledMod],
+    checks: &BTreeMap<String, CheckState>,
+) -> Vec<LocalModRow> {
+    let entries = hub
+        .sources()
+        .map(|manifest| manifest.entries.as_slice())
+        .unwrap_or(&[]);
+    mods.iter()
+        .map(|item| {
+            let key = source_key(item);
+            let check = checks.get(&key);
+            let source = build_source_row(SourceInput {
+                entries,
+                item,
+                check,
+                pinned: hub.source_choice(&key),
+            });
+            LocalModRow {
+                key: format!("{key}|{}", check_tag(check)),
+                source_key: key,
+                item: item.clone(),
+                source,
+            }
+        })
+        .collect()
+}
+
+fn build_source_row(input: SourceInput<'_>) -> SourceRow {
+    let stems = dll_stems(input.item);
+    let local = LocalMod {
+        guid: input.item.guid.as_deref(),
+        dll_stems: stems,
+        name: &input.item.name,
+    };
+    let github = match input.check {
+        Some(CheckState::Release(release)) => Some(release.version.clone()),
+        _ => None,
+    };
+    let nexus = input
+        .item
+        .expected_version
+        .as_deref()
+        .and_then(HubVersion::parse);
+    let resolution = sources::resolve_mod(input.entries, &local, github, nexus, input.pinned);
+    let Some(matched) = resolution.matched else {
+        return SourceRow {
+            text: String::from("Sources: not listed in the GitHub manifest."),
+            warning: false,
+            can_check: false,
+            repo: None,
+        };
+    };
+    let repo = &matched.entry.repo;
+    let mut parts = vec![
+        format!("GitHub {}", repo.slug()),
+        String::from(match_label(matched.kind)),
+    ];
+    match input.check {
+        None => parts.push(String::from("not checked")),
+        Some(CheckState::Checking) => parts.push(String::from("checking…")),
+        Some(CheckState::Release(release)) => {
+            parts.push(release.tag.clone());
+            if release.prerelease {
+                parts.push(String::from("prerelease only"));
+            }
+        }
+        Some(CheckState::Failed(failure)) => parts.push(failure.summary()),
+    }
+    if let Some(effective) = &resolution.effective {
+        parts.push(format!(
+            "uses {}",
+            source_label(effective.kind, input.check, input.item)
+        ));
+    }
+    if resolution.pinned.is_some() {
+        parts.push(String::from("pinned"));
+    }
+    let warning = matched.kind == MatchKind::Name
+        || matches!(input.check, Some(CheckState::Release(release)) if release.prerelease);
+    SourceRow {
+        text: parts.join(" · "),
+        warning,
+        can_check: !matches!(input.check, Some(CheckState::Checking)),
+        repo: Some(repo.clone()),
+    }
+}
+
+fn source_key(item: &InstalledMod) -> String {
+    let stems = dll_stems(item);
+    mod_key(item.guid.as_deref(), &stems)
+        .unwrap_or_else(|| format!("name:{}", item.name.to_lowercase()))
+}
+
+fn dll_stems(item: &InstalledMod) -> Vec<&str> {
+    item.dll_paths
+        .iter()
+        .filter_map(|path| path.file_stem().and_then(|stem| stem.to_str()))
+        .collect()
+}
+
+fn check_tag(check: Option<&CheckState>) -> String {
+    match check {
+        None => String::from("none"),
+        Some(CheckState::Checking) => String::from("checking"),
+        Some(CheckState::Release(release)) => format!("release:{}", release.tag),
+        Some(CheckState::Failed(failure)) => format!("failed:{}", failure.summary()),
+    }
+}
+
+fn source_label(kind: SourceKind, check: Option<&CheckState>, item: &InstalledMod) -> String {
+    match kind {
+        SourceKind::Github => match check {
+            Some(CheckState::Release(release)) => format!("GitHub {}", release.tag),
+            _ => String::from("GitHub (not checked)"),
+        },
+        SourceKind::Nexus => item
+            .expected_version
+            .clone()
+            .map(|version| format!("Nexus {version}"))
+            .unwrap_or_else(|| String::from("Nexus")),
+    }
+}
+
+fn match_label(kind: MatchKind) -> &'static str {
+    match kind {
+        MatchKind::Guid => "GUID match",
+        MatchKind::Dll => "DLL match",
+        MatchKind::Name => "name match",
+    }
+}
+
+fn release_notice(repo: &Repo, release: &ReleaseInfo) -> String {
+    if release.prerelease {
+        format!(
+            "{} only has a prerelease: {}. Review it before updating.",
+            repo.slug(),
+            release.tag
+        )
+    } else {
+        format!("{} has release {}.", repo.slug(), release.tag)
+    }
+}
+
+fn failure_notice(failure: &CheckFailure) -> String {
+    match failure.detail() {
+        Some(detail) => format!("{} {detail}", failure.summary()),
+        None => failure.summary(),
     }
 }
 

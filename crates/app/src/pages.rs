@@ -1,12 +1,14 @@
 //! The six pages behind the shell navigation; data comes from the Hub facade.
 
-use cuhub_core::mods::{InstalledMod, ModStatus};
+use cuhub_core::mods::ModStatus;
 use cuhub_core::nexus_auth::NexusKeyStore;
 use nsh_base::input;
 use nsh_core::prelude::*;
 
 use crate::palette::*;
-use crate::ui::{NexusModRow, Ui, button, nexus_page_count, panel, pix, pix_c, scaled};
+use crate::ui::{
+    LocalModRow, NexusModRow, Ui, button, nexus_page_count, panel, pix, pix_c, scaled,
+};
 
 pub fn nexus(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
@@ -332,12 +334,13 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let empty_z = z;
     let refresh = ui.clone();
     let list_z = z;
+    let rows_ui = ui.clone();
     let rows = each(
-        ui.mods,
-        |item| item.row_key(),
-        move |item, _| {
-            let item = item.get();
-            mod_row(&list_z, &item)
+        ui.local_rows,
+        |row| row.row_key(),
+        move |row, _| {
+            let row = row.get();
+            mod_row(&list_z, &row, &rows_ui)
         },
     );
     view().flex_col().flex_1().child(
@@ -391,8 +394,9 @@ fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
         }))
 }
 
-fn mod_row(z: &Signal<u8>, item: &InstalledMod) -> View {
+fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     let z = *z;
+    let item = &row.item;
     let color = status_color(item.status);
     let mut detail = item.status_detail();
     if !item.missing_dependencies.is_empty() {
@@ -449,6 +453,30 @@ fn mod_row(z: &Signal<u8>, item: &InstalledMod) -> View {
                 .child(pix(item.evidence_label(), 10.0, TEXT_DIM, &z))
                 .child(pix(detail, 10.0, TEXT_DIM, &z)),
         )
+        .child(source_line(&z, row, ui))
+}
+
+fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
+    let mut line = view()
+        .flex_row()
+        .items_center()
+        .gap(scaled(z, 8.0))
+        .px(scaled(z, 6.0))
+        .pb(scaled(z, 3.0));
+    if !row.source.text.is_empty() {
+        let color = if row.source.warning { WARN } else { TEXT_MUTED };
+        line = line.child(pix(row.source.text.clone(), 10.0, color, z));
+    }
+    if row.source.can_check
+        && let Some(repo) = row.source.repo.clone()
+    {
+        let check_ui = ui.clone();
+        let key = row.source_key.clone();
+        line = line.child(button(z, "Check", true, move || {
+            check_ui.check_source(key.clone(), repo.clone());
+        }));
+    }
+    line
 }
 
 fn status_color(status: ModStatus) -> u32 {

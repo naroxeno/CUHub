@@ -215,7 +215,7 @@ pub fn names_match(left: &str, right: &str) -> bool {
     normalize_key(left) == normalize_key(right)
 }
 
-fn normalize_key(value: &str) -> String {
+pub(crate) fn normalize_key(value: &str) -> String {
     value
         .chars()
         .filter(|character| character.is_alphanumeric())
