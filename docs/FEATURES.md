@@ -16,7 +16,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - 用分享码交换 modlist；
 - 预览 CustomSprites 皮肤（按游戏内骨骼摆位合成）；
 - 通过 Steam 启动游戏（Proton 下必须走 steam:// 否则 BepInEx 不加载）；
-- 公告、发布说明、诊断日志、主题自定义。
+- 公告、发布说明、诊断日志、像素风界面。
 
 **硬性约束（必须继承，属产品规则而非技术细节）**
 
@@ -48,7 +48,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | L Hub Home | 公告、历史公告、What Changed、发布信息、外链、Credits | P1 |
 | M Nexus 凭据与直连下载 | key 保存/加密、files.json 选文件、download_link、落盘 | P1 |
 | N Steam 启动 | app id 解析、steam:// 启动、回退 | P0 |
-| O 外观系统 | 四色派生、对比度保护、预设槽、Animated RGB、字号 | P1 |
+| O 外观系统 | 像素风固定调色板、1px 双框、像素字体、整数缩放、语义状态色 | P1 |
 | P 设置与迁移 | 全部设置项、旧配置迁移、JSON 容错 | P0 |
 | Q 日志/诊断/崩溃报告 | 会话日志、保留策略、崩溃报告、诊断命令、自检命令 | P0 |
 | R 多人页（预览） | 样例数据、过滤、布局占位 | P2 |
@@ -66,9 +66,9 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **A3 (P0)** 底部状态栏：单一 status 文本，由各页面与外壳写入（“Game folder detected.”、“Asked Steam to launch Casualties Unknown.”、“Could not launch: …” 等）。
 - **A4 (P1)** 侧栏底部显示 `v{version}`；3 秒内点击 5 次打开开发者控制台（Debug 页/窗口）。这是隐藏入口，不走设置。
 - **A5 (P2)** 彩蛋：需在设置中开启 Easter Eggs 才生效（默认关，首次启动写一次 Initialized 标记，避免“默认开”误判）；含一段固定外链跳转与吉祥物点击计数。
-- **A6 (P1)** 窗口：Linux 用客户端装饰 + 图标；深色外壳（近黑背景、圆角卡片、柔和描边、胶囊导航、单一强调色）。
-- **A7 (P0)** 全局字号：10–20，作用到整个窗口（继承），启动时应用、改设置即时应用。
-- **A8 (P1)** 启动流程：读设置 → 应用主题与字号 → 装载缓存公告并渲染 → 公告过期则后台刷新 → 启动下载监视器 → 游戏路径为空则自动检测（≤20s，失败弹检测对话框可跳设置）。
+- **A6 (P1)** 窗口：Linux 用客户端装饰 + 图标；像素壳（纯黑底、1px 白描边双框、方角导航条、无圆角无阴影），规格见 O。
+- **A7 (P0)** 全局缩放：1x/2x/3x（默认 2x）整数倍，作用到整个窗口（继承），启动时应用、改设置即时应用；不提供任意字号。
+- **A8 (P1)** 启动流程：读设置 → 应用界面缩放（1x/2x/3x）→ 装载缓存公告并渲染 → 公告过期则后台刷新 → 启动下载监视器 → 游戏路径为空则自动检测（≤20s，失败弹检测对话框可跳设置）。
 - **A9 (P1)** 单实例行为：当前实现无单实例锁（不实现也可），但下载监视器必须只跑一份。
 
 ### B. 游戏目录识别
@@ -90,7 +90,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **C7 (P0)** 双视图：tiles（封面 + 底部名称/作者/下载数）与 list（小缩略图 + 名称 + 作者 + 单行摘要 + 下载数 + 认可数）；切换按钮为分段控件，选择跨启动记忆。
 - **C8 (P0)** 详情：点 tile → 网格上浮层（完整描述、图、统计、动作、依赖行），X / 再点同 tile / 点外部关闭，网格保持滚动位置；list 视图点行 → 行下展开描述与大图。
 - **C9 (P0)** 右键菜单：模组动作（Download/Open Download/Update/…）、显示/隐藏详情、View mod page on Nexus、Copy Nexus link。
-- **C10 (P0)** 状态徽标：Installed / Update available / Disabled，配绿/琥珀描边或彩色卡片边缘 + 彩色状态文字（新版设计只染边缘与文字，不大面积填充）。
+- **C10 (P0)** 状态徽标：Installed / Update available / Disabled，用文字色区分（accent / warn / danger）+ 卡片左缘 2px 同色竖条，不铺底色。
 - **C11 (P0)** 封面图：异步抓取 + 磁盘缓存（按 URL 的 SHA-256 截断命名），并发上限 4，失败记一次本会话不再重试，只允许 http/https，解码在工作线程，缺失时显示 “No image”。
 - **C12 (P1)** 描述渲染：去 BBCode（`[url=]…[/url]` 留文字、`[br]`/`<br>` 归一为换行、其余标签剥除、HTML 实体解码、3 行以上空行压成 1 行）；仅在作者留空行处出现段间距（单倍行距）。
 - **C13 (P1)** 动作语义：无 Premium key → “Open Download” 打开 Nexus Files 页（`?tab=files`）；有 key → “Download” 走直连；本地副本过期 → “Open Update”；本地已禁用 → “Re-enable in Local Mods”。
@@ -124,7 +124,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E4 (P0)** 更新判定（与元数据比对）：0.0.0.0 视为占位符不算过期；只要任一新于元数据即 “up to date”；文件修改时间 ≥ 元数据 `LatestFileModifiedUtc` 也算 up to date；全部新于全部期望值才算 out of date。被禁用的模组不报更新。
 - **E5 (P0)** 状态文案（逐字复刻）：Disabled — re-enable… / placeholder 提示 / Up to date: X 1.2 matches Y 1.2 / installed newer than live metadata / modified date matches / No comparable update data was found. / Out of date: 1.0 is below 1.3。
 - **E6 (P0)** 禁用/启用：把该模组所有 DLL 在 `.dll` 与 `.dll.disabled` 间改名；目标已存在则报错 “Cannot rename 'X' because 'Y' already exists.”
-- **E7 (P0)** 禁用态视觉：深红/红字、彩色卡片边缘。
+- **E7 (P0)** 禁用态视觉：整行文字 danger 红、左缘 2px danger 竖条，动作按钮显示 Enable。
 - **E8 (P0)** 批量：Disable all / Enable all（递归匹配两种扩展名）；Delete all（删空 Plugins，破坏性确认，tooltip 写明不动受保护资源与设置）。
 - **E9 (P0)** 单项删除：按来源路径删除（目录或文件）。
 - **E10 (P0)** 三列布局：每列可从 8 种视图任选 —— Enabled Mods / Disabled Mods / Sharecode Requested Mods / Missing Dependencies / Update Available / Incompatibility / Known Bugs / Needs Attention；默认 启用 / 禁用 / 分享码请求。
@@ -230,29 +230,53 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **N5 (P1)** VDF 解析器：真 tokenizer（引号字符串、C 风格转义、`//` 注释、对象嵌套、无值键、深度上限 32）。
 - **N6 (P1)** 状态栏反馈：“Asked Steam to launch Casualties Unknown.” / “Could not launch: …”。
 
-### O. 外观系统
+### O. 外观系统（像素风）
 
-- **O1 (P1)** 四个用户色：Accent / Background / Panels & cards（Surface）/ Text；其余全部派生（Chrome、Inset、Raised、CardBorder、Divider、Input 背景/边框、Control 面色/文字/边框/hover/pressed、Muted、Dim、AccentSoft）。
-- **O2 (P1)** 派生规则：`Mix(a,b,t)` 与 `Shift(base,amount)`（向黑/白推移）；浅色主题用更小的推移量。
-- **O3 (P1)** 自动对比度保护：正文对背景/面板不足 4.5:1 时改用近黑或白；Muted 至少 4.5，Dim 至少 3.0；Animated RGB 运行时同样生效（每帧重算）。
-- **O4 (P1)** 取色器：当前色圆点 → 色轮 + 亮度滑块 + RGB 0–255 滑块 + 直接输入 hex（`#RRGGBB`）；Apply colours 生效、Reset to default 还原。
-- **O5 (P1)** 预设：Default、Custom（手改颜色后自动切到 Custom）、四个自定义槽（Save 存当前颜色 + 字号，Apply 应用）；槽固定 4 个，多余截断。
-- **O6 (P1)** Animated RGB：20 FPS、按墙钟时间走色相环、12 秒一圈，只动 Accent；不写盘、关闭后恢复保存的颜色；与手改颜色互斥（手改即关）。
-- **O7 (P2)** 旧配置迁移：一次性把 12 个颜色通道重置为默认并置位标记；`ActiveUiPreset=="Default"` 但颜色非默认时改判 Custom。
-- **O8 (P2)** 含义固定的语义色：Success / Warning 不随主题变，只在缺失时给初值。
-- **O9 (P2)** tooltip 规范：纯文本标签不弹；只有按钮与被截断文本可 hover；空白 tooltip 抑制；批量/破坏性按钮必须写清作用范围。
+视觉基准是游戏内 UI（截图存于会话记录）：纯黑底、面板悬浮、1px 硬边、方角、无渐变、无阴影、无过渡动画。应用窗口本身就是黑底，**不显示游戏画面**，也不做半透明／毛玻璃。
+
+- **O1 (P0)** 调色板固定，用户不可改写（色值取自游戏 UI 的像素采样，非臆造）：
+
+| token | 值 | 用途 |
+|---|---|---|
+| `bg` | `#000000` | 窗口与页面底 |
+| `surface` | `#0B0B0B` | 面板底 |
+| `surface_raised` | `#141414` | 列表行、输入框、状态栏 |
+| `border` | `#FFFFFF` | 面板／对话框 1px 外框 |
+| `border_dim` | `#3A3A3A` | 行分隔线、内框、禁用描边 |
+| `text` | `#F2F2F2` | 正文 |
+| `text_muted` | `#A0A0A0` | 作者、统计、次要说明 |
+| `text_dim` | `#6D6D6D` | 占位符、禁用文字 |
+| `accent` | `#39DE82` | 已安装／可用／数值／主按钮 |
+| `accent_press` | `#168301` | 按下态、强调底 |
+| `warn` | `#FFF622` | 有更新、警告、倒计时 |
+| `danger` | `#FF0000` | 错误、破坏性操作、禁用标记 |
+| `link` | `#00FFFF` | 外链、焦点框 |
+| `request` | `#FF66FF` | 分享码请求（游戏调色板外的唯一补充色） |
+
+- **O2 (P0)** 语义映射：绿=可用／已装／正向；黄=更新／警告／计时；红=禁用／错误／破坏性；青=链接／焦点；品红=分享码请求；灰阶只表达层级，不表达状态。
+- **O3 (P0)** 字体：内嵌「Fusion Pixel 12px」（OFL，含中英日字形），缺字形回落「Ark Pixel 12px」，再回落系统等宽；字号只有 12/24/36 三档（= 12px × 缩放）；1x 下正文行高 16px、列表行高 24px。禁用字体平滑与亚像素定位，文本基线必须落在整数像素。
+- **O4 (P0)** 缩放：1x / 2x / 3x，默认 2x。所有尺寸按整数倍放大，1px 描边在 2x/3x 下为 2px/3px（保持 1 逻辑像素）；图标 16×16 逻辑像素，只做整数倍。
+- **O5 (P0)** 面板规格：外框 1px `border`，向内让 2px 再画 1px 内框；标题嵌在上边框中央，左右各留 8px 断口（游戏里的「需求」「信息」「SAVE SLOTS」即此做法）；分节标题用 `warn` 或 `text`。
+- **O6 (P0)** 控件规格：按钮单框 1px，1x 高 28px，hover 反色（底色 `text`、文字 `bg`），按下整体偏移 1px；输入框 1px `border_dim` + `surface_raised` 底，聚焦换 `link` 框；菜单与对话框同面板规格，无阴影。
+- **O7 (P0)** 列表与表格：1x 行高 24px，行间 1px `border_dim`；hover 行底色 `surface_raised`；选中行文字 `accent`；列表头 `text_muted` 全大写拉丁或中文短词；滚动条 4px 滑块 `text_dim`，无箭头、无圆角。
+- **O8 (P0)** 状态呈现：徽标与状态文本只用颜色 + 卡片左缘 2px 同色竖条，不铺大色块；禁用行整体 `danger`。
+- **O9 (P1)** 图标：16×16 单色 1-bit 像素图集，运行时按 token 着色；不使用矢量图标与字体图标（上游 0.0.9-pre.2 引入的 material icons 不复刻）。
+- **O10 (P1)** 动效：不做补间、不做淡入淡出；只允许三种即时反馈——按下 1px 位移、hover 反色、载入中三点循环（`·`→`··`→`···`，200ms/帧）。Animated RGB、色相旋转、20FPS 全量重绘全部取消。
+- **O11 (P1)** tooltip 规范（沿用上游语义）：纯文本标签不弹；只有按钮与被截断文本可 hover；空白 tooltip 抑制；批量／破坏性按钮必须写清作用范围。样式为黑底 1px 白框、最多两行。
+- **O12 (P2)** 高对比模式：`bg #FFFFFF` / `text #000000` / `accent #007A33` / `warn #7A6A00` / `danger #B30000` / `link #005A7A`，其余 token 同步反转，供弱视与强光环境。
+- **O13 (P2)** 不复刻：四色派生（`Mix`／`Shift`）、WCAG 运行时自动改色、色轮取色器、四个自定义预设槽、Animated RGB、10–20 字号滑块、圆角卡片与柔和阴影、白色 tooltip 底。
 
 ### P. 设置与迁移
 
 设置页分组（每组一节，字段逐项复刻）：
 
 - **P1 (P0) Folders**：Game folder（文本框 + Browse… + Detect）、Downloads folder（文本框 + Browse…）、Keep imported archives 开关（tooltip 说明“关=装完就移走”）。
-- **P2 (P1) Appearance**：Text size 滑块（10–20）、Saved looks（Default / Slot 1–4 / Save to slot）、Animated RGB 开关（文案 `Animated RGB: off`）、四色编辑 + 色轮 + hex、“Everything else … derived … unreadable combinations are corrected automatically.” 说明、Apply colours / Reset to default。
+- **P2 (P1) Appearance**：界面缩放三档（1x / 2x / 3x，默认 2x，改后即时生效）、高对比模式开关（见 O12）、一行说明“界面配色固定，跟随游戏风格”；**不**提供字号滑块、取色器与自定义预设（见 O13）。
 - **P3 (P1) Nexus Mods**：key 输入 + Save / Clear + 说明“Premium 才能直连下载，可选”。
 - **P4 (P1) Extras**：Enable easter eggs（“下次启动生效”）。
 - **P5 (P1) Diagnostics**：说明文字、Copy report、Open logs folder。
-- **P6 (P0)** 设置模型字段（全部要落盘）：gamePath、backupPath("Backups")、downloadPath、disableAutoDeleteImportedParentFiles、textSize(14)、四个颜色（默认 Text 241,239,238 / Background 20,20,20 / Surface 30,30,30 / Accent 200,30,60）、activeUiPreset("Default")、animatedRgbEnabled、customUiPresets×4、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、themeColoursInitialized、rebrandThemeInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、ignoredDependencyNames[]、缓存兼容性规则/版本/时间（可留兼容字段）。
-- **P7 (P0)** 容错：JSON 解析失败不覆盖原文件，本次用默认值；数值越界夹紧（字号 10–20）。
+- **P6 (P0)** 设置模型字段（全部要落盘）：gamePath、downloadPath、backupPath("Backups")、disableAutoDeleteImportedParentFiles、uiScale(2)、highContrastMode(false)、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、dashboardShowAdultMods、ignoredDependencyNames[]。旧字段（textSize、四个颜色、activeUiPreset、animatedRgbEnabled、customUiPresets、themeColoursInitialized、rebrandThemeInitialized、缓存兼容性字段）读取时忽略、保存时丢弃。
+- **P7 (P0)** 容错：JSON 解析失败不覆盖原文件，本次用默认值；数值越界夹紧（界面缩放 1–3、缩放档位非法则回落 2x）。
 - **P8 (P1)** 写入用缩进 JSON，便于用户手改。
 
 ### Q. 日志 / 诊断 / 崩溃报告
@@ -338,10 +362,10 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 |---|---|
 | HTTP + 条件请求 | `reqwest`（rustls）+ `ETag`/`If-Modified-Since`；超时 15–20s；UA `CasualtiesHub/{version}` |
 | JSON | `serde`/`serde_json`；社区的 `[JsonExtensionData]` 容错字段用 `#[serde(flatten)] HashMap<String, Value>` + 大小写不敏感键查找 |
-| zip / 7z / rar | `zip`、`sevenz-rust`、`unrar`（RAR 需绑定 unrar 源码）；统一抽象成 `ArchiveReader`，出口做 zip-slip 校验 |
+| zip / 7z / rar | `zip`、`sevenz-rust`、`rars`（纯 Rust RAR，库依赖，不调外部二进制）；统一抽象成 `ArchiveReader`，出口做 zip-slip 校验；RAR 解不出时再尝试 PATH 上的 `unrar`（可选兜底，需用户已安装） |
 | 目录变化监视 | `notify`（inotify / ReadDirectoryChangesW / FSEvents）；Windows 用独占打开判定完成，Linux 用稳定大小×3 |
 | PNG 解码 + 合成 | `image` 解码 + 自己的变换（平移/旋转/缩放/排序/ZIndex），输出位图给 nsh `Image` |
-| .NET 程序集元数据 | 自写最小 CIL metadata 读取器：PE 头 → CLI metadata → `Assembly` 表取版本、`CustomAttribute` 表解 `BepInPlugin(string,string,string)` blob（prolog `0x0001` + 3 个 SerString）；只读不加载。备选：`dotnetdll` crate，或调用 `ilspycmd`/`monodis`（需要外部依赖，不推荐） |
+| .NET 程序集元数据 | `dotnetdll` 0.4（读写 CLI metadata）：`Assembly` 表取版本、Custom Attribute 解 `BepInPlugin(string,string,string)` blob（prolog `0x0001` + 3 个 SerString）；只读不加载。解不出时不自己写 CIL 解析器，降级只读 Assembly 版本 |
 | 凭据加密 | `aes-gcm` + 随机 nonce；Windows 用 `windows` crate 调 `CryptProtectData`/`CryptUnprotectData`（DPAPI CurrentUser）；Linux 落 0600（可选 `keyring` 走 Secret Service） |
 | Steam 库与 VDF | 自写 KeyValues tokenizer（照上游规则）+ `steamlocate`（或自写路径扫描）；注册表用 `windows`/`winreg` |
 | 进程启动 / URL | `open` crate 或 `std::process::Command`；scheme 白名单 http/https/steam |
@@ -352,7 +376,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 ### 4.3 需要先做 nsh 验证（spike）
 
 1. **大列表与网格**：50+ 卡片、封面异步加载、列表内展开详情、保持滚动位置；是否虚拟化、是否支持 ZIndex/浮层（详情浮层压在网格上）。
-2. **运行时换肤**：四色改动 → 全树样式刷新；Animated RGB 20 FPS 全量重绘是否流畅（尤其 Linux 软件渲染）；token 能否运行时覆盖，或改用全局 signal 传色。
+2. **像素样式与缩放**：固定调色板能否只靠 design tokens 落地（无需运行时改色）；1x/2x/3x 整数缩放下 1px 双框、像素字体字距与描边是否精确对齐（Linux 软件渲染下发虚与否）。
 3. **自绘位图合成**：把合成结果交给 `Image` 显示像素级精确（无插值）、可缩放平移（Viewbox 等价物）。
 4. **文件监视 + 后台任务 → UI 线程**：`notify` 线程回调如何安全更新 signal/状态栏。
 5. **模态与确认**：`Dialog`（自定义）与 `AlertDialog`（原生）在 Windows/Linux 的表现，以及“确认后才执行”的 await 链。
@@ -365,7 +389,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 ```
 cuhub/
   crates/
-    app/            # nsh UI：components、pages、状态栏、导航
+    app/            # nsh UI：components、pages、状态栏、导航、palette.rs（调色板 token 与缩放）
     core/           # 领域模型 + 设置 + 服务（无 UI 依赖，可单测）
       paths.rs      # appdata / resolve_chain / is_inside / downloads
       settings.rs   # 模型 + 迁移 + 容错
@@ -380,7 +404,6 @@ cuhub/
       backup.rs
       skins.rs      # 槽位发现 + 骨架合成
       steam.rs      # 库扫描 / appid / 启动
-      theme.rs      # 四色派生 + 对比度
       logs.rs       # 会话日志 / 崩溃报告
       cli.rs        # --diagnostics / --selftest
   docs/FEATURES.md
@@ -401,7 +424,7 @@ cuhub/
 | M3 Dashboard + 元数据 | C（除直连下载）、G | 目录 6h 缓存、搜索/过滤/排序/18+/双视图/详情/右键 |
 | M4 凭据 + 直连下载 + Steam | M、N | 有 key 走官方 API；无 key 打开 Files 页；Launch Game 生效 |
 | M5 分享码 + 保护 + 备份 + 皮肤 | H、I、J、K | 生成/导入分享码；保护→破坏→还原；皮肤预览与游戏内一致 |
-| M6 Hub Home + 外观 + 日志 | L、O、Q | 公告频道正确、四色派生对比度合格、诊断/自检命令可用 |
+| M6 Hub Home + 外观 + 日志 | L、O、Q | 公告频道正确、像素调色板与整数缩放落地、诊断/自检命令可用 |
 | M7 打磨 | P2 项、多人占位、打包发布 | 单文件产物 + README-linux + 资源内嵌 |
 
 ---
@@ -409,7 +432,8 @@ cuhub/
 ## 6. 风险与待定
 
 - **K 皮肤合成**是最容易“看起来像但不对”的部分：节点变换、像素单位、镜像方向必须逐项对齐上游常量（本文已列 8 px/unit 与 17 节点），否则用户一眼看出错位。
-- **.NET 程序集读取**没有成熟的 Rust 等价物（Mono.Cecil 的替代），需要自己解析 CIL metadata；先做最小实现（Assembly 版本 + BepInPlugin blob），失败时优雅降级为“无版本证据”。
-- **nsh 生态成熟度**：桌面端自绘控件、虚拟列表、运行时主题、文件对话框在 Linux 上的可靠性都要靠 spike 定论；建议 M0 阶段就把 4.3 的 8 项验完，再定是否保留某些视觉细节（如色轮用自绘还是系统取色器）。
+- **.NET 程序集读取**：`dotnetdll` 覆盖 `Assembly` 版本与自定义属性解码，但它仍偏年轻；若 `BepInPlugin` 的 blob 解不出，只读 Assembly 版本并显示“No version evidence found”，不自己写解析器。
+- **像素字体覆盖**：Fusion Pixel／Ark Pixel 均为 OFL 可内嵌，但生僻汉字与特殊符号可能缺字形，需要回退链与缺字日志，否则界面会出现空白方块。
+- **nsh 生态成熟度**：桌面端自绘控件、虚拟列表、运行时主题、文件对话框在 Linux 上的可靠性都要靠 spike 定论；建议 M0 阶段就把 4.3 的 8 项验完，再定是否保留某些视觉细节（如像素字体在 2x/3x 下的字距与描边对齐）。
 - **不做自更新**意味着分发靠 Nexus/手动替换；若要加，需要签名与校验设计（不要复活被移除的 zip 替换流程）。
 - **社区目录依赖第三方仓库**（`jimmyking9999999/Metadata-generator`）：需要容错、离线缓存与明确的“数据可能不全”提示（上游 README 已列此限制）。
