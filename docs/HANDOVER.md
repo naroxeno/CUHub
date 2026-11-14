@@ -1,6 +1,6 @@
 # 交接说明
 
-截至 2026-11-14：core 基座已实现（paths/settings/logs、Steam 发现、modlist、catalogs、version、metadata、network、hubconfig、mods、launch、nexus_auth/nexus、Hub 门面），96 个单测通过；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-14：core 基座已实现（paths/settings/logs、Steam 发现、modlist、catalogs、version、metadata、network、hubconfig、mods、launch、nexus_auth/nexus、Hub 门面），96 个单测通过；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源已决定增加但未实现，交接见 `docs/GITHUB_SOURCE.md`。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
@@ -19,6 +19,7 @@
 | `docs/FEATURES.md` | 全量功能清单（A–U），含像素风外观系统、来源表、里程碑与风险 |
 | `docs/ARCHITECTURE.md` | 架构：两 crate、Hub 门面、事件、线程、外部边界、持久化、spike 结论与剩余未决 |
 | `docs/app/nsh-notes.md` | nsh 0.5.1 的 API 与坑：工程骨架、列表/浮层、图片、任务、网络、窗口、测试、打包 |
+| `docs/GITHUB_SOURCE.md` | 下一会话交接：单独仓库维护的 GitHub 模组清单、待拍板项与 MVP 顺序 |
 
 ## 3. 已拍板的决定
 
@@ -37,7 +38,7 @@
 | 解压 | `zip` / `sevenz-rust` / `rars`（纯 Rust 库，外部 unrar 仅兜底） |
 | .NET 元数据 | `dotnetdll` 0.4（GPL-3.0+，与 AGPL 兼容）读取 Assembly 版本与 `BepInPlugin` GUID/版本；单个 DLL 解析失败降级跳过 |
 | 自研 | VDF 解析、SemVer 比较、皮肤合成（`image` + 自算变换） |
-| 来源 | 用户来源表 > 目录字段 > Nexus id；GitHub 内置 tag 解析，其它来源用用户正则 |
+| 来源 | 用户来源表 > 目录字段 > Nexus id；GitHub 内置 tag 解析，其它来源用用户正则；独立 GitHub 清单的优先级待定 |
 | 整合包 | `CUPK1:` 排在 M8，先做来源解析与缓存 |
 | 发布 | GitHub Releases：tag 触发双平台产物 + SHA-256，不做应用内自更新 |
 | appdata | 目录名 `CUHub`（`~/.local/share/CUHub`） |
@@ -45,6 +46,7 @@
 | 网络 | `core::network` 是唯一联网层（`reqwest` blocking）；`app` 不联网，封面由 core 落到 `IconCache` |
 | 目录 | `catalogs` 只读 `Data/Catalogs/` 与旧 `Services/`；内嵌 AGPL 数据未搬 |
 | Nexus key | 用户自己的 key 存 `NexusApiKey.dat`/`.key`（AES-256-GCM + 0600）；空值清除；不进日志/仓库；直连下载只走官方 API v1；Nexus 页已有目录列表与下载入口 |
+| GitHub 源 | 在 Nexus 之外新增 GitHub 源；清单由单独仓库维护；客户端只读清单与公开 release；细节待定，见 `docs/GITHUB_SOURCE.md` |
 | 公告 | `hubconfig` 按版本选 stable/prerelease，缓存 30 分钟，只保留 https 链接 |
 | 不做 | 自更新、遥测、应用内卸载器、Supabase、插件系统、用户主题 |
 
@@ -59,6 +61,7 @@
 7. 目录刷新已接后台 worker，但 blocking 闭包持有 Hub 互斥锁（最长约 20s）；期间其它 Hub 操作等待。是否改为锁外抓取待定。
 8. Nexus 直连下载还没有真实 key 的端到端验证；Nexus 页已有下载入口（有 key 走官方 API，无 key 打开 Files 页），Standard 账号会收到 403，需要 Premium。
 9. Windows 上 `NexusApiKey.key` 仍靠用户配置目录 ACL，尚未用 DPAPI 包裹；跨平台迁移旧裸 DPAPI blob 也未实现。
+10. GitHub 源：清单仓库 URL/schema、取数方式（API 还是预生成快照）、匹配规则、优先级、缓存、是否允许下载资产都未定，见 `docs/GITHUB_SOURCE.md`。
 
 ## 5. 建议的下一步
 
@@ -66,7 +69,8 @@
 2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 目录列表与刷新、Steam 自动发现；app 仍不联网。
 3. **core 基座收尾（2026-11-14）**：`launch` 已接 Launch Game 并改为非阻塞，AGPL 许可证已落地；`dotnetdll` 读取 DLL 版本/GUID，Windows Steam 根接入注册表；真实游戏根反查 app id 4576490 验证通过。
 4. **下一步**：模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用与删除（破坏性，先确认）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
-5. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径。
+5. **GitHub 源（下一会话）**：先按 `docs/GITHUB_SOURCE.md` 确认 7 项，再提案 `sources` 模块边界；MVP 只做清单读取、匹配与 Open release，不自动安装。
+6. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径。
 
 ## 6. 接手须知
 
