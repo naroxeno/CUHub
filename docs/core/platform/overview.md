@@ -8,15 +8,16 @@
 
 - app_data_root()：绝对路径，末尾拼 CUHub；不创建目录。
 - downloads_dir()：存在则用 XDG 下载目录，否则 home/Downloads；Windows 用已知文件夹。
-- open_url(url)：交给系统 handler（Linux xdg-open、macOS open、Windows cmd start）；非零退出码转成 io::Error。只由 launch 以 steam: URL 调用。
+- open_url(url)：spawn 系统 handler（Linux xdg-open、macOS open、Windows cmd start）并立即返回 Child；stdin/stdout/stderr 置空，不继承 GUI 句柄。只由 launch 以 steam: URL 调用。
 - steam_executable()：Linux/macOS 用 PATH 里的 steam；Windows 先在候选 Steam 根找 steam.exe，再退回 PATH。
-- steam_app_launch(app_id)：执行 steam -applaunch {app_id}，等退出码后返回。
+- steam_app_launch(app_id)：spawn steam -applaunch {app_id} 并返回 Child，不等待。
 
 ## 边界与失败模式
 
 - app_data_root / downloads_dir 只读环境变量与系统目录，不写盘、不弹对话框。
 - open_url 会启动外部进程；不校验 URL 的 scheme，scheme 白名单由调用方（launch）负责。
 - dirs 解析失败时退到 home 或当前目录，保证返回绝对路径，避免相对路径把数据散到 cwd。
+- Windows 的 steam_candidate_roots 先读 HKCU\Software\Valve\Steam\SteamPath、HKLM\SOFTWARE\WOW6432Node\Valve\Steam\InstallPath 与 HKLM\SOFTWARE\Valve\Steam\InstallPath，再用 Program Files 环境变量兜底；路径按大小写不敏感去重。
 
 ## 常量出处
 

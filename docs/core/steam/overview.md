@@ -18,7 +18,7 @@
 
 - 读不了的文件或目录直接跳过；畸形 VDF 退化为空结果，不 panic。
 - vdf 中的路径不存在时丢弃；不做路径规范化以外的校验。
-- Windows 候选根目前只有 Program Files 环境变量；注册表 SteamPath/InstallPath 未接入，需要新增 winreg 依赖，待决定。
+- Windows 候选根先读 HKCU\Software\Valve\Steam\SteamPath、HKLM\SOFTWARE\WOW6432Node\Valve\Steam\InstallPath 与 HKLM\SOFTWARE\Valve\Steam\InstallPath，再用 Program Files 环境变量兜底；注册表读取失败只跳过该项。
 - macOS 没有单独候选根，当前按 Linux 列表处理。
 
 ## 常量出处

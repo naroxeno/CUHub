@@ -2,6 +2,8 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Child;
+use std::thread;
 
 use crate::platform;
 use crate::steam;
@@ -50,9 +52,15 @@ pub fn launch_game(game_root: &Path) -> Result<String, LaunchError> {
         .ok_or_else(|| LaunchError::NoAppId(game_root.to_path_buf()))?;
     let url = format!("steam://rungameid/{app_id}");
     match platform::open_url(&url) {
-        Ok(()) => Ok(app_id),
+        Ok(child) => {
+            watch_handler(child, app_id.clone());
+            Ok(app_id)
+        }
         Err(url) => match platform::steam_app_launch(&app_id) {
-            Ok(()) => Ok(app_id),
+            Ok(child) => {
+                wait_in_background(child);
+                Ok(app_id)
+            }
             Err(fallback) => Err(LaunchError::CouldNotReachSteam {
                 app_id,
                 url,
@@ -60,6 +68,21 @@ pub fn launch_game(game_root: &Path) -> Result<String, LaunchError> {
             }),
         },
     }
+}
+
+fn watch_handler(mut child: Child, app_id: String) {
+    thread::spawn(move || {
+        let failed = child.wait().map_or(true, |status| !status.success());
+        if failed && let Ok(mut fallback) = platform::steam_app_launch(&app_id) {
+            let _ = fallback.wait();
+        }
+    });
+}
+
+fn wait_in_background(mut child: Child) {
+    thread::spawn(move || {
+        let _ = child.wait();
+    });
 }
 
 #[cfg(test)]
