@@ -1,6 +1,6 @@
 # 交接说明
 
-截至 2026-11-14：core 基座已实现（paths/settings/logs、Steam 发现、modlist、catalogs、version、metadata、network、hubconfig、mods、launch、nexus_auth/nexus、Hub 门面），96 个单测通过；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 概览与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-14：core 基座已实现（paths/settings/logs、Steam 发现、modlist、catalogs、version、metadata、network、hubconfig、mods、launch、nexus_auth/nexus、Hub 门面），96 个单测通过；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
@@ -8,7 +8,7 @@
 - 骨架：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
 - core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`nexus_auth`、`nexus`、`hub`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
 - 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-only`；与上游一致。
-- app（2026-11-14）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 概览读缓存目录数量与 key 状态；启动时自动发现 Steam 安装。Multiplayer、Skins & Backups 仍是占位。
+- app（2026-11-14）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。Multiplayer、Skins & Backups 仍是占位。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
 
 ## 2. 已有文档
@@ -44,7 +44,7 @@
 | 设置 | JSON 键 camelCase；解析失败不覆盖原文件；`uiScale` 夹 1–3 |
 | 网络 | `core::network` 是唯一联网层（`reqwest` blocking）；`app` 不联网，封面由 core 落到 `IconCache` |
 | 目录 | `catalogs` 只读 `Data/Catalogs/` 与旧 `Services/`；内嵌 AGPL 数据未搬 |
-| Nexus key | 用户自己的 key 存 `NexusApiKey.dat`/`.key`（AES-256-GCM + 0600）；空值清除；不进日志/仓库；直连下载只走官方 API v1 |
+| Nexus key | 用户自己的 key 存 `NexusApiKey.dat`/`.key`（AES-256-GCM + 0600）；空值清除；不进日志/仓库；直连下载只走官方 API v1；Nexus 页已有目录列表与下载入口 |
 | 公告 | `hubconfig` 按版本选 stable/prerelease，缓存 30 分钟，只保留 https 链接 |
 | 不做 | 自更新、遥测、应用内卸载器、Supabase、插件系统、用户主题 |
 
@@ -56,16 +56,16 @@
 4. `core::network` 目前是 blocking API；`ARCHITECTURE §2` 说 Hub 层 async。拟由 Hub 把阻塞调用放进 worker，等确认。
 5. 是否把上游的目录 JSON 与离线公告内嵌进仓库：许可证已解决，但是否搬运仍需拍板。
 6. macOS Steam 候选根、来源表 `sources.json` schema 未定。
-7. 元数据刷新尚未接入 UI：网络调用会阻塞，需 worker + 主线程回写 signal 的方案。
-8. Nexus 直连下载还没有真实 key 的端到端验证；Settings 只能保存 key，Nexus 页还没有选择模组并触发下载的入口。
+7. 目录刷新已接后台 worker，但 blocking 闭包持有 Hub 互斥锁（最长约 20s）；期间其它 Hub 操作等待。是否改为锁外抓取待定。
+8. Nexus 直连下载还没有真实 key 的端到端验证；Nexus 页已有下载入口（有 key 走官方 API，无 key 打开 Files 页），Standard 账号会收到 403，需要 Premium。
 9. Windows 上 `NexusApiKey.key` 仍靠用户配置目录 ACL，尚未用 DPAPI 包裹；跨平台迁移旧裸 DPAPI blob 也未实现。
 
 ## 5. 建议的下一步
 
 1. **core 基座与只读扫描（已完成 2026-11-14）**：paths → settings → logs → steam → modlist → catalogs → version → metadata → network → hubconfig → mods → Hub；96 个单测通过，`cargo clippy --workspace --all-targets -- -D warnings` 通过。
-2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 缓存概览、Steam 自动发现；app 仍不联网。
+2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 目录列表与刷新、Steam 自动发现；app 仍不联网。
 3. **core 基座收尾（2026-11-14）**：`launch` 已接 Launch Game 并改为非阻塞，AGPL 许可证已落地；`dotnetdll` 读取 DLL 版本/GUID，Windows Steam 根接入注册表；真实游戏根反查 app id 4576490 验证通过。
-4. **下一步**：Nexus 页的模组选择与下载入口、元数据后台刷新与封面缓存、启用/禁用与删除（破坏性，先确认）、下载/导入、来源表与解压（边界未定）。
+4. **下一步**：模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用与删除（破坏性，先确认）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
 5. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径。
 
 ## 6. 接手须知
