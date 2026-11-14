@@ -2,14 +2,14 @@
 
 ## 职责
 
-社区 Nexus 目录 nexusmods.json 的模型、扩展字段读取与 6 小时离线缓存。本模块不发起任何网络请求；列表的拉取由 core 之外的一层负责，core 只接收原始响应体并负责解析与缓存。
+社区 Nexus 目录 nexusmods.json 的模型、扩展字段读取与 6 小时离线缓存。本模块不直接发起网络请求；原始响应体由 `core::network` 拉取后交给这里解析与缓存。
 
 ## 输入输出
 
 - parse_mods(json)：把整个 JSON 数组解析为 MetadataMod；字段名大小写不敏感（对应上游 PropertyNameCaseInsensitive）。
 - MetadataMod：Id/Name/Version/BepinexVersion/DllVersion/DllNames/DllVersions/Author/Description/Links/Statistics/ContainsAdultContent；未知字段保留在额外属性表里。
 - 派生方法：image_url、nexus_url、nexus_download_page_url、plugin_guid、latest_file_modified_utc、latest_file_size_bytes，以及下载数/认可数/文件大小文案。
-- METADATA_URL 只是数据源常量，不代表 core 会去请求它。
+- METADATA_URL 只是数据源常量；请求由 `core::network` 发起，本模块不构造客户端。
 - MetadataCache::new(app_data)：UniversalMetadataCache.json 保存原始响应体，UniversalMetadataHttpState.json 保存 ETag 与 Last-Modified。
 - load_cached / load_state / store / has_cache / is_stale；缓存修改时间超过 6 小时视为过期。
 

@@ -410,13 +410,14 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 ```
 cuhub/
   crates/
-    app/            # nsh UI：components、pages、状态栏、导航、palette.rs（调色板 token 与缩放）
+    app/            # nsh UI：components、pages、状态栏、导航、palette.rs（调色板 token 与缩放）；不联网
     core/           # 领域模型 + 设置 + 服务（无 UI 依赖，可单测）
-      paths.rs      # appdata / resolve_chain / is_inside / downloads
+      paths.rs      # appdata / resolve_chain / is_inside / downloads（本地目录，不是网络）
       settings.rs   # 模型 + 迁移 + 容错
-      nexus.rs      # 直连下载（files.json / download_link）
-      metadata.rs   # 社区目录 + 缓存 + 条件请求
-      hubconfig.rs  # 公告频道 + 缓存
+      network/      # 唯一联网层：HTTPS、条件请求、重定向/超时/UA、响应上限、下载落盘
+      nexus.rs      # 直连下载（files.json / download_link；传输走 network）
+      metadata.rs   # 社区目录 + 缓存（经 network 拉取）
+      hubconfig.rs  # 公告频道 + 缓存（经 network 拉取）
       mods.rs       # 扫描 / 版本证据 / 更新判定 / 开关
       archive.rs    # 分类 / 计划 / 安装 / 覆盖检查
       catalogs.rs   # 依赖 / 不兼容目录

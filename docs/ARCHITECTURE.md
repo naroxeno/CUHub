@@ -5,13 +5,13 @@ Casualties Hub 的重写：Rust 桌面应用，界面用 nsh，功能与上游 0
 
 ## 1. 边界
 
-- 两个 crate：`crates/core`（领域逻辑，不依赖任何 UI）与 `crates/app`（nsh 界面）。
+- 两个 crate：`crates/core`（领域逻辑，不依赖任何 UI）与 `crates/app`（nsh 界面）。`app` 不联网；所有 HTTP 与下载只经 `core::network`。
 - 依赖方向只有 `app → core`；`core` 不引用 `nsh`、不读窗口状态、不改界面信号。
-- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、下载目录默认值、凭据保护、注册表、卷影提示），调用方不写 `cfg` 分支。
+- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、本地下载目录默认值、凭据保护、注册表、卷影提示），调用方不写 `cfg` 分支。
 
 ## 2. 核心门面（方案 C）
 
-`core::Hub` 是唯一入口，持有 paths、settings、http、catalogs、logs：
+`core::Hub` 是唯一入口，持有 paths、settings、network、catalogs、logs：
 
 - 本地快操作（列目录、读设置、算更新状态）同步返回。
 - 网络与解包等耗时操作为 async，由调用方 await；UI 不阻塞。
@@ -58,6 +58,8 @@ HubEvent::Status            // 外壳状态栏文案
 | 游戏目录 `BepInEx/Plugins`、`CustomSprites` | 安装、开关、删除、备份、皮肤 | 所有写入先解析真实大小写再校验在允许根内 |
 | 系统桌面 | 打开 URL/文件夹、剪贴板 | scheme 白名单 http/https/steam |
 
+以上远端访问只允许发生在 `core::network`；`app` 不调用 nsh `fetch`，也不加载远程图片、视频或声音。远程封面由 core 下载到 `IconCache`，app 只读本地文件。
+
 远端响应一律不可信：链接校验 scheme，路径校验越界，数值校验范围。
 
 ## 6. core 模块
@@ -66,11 +68,11 @@ HubEvent::Status            // 外壳状态栏文案
 |---|---|
 | `paths` | appdata 根、XDG 下载目录、大小写不敏感解析、`is_inside` |
 | `settings` | 设置模型、迁移、容错读写（解析失败不覆盖原文件） |
-| `http` | 条件请求封装（ETag / If-Modified-Since）、超时、UA |
-| `metadata` | 社区目录拉取、缓存、按 DLL 名匹配模组 |
-| `hubconfig` | 公告频道、缓存、https 过滤 |
+| `network` | 唯一联网层：HTTPS 校验、条件请求（ETag / If-Modified-Since）、重定向/超时/UA、响应上限、下载落盘 |
+| `metadata` | 社区目录缓存、按 DLL 名匹配模组（经 `network` 拉取） |
+| `hubconfig` | 公告频道、缓存、https 过滤（经 `network` 拉取） |
 | `nexus_auth` | key 的保存/读取/清除（DPAPI 或 AES-GCM + 0600） |
-| `nexus_download` | files.json 选文件、download_link、落盘 |
+| `nexus` | 直连下载：files.json 选文件、download_link（经 `network`） |
 | `archive` | 分类、安装计划、覆盖检查、staging 后落盘 |
 | `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除 |
 | `catalogs` | 依赖与不兼容目录（内嵌 + `Data/` 覆盖） |
@@ -105,7 +107,7 @@ HubEvent::Status            // 外壳状态栏文案
 1. 长列表用 `virtual_list`：原生虚拟化，只创建屏幕附近的行；详情/弹层用 `overlay()`，不自己拼 Z 序。300 行实测正常；切页与浮层之后的滚动位置保持仍待确认。
 2. 后台任务不直接写 UI 状态：worker 只发事件（`crossbeam`），`app` 用 `run_on_main_thread` 或主循环 `set_interval` 轮询写入 signal。nsh 提供该 API；无主线程时闭包在引擎线程提交末尾执行。
 3. 内存位图用 `ImageSrc::rgba(w, h, straight RGBA)`，`image(...)` 显示。nsh 按显示尺寸降采样并缓存，**没有 nearest/点采样开关**；像素图放大一律预生成整数倍资源，不依赖运行时缩放（皮肤/图标 M8 前落实）。
-4. 网络：UI 侧可用 nsh `fetch`（受 `capabilities.network.hosts` 约束；不写 `capabilities` 的独立 app 默认全放行）；`core` 的网络层仍用 `reqwest`，因为 ETag、超时、UA 要自己控制。
+4. 网络：全部在 `core::network`（`reqwest`），由 core 的 worker 调用；`app` 不联网，不使用 nsh `fetch`，也不加载远程图片。ETag、超时、UA 与下载落盘由 core 控制，app 只读本地缓存。
 5. 字体用 `asset!("fonts/…")` + `registry.assets(assets!())` 打进 bundle，family 取字体 name table（Fusion Pixel 是 `Fusion Pixel 12px Prop zh_hans`）。1x/2x/3x 下 1px 双框与字距已逐档核对，未发虚。
 6. 缩放：nsh 没有 app 级 UI 缩放（`set_zoom` 只管滚动视图，`font_scale` 只放大文字，rem 固定 16pt）；所有尺寸在 app 侧按 1x/2x/3x 乘整数，切换即时生效。
 7. 全窗遮罩：`overlay()` 内放 `absolute().inset(0)` 会塌成内容大小；改用根视图末尾的普通 `absolute` 子层（开发者控制台已验证），需要原生 Escape/backdrop 时用 `nsh_base::dialog() -> Modal`。
