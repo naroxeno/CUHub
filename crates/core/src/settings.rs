@@ -137,7 +137,7 @@ impl SettingsStore {
 }
 
 impl Settings {
-    fn clamp_ui_scale(&mut self) -> Option<u8> {
+    pub fn clamp_ui_scale(&mut self) -> Option<u8> {
         let requested = self.ui_scale;
         self.ui_scale = requested.clamp(MIN_UI_SCALE, MAX_UI_SCALE);
         (self.ui_scale != requested).then_some(requested)
