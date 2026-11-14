@@ -2,6 +2,7 @@
 
 pub mod catalogs;
 pub mod logs;
+pub mod metadata;
 pub mod modlist;
 pub mod paths;
 pub mod platform;
