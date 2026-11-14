@@ -7,7 +7,7 @@ use crate::palette::*;
 use crate::ui::{button, panel, pix, pix_c, scaled, Ui, PAGES};
 
 pub fn top_bar(ui: &Ui) -> impl IntoElement {
-    let z = ui.zoom.clone();
+    let z = ui.zoom;
     let launch = ui.clone();
     let report = ui.clone();
     view()
@@ -44,7 +44,7 @@ pub fn top_bar(ui: &Ui) -> impl IntoElement {
 }
 
 pub fn sidebar(ui: &Ui) -> impl IntoElement {
-    let z = ui.zoom.clone();
+    let z = ui.zoom;
     let mut items = view().flex_col().flex_1();
     for (index, label) in PAGES.iter().enumerate() {
         items = items.child(nav_item(ui, index, label));
@@ -60,7 +60,7 @@ pub fn sidebar(ui: &Ui) -> impl IntoElement {
 }
 
 fn nav_item(ui: &Ui, index: usize, label: &'static str) -> impl IntoElement {
-    let z = ui.zoom.clone();
+    let z = ui.zoom;
     let bg = ui.clone();
     let edge = ui.clone();
     let text = ui.clone();
@@ -104,7 +104,7 @@ fn nav_item(ui: &Ui, index: usize, label: &'static str) -> impl IntoElement {
 }
 
 fn version_row(ui: &Ui) -> impl IntoElement {
-    let z = ui.zoom.clone();
+    let z = ui.zoom;
     let tap = ui.clone();
     view()
         .h(scaled(&z, 24.0))
@@ -135,7 +135,7 @@ fn tap_version(ui: &Ui) {
 }
 
 pub fn statusline(ui: &Ui) -> impl IntoElement {
-    let z = ui.zoom.clone();
+    let z = ui.zoom;
     let state = ui.clone();
     view()
         .flex_row()
@@ -165,7 +165,7 @@ pub fn statusline(ui: &Ui) -> impl IntoElement {
 }
 
 pub fn content(ui: &Ui) -> impl IntoElement {
-    let z = ui.zoom.clone();
+    let z = ui.zoom;
     view()
         .flex_col()
         .flex_1()
@@ -213,7 +213,7 @@ pub fn dev_overlay(ui: &Ui) -> impl IntoElement {
     let close = ui.clone();
     let done = ui.clone();
     when(move || show.dev.get(), move || {
-        let z = close.zoom.clone();
+        let z = close.zoom;
         let page = PAGES[close.page.get()];
         let zoom = close.zoom.get();
         view()

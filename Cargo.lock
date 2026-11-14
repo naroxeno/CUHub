@@ -605,6 +605,7 @@ dependencies = [
 name = "cuhub"
 version = "0.1.0"
 dependencies = [
+ "cuhub-core",
  "env_logger",
  "nsh-base",
  "nsh-core",
