@@ -10,6 +10,28 @@ pub fn app_data_root() -> PathBuf {
     base.join("CUHub")
 }
 
+pub fn steam_candidate_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(data) = std::env::var_os("XDG_DATA_HOME").filter(|value| !value.is_empty()) {
+        roots.push(PathBuf::from(data).join("Steam"));
+    }
+    if let Some(home) = dirs::home_dir() {
+        roots.push(home.join(".local").join("share").join("Steam"));
+        roots.push(home.join(".steam").join("steam"));
+        roots.push(home.join(".steam").join("root"));
+        roots.push(
+            home.join(".var")
+                .join("app")
+                .join("com.valvesoftware.Steam")
+                .join("data")
+                .join("Steam"),
+        );
+    }
+    roots.push(PathBuf::from("/usr/local/games/Steam"));
+    roots.push(PathBuf::from("/usr/games/Steam"));
+    roots
+}
+
 pub fn downloads_dir() -> PathBuf {
     dirs::download_dir()
         .filter(|path| path.is_dir())

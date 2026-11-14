@@ -4,6 +4,7 @@ pub mod logs;
 pub mod paths;
 pub mod platform;
 pub mod settings;
+pub mod steam;
 
 #[cfg(test)]
 mod test_support;

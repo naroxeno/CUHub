@@ -6,6 +6,6 @@ mod linux;
 mod windows;
 
 #[cfg(not(windows))]
-pub use linux::{app_data_root, downloads_dir};
+pub use linux::{app_data_root, downloads_dir, steam_candidate_roots};
 #[cfg(windows)]
-pub use windows::{app_data_root, downloads_dir};
+pub use windows::{app_data_root, downloads_dir, steam_candidate_roots};
