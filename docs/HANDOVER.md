@@ -1,13 +1,13 @@
 # 交接说明
 
-截至 2026-11-14：设计与文档完成；app 原型已跑起来（六页壳、1x/2x/3x 缩放、开发者控制台），`crates/core` 仍是空 lib。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-14：core 基座已实现（paths/settings/logs、Steam 发现、modlist、catalogs、version、metadata、network、hubconfig），74 个单测通过；app 原型仍是六页壳，尚未接 core。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
-- jj 仓库（colocated，`main` 分支），四个提交：规则与功能清单 → 像素风重写 → 架构文档 → 来源表设计。
-- 骨架已落地：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/core` 只有空 lib；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
-- app 原型已搭起（2026-11-14）：`shell.rs`（顶栏、侧栏 6 入口、状态栏、开发者控制台）、`pages.rs`（6 页占位、设置页 1x/2x/3x 切换）、`palette.rs`（14 个 token）、`ui.rs`（像素字体、面板双框、按钮、`scaled` 缩放 helper）。缩放与页面状态只在内存，重启回默认；内容区包在 `scroll()` 里，3x 在矮窗口下可滚。
-- 原型与文档已提交到 `main`（`jj log` 里「搭起 app 原型…」），`@` 是新的空 change；接手从 `crates/core` 的 `paths → settings → logs` 开始。
+- jj 仓库（colocated，`main` 分支）；基础规则、app 原型与 core 分模块提交都在 `main`，`@` 是新的空 change。
+- 骨架：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
+- core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
+- app 原型（2026-11-14）：六页占位、1x/2x/3x 即时缩放、14 token 调色板、开发者控制台；设置持久化尚未接 core，重启回默认。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
 
 ## 2. 已有文档
@@ -36,6 +36,11 @@
 | 来源 | 用户来源表 > 目录字段 > Nexus id；GitHub 内置 tag 解析，其它来源用用户正则 |
 | 整合包 | `CUPK1:` 排在 M8，先做来源解析与缓存 |
 | 发布 | GitHub Releases：tag 触发双平台产物 + SHA-256，不做应用内自更新 |
+| appdata | 目录名 `CUHub`（`~/.local/share/CUHub`） |
+| 设置 | JSON 键 camelCase；解析失败不覆盖原文件；`uiScale` 夹 1–3 |
+| 网络 | `core::network` 是唯一联网层（`reqwest` blocking）；`app` 不联网，封面由 core 落到 `IconCache` |
+| 目录 | `catalogs` 只读 `Data/Catalogs/` 与旧 `Services/`；内嵌 AGPL 数据未搬 |
+| 公告 | `hubconfig` 按版本选 stable/prerelease，缓存 30 分钟，只保留 https 链接 |
 | 不做 | 自更新、遥测、应用内卸载器、Supabase、插件系统、用户主题 |
 
 ## 4. 还没定的
@@ -43,12 +48,16 @@
 1. 项目正式名与远程仓库：名字没定，先搁置；本地 jj 仓库不受影响，随时能接远程。
 2. Windows 交叉编译与 CI 是否在 M0 就要。
 3. 首次发布前要确认：是否把产物也传到 Nexus 页面（可选，不阻塞）。
+4. `core::network` 目前是 blocking API；`ARCHITECTURE §2` 说 Hub 层 async。拟由 Hub 把阻塞调用放进 worker，等确认。
+5. 下载是否也归 `core::network`：m00262 说不放 core，m00281 又说 network 放 core；当前 network 已含 `download`，边界待确认。
+6. 上游代码/目录 JSON 是 AGPL-3.0，本仓库尚无 LICENSE；能否搬运内嵌目录与离线公告待确认。
+7. Windows 注册表（`winreg`）、macOS Steam 候选根、`GameLaunchService` 归哪个模块、来源表 `sources.json` schema 均未定。
 
 ## 5. 建议的下一步
 
-1. **spike（已完成 2026-11-14）**：工程在仓库外 `cuhub-spike`；结论写进 `ARCHITECTURE.md` §9，API 细节在 `docs/app/nsh-notes.md`。HTTP 客户端来源、后台唤醒 UI、`Image` 位图三项已有结论或明确未决项，剩下的未决见 §9。
-2. 建 `crates/core`：`paths` → `settings` → `logs`，全程可单测，不碰 UI。
-3. `crates/app` 原型（已完成 2026-11-14）：6 页占位、1x/2x/3x 即时缩放、14 token 调色板、开发者控制台；设置持久化、窗口尺寸/标题栏仍未做，M0 验收见 `docs/FEATURES.md` §5。已知：3x 在 1271×711 的平铺窗口下 Local Mods 四列会挤（窄宽适配留到列表页）；控制台是根视图末尾的 `absolute` 子层，不是 `overlay()`。
+1. **core 基座（已完成 2026-11-14）**：paths → settings → logs → steam → modlist → catalogs → version → metadata → network → hubconfig；单测 74 个通过，`cargo check --workspace` 通过。
+2. **下一步（需先确认边界）**：`Hub` 门面（持有 settings/catalogs/network/logs，串行化网络 worker）与 `mods` 只读扫描（Plugins 列目录、DLL 版本证据、启用/禁用先不做）。破坏性/认证/解包模块（archive、protect、backup、nexus_auth、nexus）等确认后再动。
+3. `crates/app` 原型：设置持久化、窗口尺寸/标题栏仍未做；接 core 时只读 core 状态，不联网。
 4. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径。
 
 ## 6. 接手须知
