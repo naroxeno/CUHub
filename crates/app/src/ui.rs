@@ -35,6 +35,9 @@ pub struct Ui {
     pub mods: Signal<Vec<InstalledMod>>,
     pub metadata_count: Signal<usize>,
     pub metadata_synced: Signal<String>,
+    pub nexus_key_saved: Signal<bool>,
+    pub nexus_key_draft: Signal<String>,
+    pub nexus_key_check: Signal<String>,
     pub app_data: String,
 }
 
@@ -51,6 +54,12 @@ impl Ui {
         let metadata_synced = hub
             .metadata_last_synced_label()
             .unwrap_or_else(|| String::from("Never"));
+        let nexus_key_saved = hub.nexus_has_key();
+        let nexus_key_check = if nexus_key_saved {
+            String::from("Saved; not checked.")
+        } else {
+            String::from("No key saved.")
+        };
         let app_data = hub.app_data().display().to_string();
         let notice = if settings.game_path.trim().is_empty() {
             String::from("No game folder set. Open Settings to detect it.")
@@ -69,6 +78,9 @@ impl Ui {
             mods: signal(mods),
             metadata_count: signal(metadata_count),
             metadata_synced: signal(metadata_synced),
+            nexus_key_saved: signal(nexus_key_saved),
+            nexus_key_draft: signal(String::new()),
+            nexus_key_check: signal(nexus_key_check),
             app_data,
         }
     }
@@ -127,6 +139,92 @@ impl Ui {
             None => self.notice.set(String::from(
                 "Casualties Unknown was not found in the Steam libraries.",
             )),
+        }
+    }
+
+    pub fn save_nexus_key(&self) {
+        let key = self.nexus_key_draft.get();
+        if key.trim().is_empty() {
+            self.notice
+                .set(String::from("Paste a Nexus API key first."));
+            return;
+        }
+        let result = {
+            let mut hub = self.hub();
+            hub.save_nexus_key(&key)
+        };
+        match result {
+            Ok(()) => {
+                self.nexus_key_saved.set(true);
+                self.nexus_key_draft.set(String::new());
+                self.notice
+                    .set(String::from("Nexus API key saved on this machine."));
+            }
+            Err(error) => self
+                .notice
+                .set(format!("Could not save the Nexus API key: {error}")),
+        }
+    }
+
+    pub fn validate_nexus_key(&self) {
+        if !self.nexus_key_saved.get() {
+            self.nexus_key_check.set(String::from("No key saved."));
+            self.notice.set(String::from("Save a Nexus API key first."));
+            return;
+        }
+        self.nexus_key_check
+            .set(String::from("Checking with Nexus…"));
+        let hub = self.hub.clone();
+        let saved = self.nexus_key_saved;
+        let check = self.nexus_key_check;
+        let notice = self.notice;
+        spawn(async move {
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                hub.validate_nexus_key()
+            })
+            .await;
+            match result {
+                Ok(Ok(account)) => {
+                    saved.set(true);
+                    if account.is_premium {
+                        check.set(String::from("Nexus account: Premium."));
+                        notice.set(String::from("Nexus accepted the key: Premium account."));
+                    } else {
+                        check.set(String::from(
+                            "Nexus account: Standard (direct downloads need Premium).",
+                        ));
+                        notice.set(String::from(
+                            "Nexus accepted the key, but this account is not Premium.",
+                        ));
+                    }
+                }
+                Ok(Err(error)) => {
+                    check.set(format!("Nexus check failed: {error}"));
+                    notice.set(format!("Could not check the Nexus key: {error}"));
+                }
+                Err(error) => {
+                    check.set(String::from("Nexus check did not finish."));
+                    notice.set(format!("Could not check the Nexus key: {error}"));
+                }
+            }
+        });
+    }
+
+    pub fn clear_nexus_key(&self) {
+        let result = {
+            let mut hub = self.hub();
+            hub.clear_nexus_key()
+        };
+        match result {
+            Ok(()) => {
+                self.nexus_key_saved.set(false);
+                self.nexus_key_draft.set(String::new());
+                self.notice.set(String::from("Nexus API key cleared."));
+            }
+            Err(error) => self
+                .notice
+                .set(format!("Could not clear the Nexus API key: {error}")),
         }
     }
 

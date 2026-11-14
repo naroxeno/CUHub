@@ -1,6 +1,8 @@
 //! The six pages behind the shell navigation; data comes from the Hub facade.
 
 use cuhub_core::mods::{InstalledMod, ModStatus};
+use cuhub_core::nexus_auth::NexusKeyStore;
+use nsh_base::input;
 use nsh_core::prelude::*;
 
 use crate::palette::*;
@@ -11,6 +13,7 @@ pub fn nexus(ui: &Ui) -> impl IntoElement {
     let tracked = ui.clone();
     let updates = ui.clone();
     let synced = ui.clone();
+    let api_key = ui.clone();
     let rescan = ui.clone();
     view()
         .flex_col()
@@ -51,6 +54,18 @@ pub fn nexus(ui: &Ui) -> impl IntoElement {
                             "Last sync",
                             move || synced.metadata_synced.get(),
                             TEXT_MUTED,
+                        ))
+                        .child(stat(
+                            &z,
+                            "API key",
+                            move || {
+                                if api_key.nexus_key_saved.get() {
+                                    String::from("Saved")
+                                } else {
+                                    String::from("Not set")
+                                }
+                            },
+                            TEXT,
                         )),
                 )
                 .child(pix(
@@ -403,6 +418,11 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
     let detect = ui.clone();
     let rescan = ui.clone();
     let path = ui.clone();
+    let key_status = ui.clone();
+    let save_key = ui.clone();
+    let clear_key = ui.clone();
+    let check_key = ui.clone();
+    let draft = ui.nexus_key_draft;
     view().flex_col().flex_1().child(panel(
         &z,
         "SETTINGS",
@@ -451,7 +471,52 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
             .child(pix("Storage", 12.0, TEXT_MUTED, &z))
             .child(setting_row(&z, "Data folder", move || {
                 path.app_data.clone()
-            })),
+            }))
+            .child(pix("Nexus API key", 12.0, TEXT_MUTED, &z))
+            .child(pix(
+                format!(
+                    "{} Direct downloads need a Nexus Premium account.",
+                    NexusKeyStore::protection_note()
+                ),
+                11.0,
+                TEXT_DIM,
+                &z,
+            ))
+            .child(
+                view()
+                    .flex_row()
+                    .items_center()
+                    .gap(scaled(&z, 8.0))
+                    .child(
+                        input()
+                            .value(ui.nexus_key_draft)
+                            .masked(true)
+                            .placeholder("Paste your personal API key")
+                            .h(scaled(&z, 24.0))
+                            .flex_1()
+                            .px(scaled(&z, 6.0))
+                            .bg(rgb(SURFACE_RAISED))
+                            .border(scaled(&z, 1.0))
+                            .border_color(rgb(BORDER))
+                            .text_color(rgb(TEXT))
+                            .on_change(move |text: &str| draft.set(text.to_owned())),
+                    )
+                    .child(button(&z, "Save key", true, move || {
+                        save_key.save_nexus_key();
+                    }))
+                    .child(button(&z, "Test key", true, move || {
+                        check_key.validate_nexus_key();
+                    }))
+                    .child(button(&z, "Clear key", true, move || {
+                        clear_key.clear_nexus_key();
+                    })),
+            )
+            .child(pix(
+                move || key_status.nexus_key_check.get(),
+                11.0,
+                TEXT_DIM,
+                &z,
+            )),
     ))
 }
 
