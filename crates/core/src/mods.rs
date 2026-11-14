@@ -10,6 +10,8 @@ use crate::catalogs::{Catalogs, names_match};
 use crate::metadata::MetadataMod;
 use crate::paths;
 
+mod dotnet;
+
 const DLL_SUFFIX: &str = ".dll";
 const DISABLED_SUFFIX: &str = ".disabled";
 const MAX_SCAN_DEPTH: usize = 16;
@@ -65,6 +67,8 @@ impl ModStatus {
 pub struct InstalledMod {
     pub name: String,
     pub installed_version: Option<String>,
+    pub assembly_version: Option<String>,
+    pub bepinex_version: Option<String>,
     pub expected_version: Option<String>,
     pub author: Option<String>,
     pub description: Option<String>,
@@ -84,10 +88,11 @@ pub struct InstalledMod {
 impl InstalledMod {
     pub fn row_key(&self) -> String {
         format!(
-            "{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}",
             self.name,
             self.status.label(),
             self.version_label(),
+            self.evidence_label(),
             self.disabled,
             self.source_path.display()
         )
@@ -95,6 +100,9 @@ impl InstalledMod {
 
     pub fn version_label(&self) -> String {
         match (&self.installed_version, &self.expected_version) {
+            (Some(installed), Some(expected)) if installed != expected => {
+                format!("{installed} → {expected}")
+            }
             (Some(installed), _) => installed.clone(),
             (None, Some(expected)) => format!("{expected} (catalogue)"),
             _ => String::from("No version"),
@@ -109,9 +117,20 @@ impl InstalledMod {
     }
 
     pub fn evidence_label(&self) -> String {
-        match self.modified_at {
-            Some(modified) => format!("Modified {}", modified.format("%Y-%m-%d %H:%M")),
-            None => String::from("No version evidence found"),
+        let mut evidence = Vec::new();
+        if let Some(version) = &self.bepinex_version {
+            evidence.push(format!("BepInEx {version}"));
+        }
+        if let Some(version) = &self.assembly_version {
+            evidence.push(format!("Assembly {version}"));
+        }
+        if let Some(modified) = self.modified_at {
+            evidence.push(format!("Modified {}", modified.format("%Y-%m-%d %H:%M")));
+        }
+        if evidence.is_empty() {
+            String::from("No version evidence found")
+        } else {
+            evidence.join(" · ")
         }
     }
 
@@ -126,12 +145,12 @@ impl InstalledMod {
                 "Not listed in the community catalogue, so update status is not checked.",
             ),
             ModStatus::UpToDate => String::from(
-                "Up to date: the modified time is not older than the catalogue metadata.",
+                "Up to date: the available version or file-time evidence is not older than the catalogue.",
             ),
-            ModStatus::OutOfDate => {
-                String::from("Out of date: the local file is older than the catalogue metadata.")
-            }
-            ModStatus::Unknown => String::from("No comparable update data was found."),
+            ModStatus::OutOfDate => String::from(
+                "Out of date: the installed version is older than the catalogue version.",
+            ),
+            ModStatus::Unknown => String::from("No comparable version or modified time was found."),
         }
     }
 
@@ -295,24 +314,36 @@ fn build_mod(path: &Path, metadata: &[MetadataMod]) -> Option<InstalledMod> {
     let expected_version = matched
         .map(|item| item.version.clone())
         .filter(|value| !value.trim().is_empty());
+    let evidence = dll_evidence(&dlls);
+    let installed_version = evidence
+        .plugin_version
+        .clone()
+        .or_else(|| evidence.assembly_version.clone())
+        .filter(|value| !value.trim().is_empty());
     let status = if disabled {
         ModStatus::Disabled
     } else if matched.is_none() {
         ModStatus::Unlisted
     } else {
-        match (modified_at, expected_modified_at) {
-            (Some(modified), Some(expected)) if modified >= expected => ModStatus::UpToDate,
-            _ => ModStatus::Unknown,
-        }
+        compare_update(
+            installed_version.as_deref(),
+            expected_version.as_deref(),
+            modified_at,
+            expected_modified_at,
+        )
     };
 
     Some(InstalledMod {
         name,
-        installed_version: None,
+        installed_version,
+        assembly_version: evidence.assembly_version,
+        bepinex_version: evidence.plugin_version,
         expected_version,
         author: matched.map(|item| item.author.clone()),
         description: matched.map(|item| item.description.clone()),
-        guid: matched.and_then(|item| item.plugin_guid().map(str::to_owned)),
+        guid: evidence
+            .plugin_guid
+            .or_else(|| matched.and_then(|item| item.plugin_guid().map(str::to_owned))),
         nexus_url: matched.and_then(|item| item.nexus_url().map(str::to_owned)),
         metadata_id: matched
             .map(|item| item.id.clone())
@@ -326,6 +357,85 @@ fn build_mod(path: &Path, metadata: &[MetadataMod]) -> Option<InstalledMod> {
         missing_dependencies: Vec::new(),
         incompatible_with: Vec::new(),
     })
+}
+
+fn dll_evidence(dlls: &[PathBuf]) -> dotnet::DllEvidence {
+    let mut evidence = dotnet::DllEvidence::default();
+    for dll in dlls
+        .iter()
+        .filter(|dll| !is_disabled_path(dll))
+        .chain(dlls.iter().filter(|dll| is_disabled_path(dll)))
+    {
+        let Some(found) = dotnet::read_dll(dll) else {
+            continue;
+        };
+        if evidence.assembly_version.is_none() {
+            evidence.assembly_version = found.assembly_version;
+        }
+        if evidence.plugin_guid.is_none() {
+            evidence.plugin_guid = found.plugin_guid;
+        }
+        if evidence.plugin_version.is_none() {
+            evidence.plugin_version = found.plugin_version;
+        }
+        if evidence.assembly_version.is_some()
+            && evidence.plugin_guid.is_some()
+            && evidence.plugin_version.is_some()
+        {
+            break;
+        }
+    }
+    evidence
+}
+
+fn compare_update(
+    installed: Option<&str>,
+    expected: Option<&str>,
+    modified: Option<DateTime<Utc>>,
+    expected_modified: Option<DateTime<Utc>>,
+) -> ModStatus {
+    if let (Some(installed), Some(expected)) = (installed, expected) {
+        let installed = VersionKey::parse(installed).filter(|version| !version.is_zero());
+        let expected = VersionKey::parse(expected).filter(|version| !version.is_zero());
+        if let (Some(installed), Some(expected)) = (installed, expected) {
+            return if installed < expected {
+                ModStatus::OutOfDate
+            } else {
+                ModStatus::UpToDate
+            };
+        }
+    }
+    match (modified, expected_modified) {
+        (Some(modified), Some(expected)) if modified >= expected => ModStatus::UpToDate,
+        _ => ModStatus::Unknown,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct VersionKey([u16; 4]);
+
+impl VersionKey {
+    fn parse(value: &str) -> Option<Self> {
+        let value = value.trim();
+        let value = value
+            .strip_prefix('v')
+            .or_else(|| value.strip_prefix('V'))
+            .unwrap_or(value);
+        let mut parts = [0_u16; 4];
+        let mut count = 0;
+        for part in value.split('.') {
+            if count == parts.len() {
+                return None;
+            }
+            parts[count] = part.parse().ok()?;
+            count += 1;
+        }
+        if count == 0 { None } else { Some(Self(parts)) }
+    }
+
+    fn is_zero(self) -> bool {
+        self.0 == [0; 4]
+    }
 }
 
 fn modified_utc(path: &Path) -> Option<DateTime<Utc>> {
@@ -508,6 +618,26 @@ mod tests {
         let mods = scan(&plugins, &metadata, &catalogs, &[]).unwrap();
         assert!(mods.iter().all(|item| item.missing_dependencies.is_empty()));
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn compares_versions_and_ignores_placeholders() {
+        assert_eq!(
+            compare_update(Some("1.2.0"), Some("1.2.0.0"), None, None),
+            ModStatus::UpToDate
+        );
+        assert_eq!(
+            compare_update(Some("1.2.0.1"), Some("1.2.0"), None, None),
+            ModStatus::UpToDate
+        );
+        assert_eq!(
+            compare_update(Some("1.2.0"), Some("1.2.1"), None, None),
+            ModStatus::OutOfDate
+        );
+        assert_eq!(
+            compare_update(Some("0.0.0.0"), Some("1.0"), None, None),
+            ModStatus::Unknown
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@
 ## 输入输出
 
 - 输入：Plugins 绝对路径、`MetadataMod` 列表、`Catalogs`、忽略依赖名。
-- 输出：按名称排序的 `Vec<InstalledMod>`；失败只来自 Plugins 顶层不可读或 BepInEx/Plugins 缺失。
+- 输出：按名称排序的 `Vec<InstalledMod>`；失败只来自 Plugins 顶层不可读或 BepInEx/Plugins 缺失。`InstalledMod` 额外带 `assembly_version`、`bepinex_version` 与插件 `guid`，供界面显示证据与后续来源解析。
 - 扫描器递归查找目录型模组中的 DLL，跳过符号链接，深度上限 16；单个子目录不可读时跳过而不是让整页失败。
 
 ## 边界与失败模式
@@ -15,8 +15,9 @@
 - 只看 Plugins 顶层条目，嵌套目录不单独成为模组。
 - 目录里一个 DLL 都没有时该条目不出现。
 - 没有元数据匹配的模组仍显示：名称取第一个未禁用 DLL 的茎名，状态为 `Unlisted`。
-- 不读取 Assembly 版本或 BepInEx 插件特性，因此 `installed_version` 目前为空；更新判定只用文件修改时间和目录里的 `LatestFileModifiedUtc`。没有可比时间时状态为 `Unknown`。
-- 由于没有已安装版本信号，本模块不判定 `OutOfDate`：只有修改时间不早于目录时间才标记 `UpToDate`，其余保留 `Unknown`，避免把依赖 DLL 或安装时间误报成“有更新”。接入 .NET 元数据读取后再启用版本比较。
+- 对每个模组中的 DLL 读 .NET 元数据（`dotnetdll`）：取 Assembly 版本、`BepInPlugin` 构造参数里的 GUID 与插件版本。优先用未禁用 DLL；单个 DLL 解析失败只跳过该 DLL，不让整次扫描失败，也不把依赖 DLL 当成插件。
+- `installed_version` 优先 `BepInPlugin` 版本，其次 Assembly 版本；`guid` 优先插件 GUID，其次目录里的 `PluginGuid`。
+- 版本比较把 1–4 段点分十进制补齐后逐段比较；全 0（如 0.0.0.0）视为占位，不参与比较。两端都可解析时，安装版本更小才是 `OutOfDate`，否则 `UpToDate`；不可解析或只有占位版本时退回文件修改时间：修改时间不早于目录时间才 `UpToDate`，否则 `Unknown`。不再因为依赖 DLL 或没有版本证据而误报更新。
 - `.dll.disabled` 只按文件名后缀判断，大小写不敏感。
 - 依赖与冲突在扫描完成后统一计算；被禁用的模组不报告缺失依赖或冲突。
 
