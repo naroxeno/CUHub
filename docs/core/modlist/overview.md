@@ -12,6 +12,13 @@ CUH1 分享码的编解码与待处理导入清单（ImportedModlist.json）。�
 - load_imported()：缺失或损坏时返回空列表。
 - ignore(entry)：按 GUID、metadataId、名称任一相等（忽略大小写）移除一项并回写。
 
+## 字段语义与三种来源
+
+- Id 是社区元数据（nexusmods.json）里的条目 id，只用于打开 Nexus Files 页；它不是通用来源 id。
+- GitHub 与自定义来源的模组通常没有这个 id，导出时留空；它们仍靠 GUID 与名称识别。
+- 本地模组没有 GUID 时无法导出（H1）；有 GUID 但无元数据条目时照常导出，只是 id 为空。
+- CUH1 只承载身份与版本，不承载 nexus/github/custom 来源信息；来源归属由来源表（U8/U9）与整合包 CUPK1（U11）负责，不塞进 CUH1。
+
 ## 边界与失败模式
 
 - 不访问网络，不做任何下载或 Nexus 查询。
