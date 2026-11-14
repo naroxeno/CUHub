@@ -322,7 +322,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 - **U1 (P2)** 优先级：用户来源表 > 目录可选字段（`github` / `url`）> 元数据里的 Nexus id > 无来源（只显示本地信息，不给更新判定）。
 - **U2 (P2)** 三种来源：`nexus`（内置，files.json 选文件）、`github`（内置，`releases/latest` 取 tag 与资产）、`custom`（用户写正则）。
-- **U3 (P2)** **只有 GitHub 内置版本解析**：`tag_name` 去掉前缀 `v` 后按 S4 规则与本地 assembly／BepInEx 版本比较；资产由用户给的正则挑，没给就只提供 release 页链接。
+- **U3 (P2)** **只有 GitHub 内置版本解析**：`tag_name` 去掉前缀 `v` 后按 S4 规则与本地 assembly／BepInEx 版本比较；资产由用户给的正则挑，没给就只提供 release 页链接。用户点 `Update` 时把匹配到的资产下到下载收件箱，再由收件箱的确认流程决定是否安装；不点则只给链接，绝不后台下载。
 - **U4 (P2)** 自定义来源：`page` URL + `version` 正则（捕获组 1 = 版本）+ 可选 `download` 正则（捕获组 1 = 下载地址，相对地址按 page 解析）。正则用 `regex`，线性时间，允许用户写坏但不会卡死。
 - **U5 (P2)** 抓取约束：只 GET、只 https、只带本应用 UA，不带 cookie 与任何凭据，不跟随到 `file:`/`data:`，响应上限 2 MB，超时 15 s，重定向最多 3 次。
 - **U6 (P2)** 自定义来源一律拒绝 `nexusmods.com` 及其子域，提示改用 `nexus` 类型——既不抓 Nexus，也不伪装成别的东西。
@@ -330,7 +330,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **U8 (P2)** 来源表存 `appdata/sources.json`（`schemaVersion` + `entries[]`，每项含 `match`（dllNames / guid / name 任一命中）与 `source`）；也可放可执行文件旁 `Data/sources.json` 全局共享。
 - **U9 (P2)** 表校验：正则编译失败、URL 非 https、`kind` 未知、`match` 全空的条目整条丢弃并报行号，坏条目不拖垮整表。
 - **U10 (P2)** 缓存：来源解析结果 6h + ETag；GitHub 未认证限 60 次/小时，只在「已安装模组且用户打开详情或点检查」时请求。
-- **U11 (P2)** 整合包：`CUPK1:` 分享码 = 来源表子集 + 模组名 / GUID / DLL 名 + 期望版本；导入只列缺失项与来源，逐个走「下载 → 收件箱 → 确认安装」既有流程，不静默安装。
+- **U11 (P2)** 整合包：`CUPK1:` 分享码 = 来源表子集 + 模组名 / GUID / DLL 名 + 期望版本；导入只列缺失项与来源，逐个走「下载 → 收件箱 → 确认安装」既有流程，不静默安装。排在 M8：先把来源解析、缓存与失败态跑通，再做整合包。
 - **U12 (P2)** 导出与导入都要确认，且只允许 https 来源；导入前把「会从哪些域下载」列出来。
 
 ---
