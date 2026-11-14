@@ -9,7 +9,7 @@
 - find_child(parent, name)：返回磁盘上的真实条目路径，找不到返回 None。
 - resolve_child：找不到时按请求的大小写拼接，供后续创建。
 - is_inside(candidate, container)：先做词法规范化（解析 . 与 ..，不解析符号链接），再做组件级前缀比较；相等视为在内。
-- game_paths(selected)：接受游戏根、BepInEx、BepInEx/Plugins 三种粒度，返回 GamePaths { game_root, plugins_dir }。
+- game_paths(selected)：接受游戏根、BepInEx、BepInEx/Plugins 三种粒度，返回游戏根路径。BepInEx 与 Plugins 的位置固定为 game_root/BepInEx/Plugins，不再单独返回。
 
 ## 边界与失败模式
 

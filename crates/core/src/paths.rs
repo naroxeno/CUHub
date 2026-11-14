@@ -4,12 +4,6 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GamePaths {
-    pub game_root: PathBuf,
-    pub plugins_dir: PathBuf,
-}
-
 #[derive(Debug)]
 pub enum PathError {
     Missing(PathBuf),
@@ -71,7 +65,7 @@ pub fn is_inside(candidate: &Path, container: &Path) -> bool {
         .all(|(a, b)| same_component(a, b))
 }
 
-pub fn game_paths(selected: &Path) -> Result<GamePaths, PathError> {
+pub fn game_paths(selected: &Path) -> Result<PathBuf, PathError> {
     let selected = std::path::absolute(selected).map_err(|source| PathError::Io {
         path: selected.to_path_buf(),
         source,
@@ -82,39 +76,26 @@ pub fn game_paths(selected: &Path) -> Result<GamePaths, PathError> {
     let name = selected
         .file_name()
         .map(|name| name.to_string_lossy().to_ascii_lowercase());
-    let (game_root, plugins_dir) = match name.as_deref() {
-        Some("plugins") => {
-            let bep = selected
-                .parent()
-                .ok_or_else(|| PathError::Missing(selected.clone()))?;
-            let root = bep
-                .parent()
-                .ok_or_else(|| PathError::Missing(bep.to_path_buf()))?;
-            (root.to_path_buf(), selected)
-        }
-        Some("bepinex") => {
-            let root = selected
-                .parent()
-                .ok_or_else(|| PathError::Missing(selected.clone()))?;
-            let plugins = find_child(&selected, "Plugins")
-                .ok_or_else(|| PathError::Missing(selected.join("Plugins")))?;
-            (root.to_path_buf(), plugins)
-        }
-        _ => {
-            let bep = find_child(&selected, "BepInEx")
-                .ok_or_else(|| PathError::Missing(selected.join("BepInEx")))?;
-            let plugins = find_child(&bep, "Plugins")
-                .ok_or_else(|| PathError::Missing(bep.join("Plugins")))?;
-            (selected, plugins)
-        }
+    let game_root = match name.as_deref() {
+        Some("plugins") => selected
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| PathError::Missing(selected.clone()))?
+            .to_path_buf(),
+        Some("bepinex") => selected
+            .parent()
+            .ok_or_else(|| PathError::Missing(selected.clone()))?
+            .to_path_buf(),
+        _ => selected,
     };
-    if !plugins_dir.is_dir() {
-        return Err(PathError::Missing(plugins_dir));
+    let bep = find_child(&game_root, "BepInEx")
+        .ok_or_else(|| PathError::Missing(game_root.join("BepInEx")))?;
+    let plugins =
+        find_child(&bep, "Plugins").ok_or_else(|| PathError::Missing(bep.join("Plugins")))?;
+    if !plugins.is_dir() {
+        return Err(PathError::Missing(plugins));
     }
-    Ok(GamePaths {
-        game_root,
-        plugins_dir,
-    })
+    Ok(game_root)
 }
 
 fn normalize(path: &Path) -> Option<PathBuf> {
@@ -187,9 +168,9 @@ mod tests {
         let bep = root.join("BepInEx");
         let plugins = bep.join("Plugins");
         fs::create_dir_all(&plugins).unwrap();
-        assert_eq!(game_paths(&root).unwrap().plugins_dir, plugins);
-        assert_eq!(game_paths(&bep).unwrap().game_root, root);
-        assert_eq!(game_paths(&plugins).unwrap().game_root, root);
+        assert_eq!(game_paths(&root).unwrap(), root);
+        assert_eq!(game_paths(&bep).unwrap(), root);
+        assert_eq!(game_paths(&plugins).unwrap(), root);
         assert!(game_paths(&dir.join("missing")).is_err());
         let _ = fs::remove_dir_all(dir);
     }
