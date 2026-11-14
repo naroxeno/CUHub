@@ -33,9 +33,7 @@ pub fn top_bar(ui: &Ui) -> impl IntoElement {
                 .items_center()
                 .gap(scaled(&z, 8.0))
                 .child(button(&z, "Launch Game", true, move || {
-                    launch
-                        .notice
-                        .set(String::from("Launching Casualties Unknown…"));
+                    launch.launch_game();
                 }))
                 .child(button(&z, "Report issues", false, move || {
                     let _ = &report;

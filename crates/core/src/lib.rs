@@ -3,6 +3,7 @@
 pub mod catalogs;
 pub mod hub;
 pub mod hubconfig;
+pub mod launch;
 pub mod logs;
 pub mod metadata;
 pub mod modlist;

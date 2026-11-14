@@ -7,7 +7,7 @@ Casualties Hub 的重写：Rust 桌面应用，界面用 nsh，功能与上游 0
 
 - 两个 crate：`crates/core`（领域逻辑，不依赖任何 UI）与 `crates/app`（nsh 界面）。`app` 不联网；所有 HTTP 与下载只经 `core::network`。
 - 依赖方向只有 `app → core`；`core` 不引用 `nsh`、不读窗口状态、不改界面信号。
-- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、本地下载目录默认值、凭据保护、注册表、卷影提示），调用方不写 `cfg` 分支。
+- 平台差异在 `core/src/platform/` 收口：`windows.rs` / `linux.rs` 导出同名函数（appdata 根、本地下载目录默认值、打开 URL、Steam 回退、凭据保护、注册表、卷影提示），调用方不写 `cfg` 分支。
 
 ## 2. 核心门面（方案 C）
 
@@ -81,7 +81,8 @@ HubEvent::Status            // 外壳状态栏文案
 | `sources::table` | `sources.json` 与 `Data/sources.json` 的读取校验、`CUPK1:` 整合包编解码 |
 | `protect` / `backup` | 受保护资源与整目录备份的创建、还原、移除 |
 | `skins` | 槽位发现、精灵查找、骨骼合成（像素精确） |
-| `steam` | 库扫描、VDF 解析、appid 反查、启动回退 |
+| `steam` | 库扫描、VDF 解析、appid 反查 |
+| `launch` | 经 `steam://` 启动游戏与 `steam -applaunch` 回退；不直接跑 exe |
 | `logs` / `diagnostics` | 会话日志、崩溃报告、`--diagnostics` 自检 |
 
 ## 7. app 模块

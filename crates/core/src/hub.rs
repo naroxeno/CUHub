@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Utc};
 
 use crate::catalogs::Catalogs;
+use crate::launch::{self, LaunchError};
 use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
 use crate::mods::{self, InstalledMod, ModsError};
@@ -21,6 +22,7 @@ pub enum HubError {
     NoGameFolder,
     Path(PathError),
     Mods(ModsError),
+    Launch(LaunchError),
     Settings(io::Error),
     Network(NetworkError),
     Cache(metadata::MetadataCacheError),
@@ -38,6 +40,7 @@ impl std::fmt::Display for HubError {
             ),
             Self::Path(error) => error.fmt(formatter),
             Self::Mods(error) => error.fmt(formatter),
+            Self::Launch(error) => error.fmt(formatter),
             Self::Settings(error) => write!(formatter, "Could not save settings: {error}"),
             Self::Network(error) => error.fmt(formatter),
             Self::Cache(error) => error.fmt(formatter),
@@ -61,6 +64,7 @@ impl std::error::Error for HubError {
             Self::NoGameFolder | Self::UnexpectedContent | Self::NetworkUnavailable => None,
             Self::Path(error) => Some(error),
             Self::Mods(error) => Some(error),
+            Self::Launch(error) => Some(error),
             Self::Settings(error) => Some(error),
             Self::Network(error) => Some(error),
             Self::Cache(error) => Some(error),
@@ -78,6 +82,12 @@ impl From<PathError> for HubError {
 impl From<ModsError> for HubError {
     fn from(error: ModsError) -> Self {
         Self::Mods(error)
+    }
+}
+
+impl From<LaunchError> for HubError {
+    fn from(error: LaunchError) -> Self {
+        Self::Launch(error)
     }
 }
 
@@ -211,6 +221,16 @@ impl Hub {
                 None
             }
         }
+    }
+
+    pub fn launch_game(&self) -> Result<String, HubError> {
+        let game = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        let app_id = launch::launch_game(&game)?;
+        self.logs.activity(
+            "Game",
+            &format!("Asked Steam to launch Casualties Unknown (app {app_id})."),
+        );
+        Ok(app_id)
     }
 
     pub fn plugins_dir(&self) -> Result<PathBuf, HubError> {

@@ -1,6 +1,8 @@
 //! Non-Windows defaults: XDG data root and the user download directory.
 
+use std::io;
 use std::path::PathBuf;
+use std::process::Command;
 
 pub fn app_data_root() -> PathBuf {
     let base = dirs::data_local_dir()
@@ -38,4 +40,31 @@ pub fn downloads_dir() -> PathBuf {
         .or_else(|| dirs::home_dir().map(|home| home.join("Downloads")))
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+pub fn open_url(url: &str) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(not(target_os = "macos"))]
+    let program = "xdg-open";
+    let status = Command::new(program).arg(url).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("{program} exited with {status}")))
+    }
+}
+
+pub fn steam_executable() -> PathBuf {
+    PathBuf::from("steam")
+}
+
+pub fn steam_app_launch(app_id: &str) -> io::Result<()> {
+    let mut command = Command::new(steam_executable());
+    let status = command.arg("-applaunch").arg(app_id).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("steam exited with {status}")))
+    }
 }

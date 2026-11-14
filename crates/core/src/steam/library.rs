@@ -41,6 +41,29 @@ pub fn find_game_install() -> Option<PathBuf> {
     game_install_in(&find_libraries())
 }
 
+pub fn app_id_for_game(game_root: &Path) -> Option<String> {
+    let target = resolve(game_root);
+    let matches = |install: &SteamGameInstall| resolve(&install.path) == target;
+
+    if let Some(install) = games_in(&find_libraries())
+        .into_iter()
+        .find(|install| matches(install))
+    {
+        return Some(install.app_id);
+    }
+
+    let steamapps = game_root.ancestors().find(|ancestor| {
+        ancestor
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("steamapps"))
+    })?;
+    let library = steamapps.parent()?;
+    games_in(&[library.to_path_buf()])
+        .into_iter()
+        .find(|install| matches(install))
+        .map(|install| install.app_id)
+}
+
 fn game_install_in(libraries: &[PathBuf]) -> Option<PathBuf> {
     if let Some(install) = games_in(libraries).into_iter().find(|install| {
         install
@@ -239,6 +262,29 @@ mod tests {
         assert_eq!(
             game_install_in(std::slice::from_ref(&library)),
             Some(common.join("casualties unknown"))
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn finds_the_app_id_from_the_steamapps_ancestor() {
+        let dir = temp_dir("steam-appid");
+        let library = dir.join("Steam");
+        let steamapps = library.join("steamapps");
+        let common = steamapps.join("common");
+        fs::create_dir_all(common.join("Casualties Unknown")).unwrap();
+        write(
+            &steamapps.join("appmanifest_4576490.acf"),
+            r#""AppState"
+{
+    "appid"        "4576490"
+    "installdir"        "Casualties Unknown"
+}"#,
+        );
+
+        assert_eq!(
+            app_id_for_game(&common.join("Casualties Unknown")),
+            Some(String::from("4576490"))
         );
         let _ = fs::remove_dir_all(dir);
     }

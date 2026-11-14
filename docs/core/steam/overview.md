@@ -12,6 +12,7 @@
 - find_installed_games()：每个库读 appmanifest_*.acf 的 appid/installdir，在 steamapps/common 下按真实大小写解析目录。
 - find_casualties_unknown()：installdir 含 casualties（忽略大小写）的第一项，附带 app id。
 - find_game_install()：先按清单找，再扫各库 steamapps/common 的目录名；返回游戏根路径。
+- app_id_for_game(game_root)：先比对已发现安装的路径；找不到时从游戏根向上找 steamapps，直接读该库的 appmanifest 匹配 installdir。只返回 app id，不启动游戏。
 
 ## 边界与失败模式
 

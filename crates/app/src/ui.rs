@@ -95,6 +95,19 @@ impl Ui {
         }
     }
 
+    pub fn launch_game(&self) {
+        let result = {
+            let hub = self.hub();
+            hub.launch_game()
+        };
+        match result {
+            Ok(app_id) => self.notice.set(format!(
+                "Asked Steam to launch Casualties Unknown (app {app_id})."
+            )),
+            Err(error) => self.notice.set(format!("Could not launch: {error}")),
+        }
+    }
+
     pub fn detect_game(&self) {
         let found = {
             let mut hub = self.hub();
