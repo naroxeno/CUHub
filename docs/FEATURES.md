@@ -300,13 +300,14 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### S. 打包与发布
 
+- **S0 (P0)** 分发走 **GitHub Releases**：tag 触发构建，产物为 Windows exe + Linux tar.gz（附 SHA-256 校验和），发布说明与内嵌 `Version {version}.txt` 同源；不做应用内自更新，升级由用户重新下载。
 - **S1 (P0)** 单文件自包含可执行（Windows exe + Linux）；内嵌：依赖目录、不兼容目录、发布说明（`Version {version}.txt`）、离线公告副本。
 - **S2 (P0)** `Data/` 目录（可执行文件旁）优先于内嵌资源，允许用户手改目录数据；改动按文件时间戳重载。
 - **S3 (P0)** 版本号来自二进制自述（编译期注入），并与发布说明文件名对应；启动时读它决定公告频道（预发布 / 正式）。
 - **S4 (P1)** SemVer 解析与比较：`^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$`；数值段按数值、数字段低于字母段、字母段忽略大小写比较；正式版高于同号预发布。
 - **S5 (P1)** Linux 包：tar.gz + `README-linux.txt`（chmod 说明、可选 desktop entry）；desktop entry 在含空格路径下也能启动。
 - **S6 (P1)** Windows：单 exe；DPAPI 可用；注册表探 Steam。
-- **S7 (P2)** 发布流水线检查（若自建）：仅 main、版本可读、说明存在、tag 不重复、版本类型与发布类型一致、产物自报版本一致。
+- **S7 (P2)** 发布流水线检查（GitHub Actions）：仅 main 能打 tag、版本可读、内嵌说明存在、tag 不重复、版本类型（预发布/正式）与 tag 一致、产物自报版本与 tag 一致。
 
 ### T. 明确不复刻
 
@@ -457,5 +458,5 @@ cuhub/
 - **.NET 程序集读取**：`dotnetdll` 覆盖 `Assembly` 版本与自定义属性解码，但它仍偏年轻；若 `BepInPlugin` 的 blob 解不出，只读 Assembly 版本并显示“No version evidence found”，不自己写解析器。
 - **像素字体覆盖**：Fusion Pixel／Ark Pixel 均为 OFL 可内嵌，但生僻汉字与特殊符号可能缺字形，需要回退链与缺字日志，否则界面会出现空白方块。
 - **nsh 生态成熟度**：桌面端自绘控件、虚拟列表、运行时主题、文件对话框在 Linux 上的可靠性都要靠 spike 定论；建议 M0 阶段就把 4.3 的 8 项验完，再定是否保留某些视觉细节（如像素字体在 2x/3x 下的字距与描边对齐）。
-- **不做自更新**意味着分发靠 Nexus/手动替换；若要加，需要签名与校验设计（不要复活被移除的 zip 替换流程）。
+- **不自更新**意味着分发完全靠 GitHub Releases：用户手动下载新版本覆盖（Linux 侧可另发 AUR/包管理器配方）；若将来要加自更新，必须单独设计签名与回滚，不复活被移除的 zip 替换流程。
 - **社区目录依赖第三方仓库**（`jimmyking9999999/Metadata-generator`）：需要容错、离线缓存与明确的“数据可能不全”提示（上游 README 已列此限制）。
