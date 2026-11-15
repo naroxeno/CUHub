@@ -23,6 +23,7 @@ pub struct Settings {
     pub protected_files_path: String,
     pub disable_auto_delete_imported_parent_files: bool,
     pub ui_scale: u8,
+    pub language: String,
     pub high_contrast_mode: bool,
     pub easter_eggs_enabled: bool,
     pub easter_eggs_preference_initialized: bool,
@@ -44,6 +45,7 @@ impl Default for Settings {
             protected_files_path: DEFAULT_PROTECTED_DIR.to_owned(),
             disable_auto_delete_imported_parent_files: false,
             ui_scale: DEFAULT_UI_SCALE,
+            language: "system".to_owned(),
             high_contrast_mode: false,
             easter_eggs_enabled: false,
             easter_eggs_preference_initialized: false,
@@ -181,6 +183,7 @@ mod tests {
         let settings = Settings {
             game_path: "/games/Casualties Unknown".to_owned(),
             ui_scale: 3,
+            language: "zh-CN".to_owned(),
             ignored_dependency_names: vec!["SomeDep".to_owned()],
             ..Settings::default()
         };
@@ -188,6 +191,7 @@ mod tests {
         let raw = fs::read_to_string(store.path()).unwrap();
         assert!(raw.contains("gamePath"));
         assert!(raw.contains("ignoredDependencyNames"));
+        assert!(raw.contains("\"language\": \"zh-CN\""));
         assert!(!raw.contains("game_path"));
         assert!(raw.ends_with('\n'));
         let loaded = store.load();

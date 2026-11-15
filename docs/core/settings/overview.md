@@ -6,7 +6,7 @@ Settings.json 的模型、默认值、容错加载与原子保存。UI 只读写
 
 ## 输入输出
 
-- Settings：docs/FEATURES.md P6 列出的 14 个字段，JSON 键为 camelCase，缩进输出。
+- Settings：docs/FEATURES.md P6 列出的 15 个字段，JSON 键为 camelCase，缩进输出；language 存界面语言（"system" 跟随设备，或 BCP 47 标签），缺省 "system"。
 - SettingsStore::new(app_data) 绑定 app_data/Settings.json；load() 返回 LoadedSettings { settings, created, warning }；save(&Settings) 写盘。
 
 ## 边界与失败模式
