@@ -72,6 +72,22 @@ pub struct SourceRow {
     pub warning: bool,
     pub can_check: bool,
     pub repo: Option<Repo>,
+    pub options: Vec<SourceKind>,
+    pub pinned: Option<SourceKind>,
+}
+
+impl SourceRow {
+    pub fn can_pin(&self) -> bool {
+        self.options.len() > 1 || self.pinned.is_some()
+    }
+
+    pub fn pin_label(&self) -> &'static str {
+        match self.pinned {
+            None => "Pin: auto",
+            Some(SourceKind::Github) => "Pin: GitHub",
+            Some(SourceKind::Nexus) => "Pin: Nexus",
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -391,6 +407,43 @@ impl Ui {
         });
     }
 
+    pub fn cycle_source_pin(&self, key: String, options: Vec<SourceKind>) {
+        let current = {
+            let hub = self.hub();
+            hub.source_choice(&key)
+        };
+        let next = match current {
+            None => options.first().copied(),
+            Some(kind) => options
+                .iter()
+                .position(|option| *option == kind)
+                .and_then(|index| options.get(index + 1).copied()),
+        };
+        self.set_source_pin(key, next);
+    }
+
+    pub fn set_source_pin(&self, key: String, kind: Option<SourceKind>) {
+        let result = {
+            let mut hub = self.hub();
+            match kind {
+                Some(kind) => hub.pin_source(&key, kind),
+                None => hub.clear_source_pin(&key),
+            }
+        };
+        match result {
+            Ok(()) => {
+                self.rebuild_local_rows();
+                self.notice.set(match kind {
+                    Some(kind) => format!("Pinned the source to {}.", source_kind_label(kind)),
+                    None => String::from("Source choice set to automatic."),
+                });
+            }
+            Err(error) => self
+                .notice
+                .set(format!("Could not save the source choice: {error}")),
+        }
+    }
+
     pub fn open_nexus_download(&self, mod_id: String) {
         let result = {
             let hub = self.hub();
@@ -577,14 +630,15 @@ fn build_local_rows(
         .map(|item| {
             let key = source_key(item);
             let check = checks.get(&key);
+            let pinned = hub.source_choice(&key);
             let source = build_source_row(SourceInput {
                 entries,
                 item,
                 check,
-                pinned: hub.source_choice(&key),
+                pinned,
             });
             LocalModRow {
-                key: format!("{key}|{}", check_tag(check)),
+                key: format!("{key}|{}|{}", check_tag(check), pin_tag(pinned)),
                 source_key: key,
                 item: item.clone(),
                 source,
@@ -611,11 +665,20 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
         .and_then(HubVersion::parse);
     let resolution = sources::resolve_mod(input.entries, &local, github, nexus, input.pinned);
     let Some(matched) = resolution.matched else {
+        let text = match input.pinned {
+            Some(kind) => format!(
+                "Sources: not listed in the GitHub manifest. Pinned to {}.",
+                source_kind_label(kind)
+            ),
+            None => String::from("Sources: not listed in the GitHub manifest."),
+        };
         return SourceRow {
-            text: String::from("Sources: not listed in the GitHub manifest."),
+            text,
             warning: false,
             can_check: false,
             repo: None,
+            options: Vec::new(),
+            pinned: input.pinned,
         };
     };
     let repo = &matched.entry.repo;
@@ -645,11 +708,18 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
     }
     let warning = matched.kind == MatchKind::Name
         || matches!(input.check, Some(CheckState::Release(release)) if release.prerelease);
+    let options: Vec<SourceKind> = resolution
+        .options
+        .iter()
+        .map(|option| option.kind)
+        .collect();
     SourceRow {
         text: parts.join(" · "),
         warning,
         can_check: !matches!(input.check, Some(CheckState::Checking)),
         repo: Some(repo.clone()),
+        options,
+        pinned: resolution.pinned,
     }
 }
 
@@ -672,6 +742,21 @@ fn check_tag(check: Option<&CheckState>) -> String {
         Some(CheckState::Checking) => String::from("checking"),
         Some(CheckState::Release(release)) => format!("release:{}", release.tag),
         Some(CheckState::Failed(failure)) => format!("failed:{}", failure.summary()),
+    }
+}
+
+fn pin_tag(pinned: Option<SourceKind>) -> &'static str {
+    match pinned {
+        None => "auto",
+        Some(SourceKind::Github) => "github",
+        Some(SourceKind::Nexus) => "nexus",
+    }
+}
+
+fn source_kind_label(kind: SourceKind) -> &'static str {
+    match kind {
+        SourceKind::Github => "GitHub",
+        SourceKind::Nexus => "Nexus",
     }
 }
 

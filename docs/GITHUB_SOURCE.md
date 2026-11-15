@@ -1,6 +1,6 @@
 # GitHub 源（交接给下一会话）
 
-状态：**离线层与 Check 已实现（2026-11-15）**，见 `docs/core/sources/overview.md`；清单仓库 URL/远程拉取与 pin 按钮仍待拍板。2026-11-14 Naro 决定在 Nexus 之外增加一个 GitHub 源，清单由单独仓库维护（仓库里放一批模组的 GitHub 链接）。
+状态：**离线层、Check 与 pin 按钮已实现（2026-11-15）**，见 `docs/core/sources/overview.md`；清单仓库 URL/远程拉取仍待拍板。2026-11-14 Naro 决定在 Nexus 之外增加一个 GitHub 源，清单由单独仓库维护（仓库里放一批模组的 GitHub 链接）。
 
 ## 目标
 

@@ -1,4 +1,4 @@
-//! Per-mod source pins stored in Data/source-choice.json. No network, no UI.
+//! Per-mod source pins stored in <AppData>/source-choice.json. No network.
 
 use std::collections::BTreeMap;
 use std::error::Error;

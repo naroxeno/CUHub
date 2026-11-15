@@ -467,6 +467,15 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         let color = if row.source.warning { WARN } else { TEXT_MUTED };
         line = line.child(pix(row.source.text.clone(), 10.0, color, z));
     }
+    if row.source.can_pin() {
+        let pin_ui = ui.clone();
+        let key = row.source_key.clone();
+        let options = row.source.options.clone();
+        let label = row.source.pin_label();
+        line = line.child(button(z, label, true, move || {
+            pin_ui.cycle_source_pin(key.clone(), options.clone());
+        }));
+    }
     if row.source.can_check
         && let Some(repo) = row.source.repo.clone()
     {
