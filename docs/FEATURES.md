@@ -56,6 +56,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | T 已移除功能 | 自更新、应用内卸载器、HubContent 订阅源、Supabase | 不复刻 |
 | U 来源表与整合包 | 来源优先级、GitHub 内置 tag、用户正则、表校验、CUPK1 整合包 | P2 |
 | V GitHub 清单与源管理 | 清单 schema 编辑器、Settings 里的源开关与缓存管理 | P2 |
+| W 游戏内联动（Bridge） | 桥发现与握手、连接状态、联机/存档/皮肤三个 mod 的只读状态与受限命令 | P0/P1 |
 
 ---
 
@@ -348,6 +349,24 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **V1 (P2)** 清单 schema 编辑器：Settings → Mod sources → Edit manifest 打开，表单与原始 JSON 双视图，切换视图前先校验；表单含 `repo`（`owner/name`）、`name`、`match.guid` / `match.dll` / `match.name`（均多值）、可选 `asset.include` / `asset.exclude` 与 `notes`，`id` 从 `repo` 派生并去重。保存前跑与运行时同一套校验（`schemaVersion`、`owner/name` 形状、`match` 至少一项、正则可编译），错误定位到条目与字段，只拒绝坏条目、不整表报废。结果写成草稿 `appdata/GithubSourcesDraft.json`（粘贴上限 1 MB），不写远端仓库、不写游戏目录；另给 Copy JSON / Save as… 导出，由人自己提 PR。删除条目与覆盖导入要确认，且只影响草稿。编辑器内可对已安装模组做一次只读试匹配，列出每个条目命中的 DLL/GUID（不发网络请求）。
 - **V2 (P2)** Settings 的 Mod 源管理：设置页新增 MOD SOURCES 区块，列出 Nexus 目录（只读、常开）、GitHub 清单（开关 / URL / Last synced / Refresh now / Clear cache）、用户来源表（U8 落地前显示为未配置）；顶部只读显示当前生效的优先级顺序，本版不做拖拽排序。关掉清单只影响解析、不删缓存；URL 必须 https，否则就地拒绝且不保存；写入只碰设置与缓存，不碰游戏目录。
 
+### W. 游戏内联动（Bridge）
+
+宿主 cuhub 与游戏进程（BepInEx 插件）之间的桥。协议契约见 `docs/bridge/protocol.md`，模块说明见 `docs/core/bridge/overview.md`。
+
+- **W1 (P0)** 发现与握手：宿主监听 `127.0.0.1` 的临时端口，往 `<ProgramData>/CasualtiesHub/bridge.json` 写 token 与端口（Windows 原生、Proton prefix、macOS bottle 三种路径，客户端代码不变）；插件读文件连接，token 或协议 major 不符即拒。
+- **W2 (P0)** 连接状态：状态栏显示“桥：未连接 / 已连接（pid）/ 版本不符”；Local Mods 每行可标“运行中已加载”。桥的任何失败都不影响游戏启动，也不阻塞主线程。
+- **W3 (P0)** 联机只读：`mp.state`（房间、角色、玩家列表）进 Multiplayer 页，替换现有样例数据。
+- **W4 (P0)** 联机控制：`mp.host` / `mp.join` / `mp.leave` 走 `control` 档，默认关闭，由用户在设置里开；`mp.kick` 走 `mutate`，逐次确认。
+- **W5 (P0)** 存档只读：`save.list` / `save.current` 显示槽位与时间；存档备份归存档 mod 自己管，`backup` 模块不接管。
+- **W6 (P0)** 存档危险操作：`save.save` / `save.load` / `save.restore` 一律 `mutate`，两段式确认写清“当前进度将丢失”与目标槽位。
+- **W7 (P1)** 皮肤 mod：`skin.current` / `skin.list` 只读接入 Skins 页；`skin.apply` / `skin.reload` 走 `control`。
+- **W8 (P1)** 权限管理：设置页的桥区块列出每条命令与三档权限，默认只读；任何授权变更写日志（旧值、新值、来源）。
+- **W9 (P2)** 第三方接入：发布 `CuhubBridge.Core` 的接入说明与最小示例，协议文档作为跨语言契约。
+
+实现状态（2026-11-15，实验性，不发布）：仅 `crates/core/src/bridge/` 的帧编解码与 rendezvous 文件（W1 的发现文件一侧），无监听、无会话、无命令；游戏侧只有协议常量，插件工程未建。其余条目按编号排队。
+
+边界：不做通用 RPC、不做任意文件读写、不做进程注入；命令表只增不删；Nexus key 与 GitHub token 永不进桥。
+
 ---
 
 ## 3. 本地数据布局（应用数据根）
@@ -467,6 +486,7 @@ cuhub/
 | M6 Hub Home + 外观 + 日志 | L、O、Q | 公告频道正确、像素调色板与整数缩放落地、诊断/自检命令可用 |
 | M7 打磨 | P2 项、多人占位、打包发布 | 单文件产物 + README-linux + 资源内嵌 |
 | M8 来源表（P2） | U | GitHub tag 能判更新、自定义正则能读出版本与下载、坏条目被丢弃且有行号、CUPK1 导入只走确认流程 |
+| M9 桥（W1–W6，P0） | W1–W6 | 三端能连上；坏 token 与协议版本不符被拒；联机状态进 Multiplayer 页；读档/写档前有逐次确认 |
 
 ---
 
@@ -478,3 +498,4 @@ cuhub/
 - **nsh 生态成熟度**：桌面端自绘控件、虚拟列表、运行时主题、文件对话框在 Linux 上的可靠性都要靠 spike 定论；建议 M0 阶段就把 4.3 的 8 项验完，再定是否保留某些视觉细节（如像素字体在 2x/3x 下的字距与描边对齐）。
 - **不自更新**意味着分发完全靠 GitHub Releases：用户手动下载新版本覆盖（Linux 侧可另发 AUR/包管理器配方）；若将来要加自更新，必须单独设计签名与回滚，不复活被移除的 zip 替换流程。
 - **社区目录依赖第三方仓库**（`jimmyking9999999/Metadata-generator`）：需要容错、离线缓存与明确的“数据可能不全”提示（上游 README 已列此限制）。
+- **桥的 macOS 端**：Steam macOS 没有 Proton，`steam://rungameid` 拉不起这个 Windows 游戏，macOS 只能是“配置器 + 宿主”，bottle 由用户手动指定；`platform` 也还没有 macOS 面，桥的 macOS 路径排在它后面。

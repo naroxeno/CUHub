@@ -1,5 +1,6 @@
 //! Cuhub domain logic. No UI, no window state, no nsh dependency.
 
+pub mod bridge;
 pub mod catalogs;
 pub mod github;
 pub mod hub;

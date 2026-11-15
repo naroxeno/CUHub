@@ -1,3 +1,6 @@
 /ref/
 /.nsh/
 /target/
+/dist/
+/mods/**/bin/
+/mods/**/obj/

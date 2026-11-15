@@ -23,6 +23,7 @@ HubEvent::ModsChanged       // 启用/禁用/删除后
 HubEvent::IconFetched       // 封面落盘完成
 HubEvent::AnnouncementRefreshed
 HubEvent::Status            // 外壳状态栏文案
+HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 ```
 
 规则：能由返回值表达的，不用事件；不引入事件总线、不引入插件系统。
@@ -43,6 +44,7 @@ HubEvent::Status            // 外壳状态栏文案
 - UI 只在主线程；`core` 不知道主线程是谁，也不主动推 UI，只返回结果或发事件。
 - 阻塞工作（解压、哈希、PNG 合成、.NET 元数据、目录全扫）走阻塞任务池，不占 UI 线程。
 - 文件监视（`notify`）跑在自己的线程，只做「判定完成 → 投递事件」，不碰界面。
+- 桥（`bridge`）有独立监听线程与每连接读线程：只做「解帧 → 校验 → 投递」，不落盘、不读设置；命令执行回到 `Hub` 的既有路径。
 - 后台线程不碰 UI 状态：`core` 只返回结果或经 `crossbeam` 通道发事件；`app` 在主线程用 nsh 的 `run_on_main_thread` 或主循环轮询把事件写进 signal。`spawn` 的 future 本身跑在引擎线程，可以直接写 signal。
 
 ## 5. 外部系统边界
@@ -55,6 +57,7 @@ HubEvent::Status            // 外壳状态栏文案
 | `api.github.com` | 已安装模组的 release tag 与资产名 | 未认证 60 次/小时；6 小时缓存 + ETag；只取 tag/资产名，不自动安装 |
 | 用户来源表里的任意 https 页面 | 自定义来源的版本与下载地址提取 | 只 GET、不带凭据、响应上限 2 MB、拒绝 `nexusmods.com`，失败只报错不重试风暴 |
 | Steam | 启动游戏（`steam://rungameid`）、库与 appid 发现 | 必须走 Steam，直接跑 exe 在 Proton 下不加载 BepInEx |
+| 游戏进程（Wine/Proton、CrossOver、Windows 原生） | 桥：运行时状态、受限命令 | 只听 `127.0.0.1` + token；游戏侧输入按不可信处理；凭据不得过桥 |
 | 游戏目录 `BepInEx/Plugins`、`CustomSprites` | 安装、开关、删除、备份、皮肤 | 所有写入先解析真实大小写再校验在允许根内 |
 | 系统桌面 | 打开 URL/文件夹、剪贴板 | scheme 白名单 http/https/steam |
 
@@ -83,6 +86,7 @@ HubEvent::Status            // 外壳状态栏文案
 | `skins` | 槽位发现、精灵查找、骨骼合成（像素精确） |
 | `steam` | 库扫描、VDF 解析、appid 反查 |
 | `launch` | 经 `steam://` 启动游戏与 `steam -applaunch` 回退；不直接跑 exe |
+| `bridge` | 回环桥：监听、握手、帧协议、命令白名单与权限、rendezvous 文件 |
 | `logs` / `diagnostics` | 会话日志、崩溃报告、`--diagnostics` 自检 |
 
 ## 7. app 模块
@@ -120,8 +124,10 @@ HubEvent::Status            // 外壳状态栏文案
 10. Linux 文件对话框在无 portal 环境的行为（选文件、选目录、回收站共用此路径）。
 11. 单文件打包、内嵌资源体积、Windows 交叉编译与 CI。
 12. 平铺合成器会忽略请求的窗口尺寸；自绘标题栏的拖拽与控件区要在浮动窗口下验证。
+13. 桥的传输层用回环 TCP 保底；AF_UNIX 在 Wine + .NET 下能否连通未验证（macOS 防火墙弹窗的备选）。macOS 端还依赖 `platform` 先有 macOS 面（appdata 根、打开 URL），目前只有 `linux.rs` / `windows.rs`。
 
 ## 10. 明确不做
 
 - 自更新、遥测、匿名安装 ID、应用内卸载器、Supabase 订阅源。
 - 插件系统、配置 DSL、事件总线、用户自定义主题。
+- 通用 RPC、任意代码执行、宿主驱动的文件读写；桥只调用游戏侧声明过的命令 id。
