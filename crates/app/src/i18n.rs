@@ -4,14 +4,26 @@ use cuhub_core::mods::ModStatus;
 use nsh_core::platform::Locale;
 use nsh_core::prelude::*;
 
-pub const PAGE_KEYS: [&str; 6] = [
+pub const PAGE_KEYS: [&str; 7] = [
     "nav.nexus_dashboard",
+    "nav.remote_mods",
     "nav.local_mods",
     "nav.multiplayer",
     "nav.skins_backups",
     "nav.hub_home",
     "nav.settings",
 ];
+
+pub const MODS_PAGE_COUNT: usize = 3;
+
+pub fn page_label(index: usize) -> String {
+    let key = PAGE_KEYS.get(index).copied().unwrap_or("nav.settings");
+    if index < MODS_PAGE_COUNT {
+        t!("nav.breadcrumb", parent = t!("nav.mods"), child = t!(key))
+    } else {
+        t!(key)
+    }
+}
 
 pub const FOLLOW_SYSTEM: &str = "system";
 

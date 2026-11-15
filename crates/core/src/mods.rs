@@ -12,6 +12,10 @@ use crate::paths;
 
 mod dotnet;
 
+pub(crate) fn read_assembly_version(path: &Path) -> Option<String> {
+    dotnet::read_dll(path).and_then(|evidence| evidence.assembly_version)
+}
+
 const DLL_SUFFIX: &str = ".dll";
 const DISABLED_SUFFIX: &str = ".disabled";
 const MAX_SCAN_DEPTH: usize = 16;

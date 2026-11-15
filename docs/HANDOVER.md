@@ -9,6 +9,7 @@
 - core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`nexus_auth`、`nexus`、`hub`、`github`、`sources`、`source_choice`、`install`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
 - 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-only`；与上游一致。
 - app（2026-11-15）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。GitHub 源在 Local Mods 每行第三行显示仓库、匹配依据、check 结果与生效源，可手动 Check；OutOfDate 或 GitHub release 版本更高的行可 Update（未列入清单的模组同样适用），下载归档后先展示计划再 Apply，游戏运行中排队。Multiplayer、Skins & Backups 仍是占位。界面文案已接 i18n：`locales/app.yml` 在仓库根（与 `nsh.json` 同级），`_version: 2` 采用 key 在外、语言在内的写法；nsh 在 run/dev/test/package 时写成 `.nsh/rust/translations.json` 并注入入口，普通 cargo 构建不注入。Settings 页 Language 可选 System / English / 日本語 / 简体中文，`Settings.language` 持久化；切换语言会 `set_locale` 并重建 local / nexus 行。core 错误文案仍为英文。
+- 2026-11-15 晚：BepInEx 自动安装（默认 5 LTS 5.4.23.6、设置页可选 6 Mono，sha256 校验、修复只覆盖白名单文件、IL2CPP 与游戏运行中拒绝）、模组导航改为树形（Nexus / 远程 / 本地），新增远程模组页（只读 `<AppData>/Sources/manifest.json`，安装走两段式确认）；`ui.rs` 与 `pages.rs` 拆成模块目录（根文件留 `mod` + `pub use`）；三处输入框补像素字体；`dist/{linux,windows,macos}` 为打包输出（已 gitignore），Windows 包含 Inno 安装器与测试清单。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
 
 ## 2. 已有文档
@@ -52,6 +53,9 @@
 | GitHub token | 可选；与 Nexus key 同一信封，独立文件 `GithubToken.dat`/`.key`；只在 api.github.com 请求带 `Authorization: Bearer …`；校验走 `GET /rate_limit`；不写日志 |
 | GitHub 源 | 在 Nexus 之外新增 GitHub 源；清单由单独仓库维护（schema v1：schemaVersion/generatedAt/mods，条目 name+repo+match+可选 asset）；客户端只读清单与公开 release；匹配 guid > dll > name，name 仅兜底；两源都显示，默认最新版本，用户可 pin（`<AppData>/source-choice.json`）；release 不缓存，404 回退 prerelease；Check 不下载资产，Update 时按 asset、首个 zip/7z/rar 或裸 DLL 下载，计划确认后安装；不做一键升级 |
 | 公告 | `hubconfig` 按版本选 stable/prerelease，缓存 30 分钟，只保留 https 链接 |
+| BepInEx 安装 | 默认 5 LTS 最新（5.4.23.6），UI 可选 6 Mono（be.793）；sha256 校验；Fresh 遇冲突即停，Repair 只覆盖白名单文件并备份；IL2CPP（GameAssembly.dll）拒绝；游戏运行中拒绝 |
+| 远程模组 | 模组一栏树形展开 Nexus / 远程 / 本地；远程页只读本地 `Sources/manifest.json`，不联网拉清单；匹配 guid > dll > name，dll 用不带扩展名的 stem；安装/更新走 pending 计划确认 |
+| 打包 | `just package-*` 产物落 `dist/<platform>/`；Windows 安装器由 PATH 里的 iscc 生成（本机走 wine 装 Inno Setup 6） |
 | 不做 | 自更新、遥测、应用内卸载器、Supabase、插件系统、用户主题 |
 
 ## 4. 还没定的
@@ -65,7 +69,9 @@
 7. 目录刷新已接后台 worker，但 blocking 闭包持有 Hub 互斥锁（最长约 20s）；期间其它 Hub 操作等待。是否改为锁外抓取待定。
 8. Nexus 直连下载还没有真实 key 的端到端验证；Nexus 页已有下载入口（有 key 走官方 API，无 key 打开 Files 页），Standard 账号会收到 403，需要 Premium。
 9. Windows 上 `NexusApiKey.key` 与 `GithubToken.key` 仍靠用户配置目录 ACL，尚未用 DPAPI 包裹；跨平台迁移旧裸 DPAPI blob 也未实现。
-10. GitHub 源：清单仓库 URL 与远程拉取未定（目前只读本地 `Sources/manifest.json`）；限流 reset 时间需要扩 `network::Fetch` 才能显示；资产下载与单模组升级已接（来源选择、staging、归属计划、备份/回滚、游戏运行排队），一键升级与恢复界面未做。
+10. GitHub 源：清单仓库 URL 与远程拉取未定（目前只读本地 `Sources/manifest.json`，改清单需重启）；清单 dll 匹配值要求不带 `.dll` 扩展名，与 `docs/GITHUB_SOURCE.md` 示例不一致，改实现还是改文档待定；限流 reset 时间、版本预检、清单热重载未做。
+11. Windows runner 构建仍报 1 个 warning（`nsh package -v` 才显示），未定位。
+12. macOS 包只能在 Darwin 上打（本机无 SDK、无 target），`dist/macos` 目前有配方无产物。
 
 ## 5. 建议的下一步
 
@@ -75,7 +81,8 @@
 4. **下一步**：审查 GitHub 源代码；模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用与删除的界面接线（已完成）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
 5. **界面 i18n（2026-11-15 已完成）**：英文 / 简体中文 / 日本語；语言存 `Settings.json` 的 `language` 字段（默认 `system`，跟随设备），app 文案集中在仓库根的 `locales/app.yml`与 `crates/app/src/i18n.rs`，`t!` 写在显示处并由 `set_locale` 驱动重渲染，切换语言会重建行文案；core 错误文案仍为英文（后续按错误码映射）。nsh 的 `_version: 2` 是 key 在外、语言在内，写成语言在外会生成方向相反的 `translations.json`，`t!` 只显示键名。
 6. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队；裸 DLL 文件名不一致且模组只有一个 DLL 时按该 DLL 替换并写 warning。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
-6. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
+7. **BepInEx 自动安装与远程模组页（2026-11-15 晚完成）**：core 的 `install::bepinex`（Release 常量、detect、plan_install{Mode::Fresh,Repair}、ensure_plugins、sha256）、Hub 的 prepare/finish、设置页与本地模组空态入口、远程模组页与树形导航、两段式确认与游戏运行中拒绝；Windows 包已出 `dist/windows`（未真机验证）。
+8. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
 
 ## 6. 接手须知
 
@@ -93,3 +100,4 @@
 - 两条都能编译 nsh 0.5.1 的 spike（edition 2024）；差别只在工具链版本，不在项目配置。
 - 工具 shell 的 `PATH` 里 `/usr/sbin` 排在 `~/.cargo/bin` 前面，会抓到 nightly；Naro 的交互 shell 抓到 fork。**报告构建结果时注明用的哪一个**（`cargo -Vv` 第一行可区分）。
 - 同一份代码两边结果不一致时，先查这里，再怀疑代码。
+- 2026-11-15 起 `~/.config/nushell/config.nu` 把 `~/.cargo/bin` 前置；DSH 的 `bash -c` 继承启动终端 PATH，子 agent 直接跑 `cargo` 前要自己 export（`AGENTS.md` §6 已写死），`just` 配方已在前置 PATH。

@@ -62,6 +62,9 @@ pub enum PlanError {
     UnsafePath(String),
     Outside(PathBuf),
     Duplicate(PathBuf),
+    AlreadyExists(PathBuf),
+    NotADirectory(PathBuf),
+    Unsupported(String),
     Io { path: PathBuf, source: io::Error },
 }
 
@@ -94,6 +97,11 @@ impl std::fmt::Display for PlanError {
             Self::Duplicate(path) => {
                 write!(formatter, "archive has duplicate path {}", path.display())
             }
+            Self::AlreadyExists(path) => write!(formatter, "{} already exists", path.display()),
+            Self::NotADirectory(path) => {
+                write!(formatter, "{} is not a directory", path.display())
+            }
+            Self::Unsupported(message) => formatter.write_str(message),
             Self::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
         }
     }
@@ -112,11 +120,7 @@ pub fn plan_upgrade(
     staged: &StagedArchive,
     target: PlanTarget<'_>,
 ) -> Result<UpgradePlan, PlanError> {
-    let usable: Vec<&StagedFile> = staged
-        .files
-        .iter()
-        .filter(|file| !is_skipped(&file.relative))
-        .collect();
+    let usable = usable_files(staged);
     if usable.is_empty() {
         return Err(PlanError::NoPayload);
     }
@@ -211,18 +215,8 @@ pub fn plan_payload(
     staged: &StagedArchive,
     target: PlanTarget<'_>,
 ) -> Result<UpgradePlan, PlanError> {
-    let usable: Vec<&StagedFile> = staged
-        .files
-        .iter()
-        .filter(|file| !is_skipped(&file.relative))
-        .collect();
-    let single_dll = usable.len() == 1
-        && usable[0]
-            .relative
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("dll"));
-    if single_dll {
+    let usable = usable_files(staged);
+    if is_single_dll(&usable) {
         plan_bare_dll(&usable, target)
     } else {
         plan_upgrade(staged, target)
@@ -296,6 +290,124 @@ fn plan_bare_dll(files: &[&StagedFile], target: PlanTarget<'_>) -> Result<Upgrad
         conflicts,
         warnings,
     })
+}
+
+fn usable_files(staged: &StagedArchive) -> Vec<&StagedFile> {
+    staged
+        .files
+        .iter()
+        .filter(|file| !is_skipped(&file.relative))
+        .collect()
+}
+
+fn is_single_dll(files: &[&StagedFile]) -> bool {
+    files.len() == 1
+        && files[0]
+            .relative
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("dll"))
+}
+
+pub fn plan_first_install(
+    staged: &StagedArchive,
+    plugins: &Path,
+    name: &str,
+) -> Result<UpgradePlan, PlanError> {
+    let usable = usable_files(staged);
+    if usable.is_empty() {
+        return Err(PlanError::NoPayload);
+    }
+    if is_single_dll(&usable) {
+        return plan_new_dll(usable[0], plugins);
+    }
+    let root = plugins.join(normalize_install_name(name));
+    ensure_missing(&root)?;
+    let plan = plan_upgrade(
+        staged,
+        PlanTarget {
+            root: &root,
+            plugins,
+            owned_root: &root,
+            owned_files: &[],
+        },
+    )?;
+    for file in &plan.files {
+        if !paths::is_inside(&file.target, plugins) {
+            return Err(PlanError::Outside(file.target.clone()));
+        }
+    }
+    Ok(plan)
+}
+
+fn plan_new_dll(file: &StagedFile, plugins: &Path) -> Result<UpgradePlan, PlanError> {
+    let name = file
+        .relative
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| PlanError::UnsafePath(file.relative.display().to_string()))?;
+    let target = plugins.join(name);
+    if !paths::is_inside(&target, plugins) {
+        return Err(PlanError::Outside(target));
+    }
+    ensure_missing(&target)?;
+    Ok(UpgradePlan {
+        layout: Layout::Dll,
+        target_root: plugins.to_path_buf(),
+        files: vec![PlannedFile {
+            staged: file.path.clone(),
+            target,
+            action: FileAction::Create,
+            size: file.size,
+        }],
+        conflicts: Vec::new(),
+        warnings: Vec::new(),
+    })
+}
+
+fn ensure_missing(path: &Path) -> Result<(), PlanError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Err(PlanError::AlreadyExists(path.to_path_buf())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(source) => Err(PlanError::Io {
+            path: path.to_path_buf(),
+            source,
+        }),
+    }
+}
+
+const RESERVED_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+pub fn normalize_install_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = cleaned
+        .trim_matches(|character| matches!(character, '.' | '-' | ' '))
+        .to_string();
+    if trimmed.is_empty() {
+        return String::from("mod");
+    }
+    let mut normalized = trimmed;
+    let stem = normalized
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_uppercase();
+    if RESERVED_NAMES.contains(&stem.as_str()) {
+        normalized.push('-');
+    }
+    normalized
 }
 
 fn detect_layout(files: &[&StagedFile]) -> Layout {
@@ -494,6 +606,133 @@ mod tests {
             owned_root: owned,
             owned_files: &[],
         }
+    }
+
+    #[test]
+    fn install_names_replace_unsafe_characters() {
+        assert_eq!(normalize_install_name("Better QoL 2"), "Better-QoL-2");
+        assert_eq!(normalize_install_name("  Mod_2.1  "), "Mod_2.1");
+        assert_eq!(normalize_install_name(".hidden-mod."), "hidden-mod");
+        assert_eq!(
+            normalize_install_name("Mod: Remastered!"),
+            "Mod--Remastered"
+        );
+    }
+
+    #[test]
+    fn install_names_fall_back_when_nothing_is_usable() {
+        assert_eq!(normalize_install_name("中文模组"), "mod");
+        assert_eq!(normalize_install_name("..."), "mod");
+        assert_eq!(normalize_install_name(""), "mod");
+        assert_eq!(normalize_install_name("../evil"), "evil");
+    }
+
+    #[test]
+    fn install_names_escape_reserved_devices() {
+        assert_eq!(normalize_install_name("CON"), "CON-");
+        assert_eq!(normalize_install_name("con.dll"), "con.dll-");
+        assert_eq!(normalize_install_name("LPT9"), "LPT9-");
+        assert_eq!(normalize_install_name("Console"), "Console");
+    }
+
+    #[test]
+    fn first_install_places_a_bare_dll_in_plugins() {
+        let dir = temp_dir("first-install-dll");
+        let staging = staged(&dir.join("staging"), &["Mod.dll"]);
+        let plugins = dir.join("BepInEx/plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        let plan = plan_first_install(&staging, &plugins, "Mod 显示名").unwrap();
+        assert_eq!(plan.layout, Layout::Dll);
+        assert_eq!(plan.files.len(), 1);
+        assert_eq!(plan.files[0].target, plugins.join("Mod.dll"));
+        assert_eq!(plan.files[0].action, FileAction::Create);
+        assert!(paths::is_inside(&plan.files[0].target, &plugins));
+        assert!(plan.can_apply());
+    }
+
+    #[test]
+    fn first_install_refuses_an_existing_dll() {
+        let dir = temp_dir("first-install-dll-exists");
+        let staging = staged(&dir.join("staging"), &["Mod.dll"]);
+        let plugins = dir.join("BepInEx/plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        fs::write(plugins.join("Mod.dll"), b"other").unwrap();
+        let error = plan_first_install(&staging, &plugins, "Mod").unwrap_err();
+        assert!(matches!(error, PlanError::AlreadyExists(path) if path == plugins.join("Mod.dll")));
+    }
+
+    #[test]
+    fn first_install_strips_the_archive_wrapper() {
+        let dir = temp_dir("first-install-wrapper");
+        let staging = staged(
+            &dir.join("staging"),
+            &["Fancy QoL/Fancy.dll", "Fancy QoL/Extras/config.json"],
+        );
+        let plugins = dir.join("BepInEx/plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        let plan = plan_first_install(&staging, &plugins, "Fancy QoL").unwrap();
+        assert_eq!(plan.layout, Layout::Mod);
+        assert_eq!(plan.target_root, plugins.join("Fancy-QoL"));
+        assert!(
+            plan.files
+                .iter()
+                .all(|file| file.target.starts_with(plugins.join("Fancy-QoL")))
+        );
+        assert!(
+            plan.files
+                .iter()
+                .all(|file| file.action == FileAction::Create)
+        );
+        assert!(plan.can_apply());
+    }
+
+    #[test]
+    fn first_install_refuses_an_existing_directory() {
+        let dir = temp_dir("first-install-dir-exists");
+        let staging = staged(
+            &dir.join("staging"),
+            &["Pack/Mod.dll", "Pack/Extras/config.json"],
+        );
+        let plugins = dir.join("BepInEx/plugins");
+        let root = plugins.join("Mod");
+        fs::create_dir_all(&root).unwrap();
+        let error = plan_first_install(&staging, &plugins, "Mod").unwrap_err();
+        assert!(matches!(error, PlanError::AlreadyExists(path) if path == root));
+    }
+
+    #[test]
+    fn first_install_does_not_overwrite_files_in_a_promoted_plugins_root() {
+        let dir = temp_dir("first-install-promoted");
+        let staging = staged(
+            &dir.join("staging"),
+            &[
+                "BepInEx/plugins/Shared/Data/Mod.xml",
+                "BepInEx/plugins/Mod.dll",
+            ],
+        );
+        let plugins = dir.join("BepInEx/plugins");
+        fs::create_dir_all(plugins.join("Shared/Data")).unwrap();
+        fs::write(plugins.join("Shared/Data/Mod.xml"), b"other").unwrap();
+        let plan = plan_first_install(&staging, &plugins, "Display Name").unwrap();
+        assert_eq!(plan.layout, Layout::BepInEx);
+        assert_eq!(plan.target_root, plugins);
+        assert_eq!(plan.conflicts, vec![plugins.join("Shared/Data/Mod.xml")]);
+        assert!(!plan.can_apply());
+    }
+
+    #[test]
+    fn first_install_rejects_paths_outside_plugins() {
+        let dir = temp_dir("first-install-outside");
+        let staging = staged(
+            &dir.join("staging"),
+            &["plugins/Mod.dll", "plugins/../../evil.dll"],
+        );
+        let plugins = dir.join("BepInEx/plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        let error = plan_first_install(&staging, &plugins, "Mod").unwrap_err();
+        assert!(
+            matches!(error, PlanError::Outside(path) if path == plugins.join("../../evil.dll"))
+        );
     }
 
     #[test]

@@ -23,10 +23,22 @@ app.name:
   en: "CUHUB"
   zh-CN: "CUHUB"
   ja: "CUHUB"
+nav.mods:
+  en: "Mods"
+  zh-CN: "模组"
+  ja: "MOD"
+nav.breadcrumb:
+  en: "%{parent} / %{child}"
+  zh-CN: "%{parent} / %{child}"
+  ja: "%{parent} / %{child}"
 nav.nexus_dashboard:
   en: "Nexus Dashboard"
   zh-CN: "Nexus 仪表盘"
   ja: "Nexus ダッシュボード"
+nav.remote_mods:
+  en: "Remote Mods"
+  zh-CN: "远程模组"
+  ja: "リモートMOD"
 nav.local_mods:
   en: "Local Mods"
   zh-CN: "本地模组"
@@ -279,6 +291,70 @@ nexus.installed:
   en: "installed %{version}"
   zh-CN: "已安装 %{version}"
   ja: "インストール済み %{version}"
+remote.search_placeholder:
+  en: "Search by name or repository"
+  zh-CN: "按名称或仓库搜索"
+  ja: "名前またはリポジトリで検索"
+remote.total:
+  en: "%{count} mod(s)"
+  zh-CN: "共 %{count} 个模组"
+  ja: "%{count} 件"
+remote.filter_all:
+  en: "All"
+  zh-CN: "全部"
+  ja: "すべて"
+remote.filter_installed:
+  en: "Installed"
+  zh-CN: "已安装"
+  ja: "インストール済み"
+remote.filter_missing:
+  en: "Not installed"
+  zh-CN: "未安装"
+  ja: "未インストール"
+remote.install:
+  en: "Install"
+  zh-CN: "安装"
+  ja: "インストール"
+remote.update:
+  en: "Update"
+  zh-CN: "更新"
+  ja: "更新"
+remote.installed_tag:
+  en: "installed"
+  zh-CN: "已安装"
+  ja: "インストール済み"
+remote.preparing:
+  en: "Preparing %{name}..."
+  zh-CN: "正在准备 %{name}…"
+  ja: "%{name} を準備中…"
+remote.ready:
+  en: "%{name} is ready to install."
+  zh-CN: "%{name} 已可安装。"
+  ja: "%{name} をインストールできます。"
+remote.failed:
+  en: "Install prepare failed: %{error}"
+  zh-CN: "准备安装失败：%{error}"
+  ja: "インストールの準備に失敗しました: %{error}"
+remote.empty:
+  en: "The manifest has no entries."
+  zh-CN: "清单里还没有条目。"
+  ja: "マニフェストに項目がありません。"
+remote.empty_filtered:
+  en: "No mods match this filter."
+  zh-CN: "没有符合当前筛选的模组。"
+  ja: "条件に合うMODがありません。"
+remote.empty_no_manifest:
+  en: "No GitHub manifest found."
+  zh-CN: "没有找到 GitHub 清单。"
+  ja: "GitHub マニフェストが見つかりません。"
+remote.manifest_hint:
+  en: "Manifest: %{path}"
+  zh-CN: "清单：%{path}"
+  ja: "マニフェスト: %{path}"
+remote.pager:
+  en: "Page %{page} of %{pages} · %{total} mods"
+  zh-CN: "第 %{page} / %{pages} 页 · 共 %{total} 个模组"
+  ja: "%{page} / %{pages} ページ · %{total} 件"
 local.count:
   en: "%{count} mod(s) in Plugins"
   zh-CN: "Plugins 中有 %{count} 个模组"
@@ -480,9 +556,9 @@ settings.detected_folder:
   zh-CN: "检测到的文件夹"
   ja: "検出されたフォルダ"
 settings.detect_note:
-  en: "Detection reads the Steam libraries; BepInEx must already be installed."
-  zh-CN: "检测会读取 Steam 库；BepInEx 必须已经安装。"
-  ja: "検出は Steam ライブラリを読み取ります。BepInEx は既にインストールされている必要があります。"
+  en: "Detection reads the Steam libraries."
+  zh-CN: "检测会读取 Steam 库。"
+  ja: "検出は Steam ライブラリを読み取ります。"
 settings.interface_scale:
   en: "Interface scale"
   zh-CN: "界面缩放"
@@ -983,3 +1059,99 @@ notice.mod_gone:
   en: "That mod is no longer in the list."
   zh-CN: "该模组已不在列表中。"
   ja: "そのMODはリストに存在しません。"
+settings.bepinex:
+  en: "BepInEx"
+  zh-CN: "BepInEx"
+  ja: "BepInEx"
+panel.bepinex_repair:
+  en: "REPAIR BEPINEX"
+  zh-CN: "修复 BEPINEX"
+  ja: "BEPINEX を修復"
+bepinex.no_game_folder:
+  en: "Choose the game folder first."
+  zh-CN: "先选择游戏文件夹。"
+  ja: "先にゲームフォルダを選択してください。"
+bepinex.not_installed:
+  en: "Not installed."
+  zh-CN: "未安装。"
+  ja: "未インストール。"
+bepinex.installed:
+  en: "BepInEx %{version} is installed."
+  zh-CN: "已安装 BepInEx %{version}。"
+  ja: "BepInEx %{version} はインストール済みです。"
+bepinex.installed_no_version:
+  en: "BepInEx %{major} is installed."
+  zh-CN: "已安装 BepInEx %{major}。"
+  ja: "BepInEx %{major} はインストール済みです。"
+bepinex.incomplete:
+  en: "Installed but incomplete. Repair it."
+  zh-CN: "安装不完整，修复一下。"
+  ja: "インストールが不完全です。修復してください。"
+bepinex.il2cpp:
+  en: "This game is built with IL2CPP, so BepInEx cannot load mods into it."
+  zh-CN: "这个游戏用 IL2CPP 打包，BepInEx 装不了模组。"
+  ja: "このゲームは IL2CPP 製のため、BepInEx では MOD を読み込めません。"
+bepinex.install:
+  en: "Install BepInEx"
+  zh-CN: "安装 BepInEx"
+  ja: "BepInEx をインストール"
+bepinex.repair:
+  en: "Repair install"
+  zh-CN: "修复安装"
+  ja: "インストールを修復"
+bepinex.replace:
+  en: "Replace"
+  zh-CN: "替换"
+  ja: "置き換え"
+bepinex.flavor_lts:
+  en: "5 (stable)"
+  zh-CN: "5（稳定）"
+  ja: "5（安定版）"
+bepinex.flavor_experimental:
+  en: "6 (experimental)"
+  zh-CN: "6（试验）"
+  ja: "6（試験版）"
+bepinex.flavor_conflict:
+  en: "BepInEx %{installed} is installed. To switch to %{selected}, remove the old install first."
+  zh-CN: "现在装的是 BepInEx %{installed}。要换成 %{selected}，先手动删掉旧的安装。"
+  ja: "BepInEx %{installed} がインストールされています。%{selected} に切り替えるには、先に古いインストールを削除してください。"
+bepinex.plan_summary:
+  en: "Install BepInEx %{version}?"
+  zh-CN: "安装 BepInEx %{version}？"
+  ja: "BepInEx %{version} をインストールしますか？"
+bepinex.plan_conflicts:
+  en: "The game folder has conflicting files, so nothing was changed."
+  zh-CN: "游戏目录里有冲突的文件，没有改动任何东西。"
+  ja: "ゲームフォルダに競合するファイルがあるため、何も変更していません。"
+bepinex.repair_scope:
+  en: "Replaces the BepInEx core files. Your plugins and config stay, and replaced files are backed up first."
+  zh-CN: "会替换 BepInEx 的核心文件。你装的插件和配置都保留，被替换的文件会先备份。"
+  ja: "BepInEx のコアファイルを置き換えます。プラグインと設定はそのまま残り、置き換えるファイルは先にバックアップされます。"
+notice.bepinex_preparing:
+  en: "Downloading BepInEx..."
+  zh-CN: "正在下载 BepInEx…"
+  ja: "BepInEx をダウンロード中…"
+notice.bepinex_applying:
+  en: "Installing..."
+  zh-CN: "正在安装…"
+  ja: "インストール中…"
+notice.bepinex_game_running:
+  en: "Close the game first."
+  zh-CN: "先关掉游戏。"
+  ja: "先にゲームを終了してください。"
+notice.bepinex_no_game_folder:
+  en: "Choose the game folder in Settings first."
+  zh-CN: "先在设置里选游戏文件夹。"
+  ja: "先に設定でゲームフォルダを選択してください。"
+notice.bepinex_worker_stopped:
+  en: "BepInEx install failed: %{error}"
+  zh-CN: "BepInEx 安装失败：%{error}"
+  ja: "BepInEx のインストールに失敗しました: %{error}"
+notice.bepinex_installed:
+  en: "BepInEx is ready."
+  zh-CN: "BepInEx 已就绪。"
+  ja: "BepInEx の準備ができました。"
+notice.bepinex_cancelled:
+  en: "Cancelled."
+  zh-CN: "已取消。"
+  ja: "中止しました。"

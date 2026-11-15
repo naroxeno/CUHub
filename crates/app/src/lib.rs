@@ -35,5 +35,6 @@ pub fn App() -> impl IntoElement {
         )
         .child(shell::statusline(&ui))
         .child(pages::delete_overlay(&ui))
+        .child(pages::bepinex_overlay(&ui))
         .child(shell::dev_overlay(&ui))
 }

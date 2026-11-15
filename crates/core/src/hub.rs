@@ -229,6 +229,20 @@ const GITHUB_HEADERS: [(&str, &str); 2] = [
     ("X-GitHub-Api-Version", "2022-11-28"),
 ];
 
+#[derive(Debug, Clone)]
+pub struct BepInExInstall {
+    pub release: install::Release,
+    pub staging: PathBuf,
+    pub plan: UpgradePlan,
+}
+
+#[derive(Debug, Clone)]
+pub struct RemoteInstall {
+    pub name: String,
+    pub staging: PathBuf,
+    pub plan: UpgradePlan,
+}
+
 pub struct Hub {
     app_data: PathBuf,
     settings_store: SettingsStore,
@@ -806,6 +820,122 @@ impl Hub {
             ),
         );
         Ok(report)
+    }
+
+    pub fn bepinex_status(&self) -> Result<install::Status, HubError> {
+        let root = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        Ok(install::detect(&root))
+    }
+
+    pub fn prepare_bepinex(
+        &self,
+        flavor: install::Flavor,
+        mode: install::Mode,
+    ) -> Result<BepInExInstall, HubError> {
+        let root = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        self.ensure_game_closed()?;
+        let release = install::release_for(flavor);
+        let downloads = self.app_data.join("Downloads");
+        fs::create_dir_all(&downloads).map_err(HubError::Io)?;
+        let archive = downloads.join(release.file_name);
+        let verified =
+            archive.is_file() && install::verify_sha256(&archive, release.sha256).is_ok();
+        if !verified {
+            let _ = fs::remove_file(&archive);
+            let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
+            network
+                .download_with_timeout(
+                    release.url,
+                    &archive,
+                    install::MAX_ARCHIVE_BYTES,
+                    Duration::from_secs(300),
+                )
+                .map_err(HubError::Network)?;
+            install::verify_sha256(&archive, release.sha256)
+                .map_err(|error| HubError::Install(error.to_string()))?;
+        }
+        let staging = self.staging_root();
+        let staged = match install::stage_archive(&archive, &staging) {
+            Ok(staged) => staged,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(HubError::Install(error.to_string()));
+            }
+        };
+        let plan = match install::plan_install(&root, &staged, mode) {
+            Ok(plan) => plan,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&staged.staging_root);
+                return Err(HubError::Plan(error.to_string()));
+            }
+        };
+        self.logs.activity(
+            "BepInEx",
+            &format!(
+                "Prepared {} with {} file(s).",
+                release.label(),
+                plan.files.len()
+            ),
+        );
+        Ok(BepInExInstall {
+            release,
+            staging,
+            plan,
+        })
+    }
+
+    pub fn finish_bepinex(&self, install: &BepInExInstall) -> Result<PathBuf, HubError> {
+        let root = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        let plugins = install::ensure_plugins(&root).map_err(HubError::Io)?;
+        self.logs.activity(
+            "BepInEx",
+            &format!(
+                "{} is ready; plugins live in {}.",
+                install.release.label(),
+                plugins.display()
+            ),
+        );
+        Ok(plugins)
+    }
+
+    pub fn prepare_remote_install(
+        &self,
+        entry: &sources::SourceEntry,
+    ) -> Result<RemoteInstall, HubError> {
+        self.ensure_game_closed()?;
+        let plugins = self.plugins_dir()?;
+        let downloads = self.app_data.join("Downloads");
+        let archive =
+            self.download_github_asset(&entry.repo, entry.asset.as_deref(), &downloads)?;
+        let staging = self.staging_root();
+        let staged = if install::is_dll_file(&archive) {
+            install::stage_dll(&archive, &staging)
+        } else {
+            install::stage_archive(&archive, &staging)
+        };
+        let staged = match staged {
+            Ok(staged) => staged,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(HubError::Install(error.to_string()));
+            }
+        };
+        let plan = match install::plan_first_install(&staged, &plugins, &entry.name) {
+            Ok(plan) => plan,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&staged.staging_root);
+                return Err(HubError::Plan(error.to_string()));
+            }
+        };
+        self.logs.activity(
+            "Install",
+            &format!("Prepared remote install {}", entry.name),
+        );
+        Ok(RemoteInstall {
+            name: entry.name.clone(),
+            staging,
+            plan,
+        })
     }
 
     pub fn download_github_asset(

@@ -57,6 +57,8 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | U 来源表与整合包 | 来源优先级、GitHub 内置 tag、用户正则、表校验、CUPK1 整合包 | P2 |
 | V GitHub 清单与源管理 | 清单 schema 编辑器、Settings 里的源开关与缓存管理 | P2 |
 | W 游戏内联动（Bridge） | 桥发现与握手、连接状态、联机/存档/皮肤三个 mod 的只读状态与受限命令 | P0/P1 |
+| X BepInEx 自动安装 | 5 LTS / 6 Mono 选择、sha256 校验、两段式安装、修复重装、IL2CPP 与运行中拒绝 | P0 |
+| Y 远程模组页 | 本机 GitHub 清单的只读浏览、搜索/过滤/分页、首次安装与按清单更新 | P1 |
 
 ---
 
@@ -64,7 +66,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### A. 应用外壳与导航
 
-- **A1 (P0)** 左侧栏 6 个入口：Nexus Dashboard / Local Mods / Multiplayer / Skins & Backups / Hub Home / Settings；Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
+- **A1 (P0)** 左侧栏 5 个顶层入口：模组（父节点）/ Multiplayer / Skins & Backups / Hub Home / Settings；「模组」默认展开为 Nexus Dashboard / Remote Mods / Local Mods 三个子项，父节点只折叠/展开、不切页，折叠状态只在本次运行内保留（不落盘）；子项带 1px 左竖线与缩进，选中态沿用导航项样式。页面索引固定为 0 Nexus / 1 Remote / 2 Local / 3 Multiplayer / 4 Skins / 5 Home / 6 Settings；子页的页头与状态栏显示「模组 / <子页>」两段面包屑。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
 - **A2 (P0)** 顶栏：Launch Game（主操作，始终可见）、Report issues（URL 来自 Hub 配置；为空则禁用并 tooltip “Link not available.”，否则 “Report a bug or issue”）。
 - **A3 (P0)** 底部状态栏：单一 status 文本，由各页面与外壳写入（“Game folder detected.”、“Asked Steam to launch Casualties Unknown.”、“Could not launch: …” 等）。
 - **A4 (P1)** 侧栏底部显示 `v{version}`；3 秒内点击 5 次打开开发者控制台（Debug 页/窗口）。这是隐藏入口，不走设置。
@@ -366,6 +368,38 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 实现状态（2026-11-15，实验性，不发布）：仅 `crates/core/src/bridge/` 的帧编解码与 rendezvous 文件（W1 的发现文件一侧），无监听、无会话、无命令；游戏侧只有协议常量，插件工程未建。其余条目按编号排队。
 
 边界：不做通用 RPC、不做任意文件读写、不做进程注入；命令表只增不删；Nexus key 与 GitHub token 永不进桥。
+
+### X. BepInEx 自动安装（P0）
+
+模组要加载，游戏目录里必须先有 BepInEx。此前这一步交给用户自己下载解压，界面只提示“未检测到 BepInEx”；X 把「下载 → 校验 → 计划 → 确认 → 应用」接进来，让装完模组的人不会卡在运行时缺失。BepInEx 本体不是模组：它有自己的版本线、自己的文件归属（core、doorstop 注入器）和必须与可执行文件同级的文件，所以不复用模组安装的归属规则，也不允许被普通模组覆盖。
+
+- **X1 (P0)** 版本选择：默认 BepInEx 5 LTS 最新版（5.4.23.6），可切到 6（Mono，标注 experimental）。两条发行版各自 pin 死版本、文件名、URL 与 sha256，不查询更新、不跟随“最新”。理由：5 与 6 的资产布局与文件清单不同，自动追新版会在上游改结构时静默装错。
+- **X2 (P0)** 下载与校验：落 `<AppData>/Downloads`，按 pin 的 sha256 校验；不符就删掉重下一次，仍不符即失败，不进入解包。校验和是下载完整性的唯一证据，哈希不符的包不进游戏目录。
+- **X3 (P0)** 两段式：准备阶段只下载、解包到 staging 并生成计划；界面列文件数、Replace/Create、目标根、warnings 与 conflicts，用户确认后才写入；取消删除 staging。破坏性操作必须先给出范围并确认。
+- **X4 (P0)** 白名单：只安装 `BepInEx/` 下除 `config`、`plugins`、`patchers` 及其子树之外的文件，以及游戏根的 `.doorstop_version`、`doorstop_config.ini`、`changelog.txt`、`winhttp.dll`；归档其余文件跳过并记 warning。原因：三棵子树是用户数据；doorstop 必须与可执行文件同级才能注入；上游包里的示例插件与工具不能顺手进游戏目录。
+- **X5 (P0)** Fresh 与 Repair：未安装走 Fresh，目标已存在一律 conflict（防止误覆盖别的安装）；已安装或不完整走 Repair，只替换白名单内的既有普通文件，symlink 与目录仍是 conflict，`BepInEx/config` 与 `BepInEx/plugins` 永远保留。Repair 前有二次确认，说明替换范围与备份位置。两种模式完成后都确保 `BepInEx/plugins` 存在，作为后续模组安装的落点。
+- **X6 (P0)** IL2CPP：游戏根存在 `GameAssembly.dll` 时直接拒绝——BepInEx 5 与 6 Mono 都不加载；状态行写明原因并禁用按钮，不给“试一下再说”的入口。
+- **X7 (P0)** 运行中拒绝：准备与应用前都查游戏进程，运行中返回 `GameRunning` 并提示先关游戏；Repair 有备份，但不在游戏运行时写文件。
+- **X8 (P1)** 入口：Settings 的 BepInEx 区块（状态、版本选择、Install/Repair、计划确认与取消）；Local Mods 空态的「安装 BepInEx」按钮（已完整安装或 IL2CPP 时不显示；没有游戏目录时引导到 Settings，不 panic）。
+
+实现状态（2026-11-15）：core 的 `install::bepinex` 与 `Hub::{bepinex_status, prepare_bepinex, finish_bepinex}` 已落地，8 个单测覆盖白名单、发行版 pin、路径越界、校验、检测、IL2CPP、Fresh 冲突与 Repair；UI 已接 Settings 区块、Repair 确认弹层、计划确认块与 Local Mods 空态按钮。修复的备份写入 `<AppData>/Backups`（与模组安装同一条备份链），界面不承诺备份在游戏目录内。未做：升级/降级到另一条版本线、卸载、6 的 IL2CPP 支持。
+
+### Y. 远程模组页（P1）
+
+V 的清单只定义文件与校验，界面里没有入口，用户看不到清单里有什么，也不知道哪些已经装了。Y 把清单变成只读列表：浏览、搜索、过滤；已装的行直接按清单更新，未装的行直接走首次安装。页面不联网、不抓 GitHub、不改清单，数据全部来自 core 启动时装载的 `<AppData>/Sources/manifest.json`。
+
+- **Y1 (P0)** 入口与索引：侧栏「模组」树的第二项（页面索引 1）；页头与状态栏显示「模组 / 远程模组」。清单文件不存在时只显示一行说明与一行清单路径小字。
+- **Y2 (P0)** 数据：`Hub::sources()` 的 entries；每行显示清单显示名与 `owner/name` 小字，已装时附已安装版本（读不到版本时标 Installed）。
+- **Y3 (P0)** 匹配：用清单 matcher（guid / dll / name）与已装模组匹配；同一 entry 命中多个已装模组时按 guid > dll > name 取最优，与 `sources::best_match` 的优先级一致。
+- **Y4 (P0)** 搜索与过滤：按名称或仓库搜索；All / Installed / Not installed 三态；每页 50 行（`NEXUS_PAGE_SIZE` + `page_slice`）；搜索词、过滤与页码只在内存里，不写设置。
+- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 下载、staging 并生成首次安装计划，成功即把计划交给既有的 PENDING UPDATE 面板；Apply 仍走 `apply_install`，Cancel 删 staging。准备期间与已有 pending 时所有行按钮一起禁用。
+- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；同样进 pending 面板。
+- **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
+- **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*`；界面不出现 sha256、staging、plan、文件数等实现词。
+
+实现状态（2026-11-15）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker，`pages::remote_mods` 负责视图；pending 面板与 `apply_pending` 复用 Local Mods 的同一套。未做：清单重载（core 无 reload 接口，改清单需重启）、远端 release 版本预检（按钮不判断是否有新版）、清单下发（清单目前需手工放到 `<AppData>/Sources/manifest.json`）。
+
+边界：只读清单，不在应用内编辑或抓取；不重托管模组、不伪造下载 URL；游戏进程检查、路径越界与目标已存在由 core 拒绝，界面只展示错误。
 
 ---
 

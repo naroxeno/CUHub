@@ -2,7 +2,13 @@
 
 ## 职责
 
-nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexus / Local Mods / Multiplayer / Skins & Backups / Hub Home / Settings）与开发者控制台浮层。数据全部来自 `cuhub_core::hub::Hub`；后台任务只写 signal，界面只读 signal（线程模型见 `docs/ARCHITECTURE.md`）。nsh 细节与坑见同目录 `nsh-notes.md`。
+nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区（模组树下的 Nexus / 远程模组 / 本地模组，加 Multiplayer / Skins & Backups / Hub Home / Settings）与开发者控制台浮层。数据全部来自 `cuhub_core::hub::Hub`；后台任务只写 signal，界面只读 signal（线程模型见 `docs/ARCHITECTURE.md`）。nsh 细节与坑见同目录 `nsh-notes.md`。
+
+## 导航树
+
+- 顶层 5 项：模组（父节点）、Multiplayer、Skins & Backups、Hub Home、Settings；「模组」展开为三个子项，默认展开。页面索引 0 Nexus / 1 远程 / 2 本地 / 3 联机 / 4 皮肤 / 5 主页 / 6 设置，`i18n::PAGE_KEYS` 与 `shell::page_for` 必须同步。
+- 父节点高度 28，只切换 `mods_menu_open`，不写 `page`；子项高度 26，缩进 16 + 1px 左竖线 + 8。折叠状态在 `Ui` 的内存 signal 里，不落盘。
+- 子页的页头与状态栏用 `i18n::page_label` 输出两段面包屑（「模组 / 远程模组」），不在页面代码里硬编码父级名称。
 
 ## 视觉约束
 
@@ -20,12 +26,12 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
 
 | 位置 | 触发 | 效果 | 时长 / 帧率 |
 | --- | --- | --- | --- |
-| 六个页面根视图 | 切页（`when` 重新挂载） | 淡入 + 自下而上 24pt 滑入 | 450ms，一次性 |
+| 七个页面根视图 | 切页（`when` 重新挂载） | 淡入 + 自下而上 24pt 滑入 | 450ms，一次性 |
 | 侧栏选中项标签 | 该项被选中（`effect` 观察 `page`） | 标签淡入点亮 | 300ms，一次性 |
 | 状态行 | `notice` 变为非空 | 提示自左滑入 24pt + 淡入 | 300ms，一次性 |
 | 开发者控制台 | 打开浮层 | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
 | 删除确认弹窗 | 打开（`when` 重新挂载） | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
-| PENDING UPDATE 面板 | 待定计划出现 | 滑入 | 450ms |
+| PENDING UPDATE 面板 | 待定计划出现（本地模组页与远程模组页共用） | 滑入 | 450ms |
 | Check 进行中 | `can_check` 为假且已知仓库 | 4 个 3px 方块脉冲追逐 | 640ms 循环，20 Hz 上限 |
 | 可更新行的 State 徽标 | `row.can_update()` | WARN 色呼吸 | 1800ms 循环，10 Hz 上限 |
 | Nexus 刷新中 | `nexus_refreshing` | 同款方块 spinner + 文案 | 640ms 循环，20 Hz 上限 |
@@ -34,6 +40,13 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
 ## 模组行布局
 
 - 证据行与来源行的说明文字放在 `flex_1` + `min_w(0)` 容器里并截断，行内按钮 `flex_shrink_0`。窗口较窄或来源说明很长时先裁掉文字，按钮不会被挤出面板（修掉过 Disable 因按钮在窗口外而点不到的回归）。
+
+## 远程模组页
+
+- 数据来自 `Hub::sources()`（core 启动时装载），页面不联网；行模型在 `src/ui/remote.rs`，与已装模组按 matcher（guid / dll / name）关联，同优先级取 guid 最优。
+- 状态都在 `Ui` 上：`remote_all` / `remote_rows` / `remote_page` / `remote_total` / `remote_query` / `remote_filter` / `remote_busy`；搜索、过滤与翻页只重建内存切片，不写设置。
+- 安装与更新共用 `pending_install`：准备阶段写 `remote_busy`（该行按钮与其它行一起禁用），成功后进 PENDING UPDATE 面板，Apply 走既有的 `apply_pending`，Cancel 删 staging；`refresh_mods` 同时重建本地与远程行，装完按钮立即变成 Update。
+- 空态分三种：清单缺失（一行说明 + 清单路径小字）、清单无条目、过滤后为空。
 
 ## 模组启用/禁用
 
@@ -72,7 +85,7 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
   ```
   每个 key 下三种语言都要有；缺键时 `t!` 直接渲染 `<locale>.<key>`。
 - 取文案一律用 `nsh_core::prelude::t!`：`t!("key")`、`t!("key", name = expr)`，占位符写 `%{name}`。**`t!` 必须写在显示处**——`text(move || t!("…"))`、`pix(move || t!("…"), …)`、`button(move || t!("…"), …)`——因为 `translate` 读取的是当前 locale 的响应式状态，只有显示闭包里的调用会在 `set_locale` 后重渲染。先把结果算成 `String` 存进 signal 或结构体字段再显示，切换语言时不会更新，只能靠 `Ui::set_language` 手动重建。动态文案（如 Enable/Disable）同样在闭包里 `match` 后调 `t!`，不要在外面拼字符串。
-- 语言存在 core 的 `Settings.language`（默认 `"system"`）。`"system"` 表示跟随设备首选语言，其余存 BCP 47 标签（`en` / `ja` / `zh-CN`）；`src/i18n.rs` 里是白名单 `LANGUAGES`，解析失败按 `system` 处理。启动时 `Ui::new` 读该字段：`system` → `set_locale(None)`，否则 `Locale::parse` 成功后 `set_locale(Some(locale))`。Settings 页的 Language 段四个按钮调用 `Ui::set_language`：先 `set_locale`，再写 `settings.language` 并 `Hub::save_settings`（失败只写本地化状态行），然后复用现有缓存重建 local / nexus 行——不联网、不重新扫盘，重启后从 settings 恢复。
+- 语言存在 core 的 `Settings.language`（默认 `"system"`）。`"system"` 表示跟随设备首选语言，其余存 BCP 47 标签（`en` / `ja` / `zh-CN`）；`src/i18n.rs` 里是白名单 `LANGUAGES`，解析失败按 `system` 处理。启动时 `Ui::new` 读该字段：`system` → `set_locale(None)`，否则 `Locale::parse` 成功后 `set_locale(Some(locale))`。Settings 页的 Language 段四个按钮调用 `Ui::set_language`：先 `set_locale`，再写 `settings.language` 并 `Hub::save_settings`（失败只写本地化状态行），然后复用现有缓存重建 local / nexus / remote 行——不联网、不重新扫盘，重启后从 settings 恢复。
 - 限制：普通 `cargo run` / `cargo test` 不注入翻译表，`t!` 只会回退到键名或英文；要验证注入行为必须走 nsh 命令（本仓库日常仍用 cargo fmt/clippy/test，不启动 GUI）。因此不要把翻译表当作运行时可选资源加载，也不要新增 `build.rs` 去复制 locales。
 - 新增语言：① 在 `app.yml` 的每个 key 下加该 locale 一行（如 `de: ...`），补齐与 `en` 相同的键；② 在 `src/i18n.rs` 的 `LANGUAGES` 加 `(code, 显示名)`——显示名用该语言自己的写法，不翻译；③ Settings 页按钮由 `LANGUAGES` 长度驱动，无需改布局；④ 设备语言为新增语言时，`system` 会自动命中。core 的 `HubError` / `ModsError` 文案与 `nsh 0.5.1 · prototype shell` 保持英文，不翻译。
 ## 已知边界
