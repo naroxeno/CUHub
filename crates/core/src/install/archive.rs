@@ -7,6 +7,8 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::paths;
 
+pub const MAX_ARCHIVE_BYTES: u64 = 1024 * 1024 * 1024;
+
 const MAX_ENTRIES: usize = 4096;
 const MAX_FILE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 2 * 1024 * 1024 * 1024;

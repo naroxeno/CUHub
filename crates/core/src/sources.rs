@@ -158,6 +158,7 @@ pub struct SourceEntry {
     pub name: String,
     pub repo: Repo,
     pub matcher: Matcher,
+    pub asset: Option<String>,
     pub notes: Option<String>,
 }
 
@@ -223,10 +224,15 @@ fn parse_entry_fields(value: Value) -> Result<SourceEntry, String> {
     let name = clean_text(&document.name).ok_or("entry name is empty or invalid")?;
     let repo = Repo::parse(&document.repo).map_err(|error| error.to_string())?;
     let matcher = build_matcher(document.matcher)?;
+    let asset = match document.asset.as_deref() {
+        Some(value) => Some(clean_asset(value).ok_or("asset name is empty or invalid")?),
+        None => None,
+    };
     Ok(SourceEntry {
         name,
         repo,
         matcher,
+        asset,
         notes: document.notes.as_deref().and_then(clean_text),
     })
 }
@@ -264,6 +270,20 @@ fn clean_text(value: &str) -> Option<String> {
     Some(trimmed.to_owned())
 }
 
+fn clean_asset(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed.chars().count() > MAX_TEXT
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+        || trimmed.contains("..")
+        || trimmed.chars().any(char::is_control)
+    {
+        return None;
+    }
+    Some(trimmed.to_owned())
+}
+
 fn clean_dll(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") {
@@ -293,6 +313,8 @@ struct EntryDocument {
     repo: String,
     #[serde(rename = "match")]
     matcher: MatcherDocument,
+    #[serde(default)]
+    asset: Option<String>,
     #[serde(default)]
     notes: Option<String>,
 }
@@ -553,6 +575,7 @@ mod resolve_tests {
             name: name.to_owned(),
             repo: Repo::parse(repo).expect("repo"),
             matcher,
+            asset: None,
             notes: None,
         }
     }
@@ -763,6 +786,23 @@ mod tests {
         assert_eq!(first.notes.as_deref(), Some("unofficial mirror"));
     }
 
+    #[test]
+    fn manifest_reads_an_asset_name() {
+        let text = r#"{"schemaVersion":1,"generatedAt":"2026-10-01T00:00:00Z","mods":[{"name":"QoL Unknown","repo":"jimmyking9999999/QoL-Unknown","match":{"dll":["QoL Unknown"]},"asset":"QoL-Unknown.zip"}]}"#;
+        let manifest = SourceManifest::parse(text).expect("manifest");
+        assert_eq!(
+            manifest.entries[0].asset.as_deref(),
+            Some("QoL-Unknown.zip")
+        );
+    }
+
+    #[test]
+    fn manifest_skips_an_unsafe_asset_name() {
+        let text = r#"{"schemaVersion":1,"generatedAt":"2026-10-01T00:00:00Z","mods":[{"name":"Bad asset","repo":"a/b","match":{"dll":["Bad"]},"asset":"../evil.zip"}]}"#;
+        let manifest = SourceManifest::parse(text).expect("manifest");
+        assert!(manifest.entries.is_empty());
+        assert!(manifest.skipped[0].reason.contains("asset"));
+    }
     #[test]
     fn manifest_skips_bad_entries_with_their_index() {
         let manifest = SourceManifest::parse(BAD_SAMPLE).expect("manifest");

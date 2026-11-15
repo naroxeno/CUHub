@@ -2,7 +2,9 @@
 
 职责：把 GitHub REST 的 release 响应读成 `ReleaseInfo`，并把 HTTP 失败归类成可以直接展示的 `CheckFailure`。不联网、不缓存、不碰 UI。
 
-输入只读 `tag_name` / `published_at` / `prerelease` / `html_url`，其余字段（GitHub 返回的几十个字段）一律忽略。版本号走 `version::HubVersion::parse`：四段版本会被拒绝，`ReleaseError::Version` 带原始 tag。
+输入只读 `tag_name` / `published_at` / `prerelease` / `html_url` / `assets`，其余字段（GitHub 返回的几十个字段）一律忽略。版本号走 `version::HubVersion::parse`：四段版本会被拒绝，`ReleaseError::Version` 带原始 tag。
+
+资产只保留 name 非空、`download_url` 为 https 的项，记录 `name` / `download_url` / `size`。`Hub::download_github_asset` 在用户点 Update 时使用：先 `check_release`，再按清单 `asset` 精确名挑；未填时取第一个 `.zip` / `.7z` / `.rar`；下载上限 1 GB、超时 300 s，落到调用方给的目录。Check 本身不下载资产。
 
 失败分类：401 → Forbidden；403/429 → RateLimited（可选 `reset_in_minutes`）；404 → Missing；其它 → Status。UI 用 `summary()` 出结论句，`detail()` 出可展开的一句（目前只有网络错误和解析错误带细节）。
 

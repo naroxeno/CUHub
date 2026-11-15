@@ -17,6 +17,16 @@ struct ReleasePayload {
     prerelease: bool,
     #[serde(default)]
     html_url: Option<String>,
+    #[serde(default)]
+    assets: Vec<AssetPayload>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetPayload {
+    name: String,
+    browser_download_url: String,
+    #[serde(default)]
+    size: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +36,14 @@ pub struct ReleaseInfo {
     pub published_at: Option<DateTime<Utc>>,
     pub prerelease: bool,
     pub html_url: Option<String>,
+    pub assets: Vec<ReleaseAsset>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseAsset {
+    pub name: String,
+    pub download_url: String,
+    pub size: u64,
 }
 
 #[derive(Debug)]
@@ -105,6 +123,20 @@ fn release_info(payload: ReleasePayload) -> Result<ReleaseInfo, ReleaseError> {
             .html_url
             .map(|value| value.trim().to_owned())
             .filter(|value| !value.is_empty()),
+        assets: payload.assets.into_iter().filter_map(asset_info).collect(),
+    })
+}
+
+fn asset_info(payload: AssetPayload) -> Option<ReleaseAsset> {
+    let name = payload.name.trim();
+    let download_url = payload.browser_download_url.trim();
+    if name.is_empty() || !download_url.starts_with("https://") {
+        return None;
+    }
+    Some(ReleaseAsset {
+        name: name.to_owned(),
+        download_url: download_url.to_owned(),
+        size: payload.size,
     })
 }
 
@@ -191,6 +223,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn release_assets_keep_only_https_links() {
+        let text = r#"{"tag_name":"v1.0.0","assets":[{"name":"mod.zip","browser_download_url":"https://example.com/mod.zip","size":42},{"name":"bad.zip","browser_download_url":"http://example.com/bad.zip"},{"name":" ","browser_download_url":"https://example.com/blank.zip"}]}"#;
+        let release = parse_release(text).expect("parse");
+        assert_eq!(release.assets.len(), 1);
+        assert_eq!(release.assets[0].name, "mod.zip");
+        assert_eq!(
+            release.assets[0].download_url,
+            "https://example.com/mod.zip"
+        );
+        assert_eq!(release.assets[0].size, 42);
+    }
     #[test]
     fn four_segment_tag_is_rejected() {
         let text = r#"{"tag_name":"v1.2.3.4"}"#;

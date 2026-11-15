@@ -326,12 +326,107 @@ fn stat(
         .child(pix(value, 24.0, color, &z))
 }
 
+fn pending_panel(z: &Signal<u8>, ui: &Ui) -> View {
+    let z = *z;
+    let Some(pending) = ui.pending_install.get() else {
+        return view();
+    };
+    let replaced = pending
+        .plan
+        .files
+        .iter()
+        .filter(|file| file.action == cuhub_core::install::FileAction::Replace)
+        .count();
+    let created = pending.plan.files.len().saturating_sub(replaced);
+    let mut notes = pending.notes.clone();
+    notes.extend(pending.plan.warnings.clone());
+    let mut body = view()
+        .flex_col()
+        .gap(scaled(&z, 4.0))
+        .child(pix(
+            format!(
+                "{} · {} file(s) · {} replace · {} new",
+                pending.mod_name,
+                pending.plan.files.len(),
+                replaced,
+                created
+            ),
+            12.0,
+            TEXT,
+            &z,
+        ))
+        .child(pix(
+            format!(
+                "From {} · target {}",
+                match pending.source {
+                    cuhub_core::sources::SourceKind::Github => "GitHub",
+                    cuhub_core::sources::SourceKind::Nexus => "Nexus",
+                },
+                pending.plan.target_root.display()
+            ),
+            10.0,
+            TEXT_MUTED,
+            &z,
+        ));
+    if !notes.is_empty() {
+        body = body.child(pix(notes.join(" "), 10.0, WARN, &z));
+    }
+    if !pending.plan.conflicts.is_empty() {
+        let list = pending
+            .plan
+            .conflicts
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        body = body.child(pix(
+            format!("Conflicts block this update: {list}"),
+            10.0,
+            DANGER,
+            &z,
+        ));
+    }
+    if pending.game_running {
+        body = body.child(pix(
+            "The game is running. Apply will wait until it closes.",
+            10.0,
+            WARN,
+            &z,
+        ));
+    }
+    let status_ui = ui.clone();
+    body = body.child(pix(
+        move || status_ui.apply_status.get(),
+        10.0,
+        TEXT_MUTED,
+        &z,
+    ));
+    let apply_ui = ui.clone();
+    let cancel_ui = ui.clone();
+    let can_apply = pending.plan.can_apply();
+    body = body.child(
+        view()
+            .flex_row()
+            .gap(scaled(&z, 8.0))
+            .child(button(&z, "Apply", can_apply, move || {
+                apply_ui.apply_pending();
+            }))
+            .child(button(&z, "Cancel", true, move || {
+                cancel_ui.discard_pending();
+            })),
+    );
+    panel(&z, "PENDING UPDATE", body)
+}
+
 pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let summary = ui.clone();
     let empty = ui.clone();
     let empty_ui = ui.clone();
     let empty_z = z;
+    let pending = ui.pending_install;
+    let pending_z = z;
+    let pending_ui = ui.clone();
     let refresh = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
@@ -368,6 +463,10 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                 .child(when(
                     move || empty.mods.get().is_empty(),
                     move || empty_state(&empty_z, &empty_ui),
+                ))
+                .child(when(
+                    move || pending.get().is_some(),
+                    move || pending_panel(&pending_z, &pending_ui),
                 ))
                 .child(table_header(&z))
                 .child(rows),
@@ -483,6 +582,13 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         let key = row.source_key.clone();
         line = line.child(button(z, "Check", true, move || {
             check_ui.check_source(key.clone(), repo.clone());
+        }));
+    }
+    if row.can_update() {
+        let update_ui = ui.clone();
+        let key = row.source_key.clone();
+        line = line.child(button(z, "Update", true, move || {
+            update_ui.update_source(key.clone());
         }));
     }
     line

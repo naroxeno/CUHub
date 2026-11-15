@@ -106,7 +106,7 @@ pub fn apply_upgrade(plan: &UpgradePlan, backup_root: &Path) -> Result<ApplyRepo
         .iter()
         .any(|file| file.action == FileAction::Replace)
     {
-        Some(create_backup(backup_root, plan)?)
+        Some(create_backup(backup_root)?)
     } else {
         None
     };
@@ -178,7 +178,7 @@ fn check_target(file: &PlannedFile) -> Result<(), ApplyError> {
     }
 }
 
-fn create_backup(backup_root: &Path, plan: &UpgradePlan) -> Result<PathBuf, ApplyError> {
+fn create_backup(backup_root: &Path) -> Result<PathBuf, ApplyError> {
     fs::create_dir_all(backup_root).map_err(|source| ApplyError::Io {
         path: backup_root.to_path_buf(),
         source,
@@ -194,7 +194,6 @@ fn create_backup(backup_root: &Path, plan: &UpgradePlan) -> Result<PathBuf, Appl
         path: directory.clone(),
         source,
     })?;
-    let _ = plan;
     Ok(directory)
 }
 

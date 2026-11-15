@@ -24,6 +24,7 @@
       "name": "ScavLib",
       "repo": "starfi5h/ScavLib",
       "match": { "guid": "Starfi5h.ScavLib", "dll": ["ScavLib.dll"], "name": ["ScavLib"] },
+      "asset": "ScavLib-1.2.3.zip",
       "notes": "optional"
     }
   ]
@@ -34,7 +35,7 @@
 
 快照新鲜度：generatedAt 距今超过 2h（DEFAULT_SNAPSHOT_MAX_AGE_MINUTES=120，目前还是常量，未接 settings）才查 GitHub API；另有手动 Check 按钮（用户已拍板）。
 
-已定（2026-11-15）：两源都显示、默认最新版本、用户可 pin；MVP 不做资产下载，也不做 Open release 按钮（等联网层）。
+已定（2026-11-15）：两源都显示、默认最新版本、用户可 pin；Check 不下载资产，资产只在用户点 Update 时下载；不做 Open release 按钮。
 
 合并层（resolve）：`best_match` 在所有命中里取 MatchKind 最高的（Guid > Dll > Name），同级并列取清单里靠前的那条。`resolve_mod` 把「命中的条目 + GitHub 版本（可缺）+ Nexus 版本（可缺）+ pin」合成 `ModResolution`：只有命中条目才有 GitHub 选项；Nexus 选项只在版本已知时出现；生效源规则同上。全是纯函数，不联网。
 

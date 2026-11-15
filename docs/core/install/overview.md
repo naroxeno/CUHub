@@ -32,6 +32,12 @@
 - `PlanError`：没有可安装文件、路径越界、重复路径。
 - `ApplyError`：冲突未解决、目标在排队期间变化、备份或替换失败、回滚失败。回滚失败会同时带上原始错误与问题列表。
 
-## 尚未接线
+## 接线
 
-来源选择（Nexus Premium 优先、否则 GitHub）、资产下载、游戏运行时的排队、升级确认面板与 `Hub`/UI 入口都还没有接到本模块。
+`Hub` 把本模块串成一次用户发起的升级：`download_nexus_latest` 或 `download_github_asset` 把归档放到 `<AppData>/Downloads`；`plan_archive` 解包到 `<AppData>/Staging/<nanos>-<pid>` 并生成计划；UI 的 pending 面板展示文件数、替换/新增、目标根、警告与冲突，用户点 Apply 才 `apply_install`。取消或计划失败时删 staging。
+
+来源选择在 UI 层：pin 优先；未 pin 时有 Nexus Premium 走 Nexus，否则 GitHub；Nexus 下载失败且未 pin 时回退 GitHub，并在面板注明。GitHub 资产按清单 `asset` 精确名选择，未填时取 release 里第一个 zip/7z/rar。
+
+`apply_install` 先查游戏进程：运行中返回 `GameRunning`，UI 每 3 秒重试，直到退出或用户取消。取消只在下一次重试前生效，已经开始的写入会完成；不会留下半套文件。写入前把所有 Replace 备份到 `<AppData>/Backups/<UTC 时间戳>`，逐文件临时文件 + rename，失败按逆序回滚。备份目录保留供手工恢复；本版没有恢复界面。
+
+不做：一键升级、后台自动安装、release 页链接、把归档送进收件箱再确认。Update 只在 `OutOfDate` 且能确定来源时出现；Nexus Standard 的 403 仍按失败展示。

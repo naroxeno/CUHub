@@ -4,11 +4,13 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::thread;
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
 use crate::catalogs::Catalogs;
-use crate::github::{self, CheckFailure, ReleaseInfo};
+use crate::github::{self, CheckFailure, ReleaseAsset, ReleaseInfo};
+use crate::install::{self, UpgradePlan};
 use crate::launch::{self, LaunchError};
 use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
@@ -40,6 +42,13 @@ pub enum HubError {
     NetworkUnavailable,
     Source(ChoiceError),
     Sources(sources::LoadError),
+    Install(String),
+    Plan(String),
+    Apply(String),
+    GameRunning,
+    Github(String),
+    Update(String),
+    Io(io::Error),
 }
 
 impl std::fmt::Display for HubError {
@@ -76,6 +85,18 @@ impl std::fmt::Display for HubError {
             }
             Self::Source(error) => error.fmt(formatter),
             Self::Sources(error) => error.fmt(formatter),
+            Self::Install(message) => write!(formatter, "Could not unpack the update: {message}"),
+            Self::Plan(message) => write!(formatter, "The update cannot be installed: {message}"),
+            Self::Apply(message) => write!(formatter, "The update failed: {message}"),
+            Self::GameRunning => {
+                write!(
+                    formatter,
+                    "Close Casualties Unknown before applying the update."
+                )
+            }
+            Self::Github(message) => write!(formatter, "GitHub update failed: {message}"),
+            Self::Update(message) => write!(formatter, "Could not prepare the update: {message}"),
+            Self::Io(error) => write!(formatter, "I/O error: {error}"),
         }
     }
 }
@@ -96,6 +117,13 @@ impl std::error::Error for HubError {
             Self::Cache(error) => Some(error),
             Self::Nexus(error) => Some(error),
             Self::Json(error) => Some(error),
+            Self::Io(error) => Some(error),
+            Self::Install(_)
+            | Self::Plan(_)
+            | Self::Apply(_)
+            | Self::GameRunning
+            | Self::Github(_)
+            | Self::Update(_) => None,
         }
     }
 }
@@ -514,6 +542,133 @@ impl Hub {
         }
     }
 
+    pub fn game_running(&self) -> Result<bool, HubError> {
+        let game = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        install::game_running(&game).map_err(HubError::Io)
+    }
+
+    pub fn backup_root(&self) -> PathBuf {
+        let configured = self.settings.backup_path.trim();
+        let path = if configured.is_empty() {
+            PathBuf::from("Backups")
+        } else {
+            PathBuf::from(configured)
+        };
+        if path.is_absolute() {
+            path
+        } else {
+            self.app_data.join(path)
+        }
+    }
+
+    pub fn staging_root(&self) -> PathBuf {
+        let stamp = Utc::now()
+            .timestamp_nanos_opt()
+            .unwrap_or_default()
+            .to_string();
+        self.app_data
+            .join("Staging")
+            .join(format!("{stamp}-{}", std::process::id()))
+    }
+
+    pub fn plan_archive(
+        &self,
+        archive: &Path,
+        installed: &InstalledMod,
+        staging: &Path,
+    ) -> Result<UpgradePlan, HubError> {
+        let plugins = self.plugins_dir()?;
+        let root = if installed.source_path.is_dir() {
+            installed.source_path.clone()
+        } else {
+            installed
+                .source_path
+                .parent()
+                .ok_or_else(|| HubError::Install(String::from("mod path has no parent")))?
+                .to_path_buf()
+        };
+        let staged = install::stage_archive(archive, staging)
+            .map_err(|error| HubError::Install(error.to_string()))?;
+        let target = install::PlanTarget {
+            root: &root,
+            plugins: &plugins,
+            owned_root: &installed.source_path,
+            owned_files: &installed.dll_paths,
+        };
+        match install::plan_upgrade(&staged, target) {
+            Ok(plan) => Ok(plan),
+            Err(error) => {
+                let _ = fs::remove_dir_all(&staged.staging_root);
+                Err(HubError::Plan(error.to_string()))
+            }
+        }
+    }
+
+    pub fn discard_staging(&self, staging: &Path) {
+        if let Err(error) = fs::remove_dir_all(staging)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            self.logs.error("Install", &error);
+        }
+    }
+
+    pub fn apply_install(&self, plan: &UpgradePlan) -> Result<install::ApplyReport, HubError> {
+        if self.game_running()? {
+            return Err(HubError::GameRunning);
+        }
+        let report = install::apply_upgrade(plan, &self.backup_root())
+            .map_err(|error| HubError::Apply(error.to_string()))?;
+        self.logs.activity(
+            "Install",
+            &format!(
+                "Installed {} file(s); backup at {}.",
+                report.replaced.len() + report.created.len(),
+                report
+                    .backup
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| String::from("none"))
+            ),
+        );
+        Ok(report)
+    }
+
+    pub fn download_github_asset(
+        &self,
+        repo: &Repo,
+        requested: Option<&str>,
+        destination: &Path,
+    ) -> Result<PathBuf, HubError> {
+        let release = match self.check_release(repo)? {
+            CheckOutcome::Release(release) => release,
+            CheckOutcome::Failure(failure) => return Err(HubError::Github(failure.summary())),
+        };
+        let asset = select_github_asset(&release.assets, requested).ok_or_else(|| {
+            HubError::Github(match requested {
+                Some(name) => format!("release has no asset named {name}"),
+                None => String::from("release has no zip, 7z or rar asset"),
+            })
+        })?;
+        let name = safe_asset_name(&asset.name)
+            .ok_or_else(|| HubError::Github(String::from("release asset has an unsafe name")))?;
+        fs::create_dir_all(destination).map_err(HubError::Io)?;
+        let target = unique_destination(destination, &name);
+        let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
+        network
+            .download_with_timeout(
+                &asset.download_url,
+                &target,
+                install::MAX_ARCHIVE_BYTES,
+                Duration::from_secs(300),
+            )
+            .map_err(HubError::Network)?;
+        self.logs.activity(
+            "GitHub",
+            &format!("Downloaded {} to {}.", asset.name, target.display()),
+        );
+        Ok(target)
+    }
+
     pub fn log_entries(&self) -> Vec<String> {
         self.logs.entries()
     }
@@ -521,6 +676,70 @@ impl Hub {
     pub fn logs(&self) -> &Logs {
         &self.logs
     }
+}
+
+fn select_github_asset<'a>(
+    assets: &'a [ReleaseAsset],
+    requested: Option<&str>,
+) -> Option<&'a ReleaseAsset> {
+    if let Some(name) = requested {
+        return assets
+            .iter()
+            .find(|asset| asset.name.eq_ignore_ascii_case(name));
+    }
+    assets.iter().find(|asset| is_archive_name(&asset.name))
+}
+
+fn is_archive_name(name: &str) -> bool {
+    matches!(
+        Path::new(name)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase())
+            .as_deref(),
+        Some("zip" | "7z" | "rar")
+    )
+}
+
+fn safe_asset_name(name: &str) -> Option<String> {
+    if name.is_empty()
+        || name.chars().count() > 200
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains("..")
+        || name.chars().any(char::is_control)
+    {
+        return None;
+    }
+    let file_name = Path::new(name).file_name()?.to_str()?;
+    if file_name.is_empty() {
+        None
+    } else {
+        Some(file_name.to_string())
+    }
+}
+
+fn unique_destination(directory: &Path, name: &str) -> PathBuf {
+    let candidate = directory.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let stem = Path::new(name)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("update");
+    let extension = Path::new(name).extension().and_then(|value| value.to_str());
+    for index in 1..1000 {
+        let candidate_name = match extension {
+            Some(extension) => format!("{stem}-{index}.{extension}"),
+            None => format!("{stem}-{index}"),
+        };
+        let candidate = directory.join(candidate_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    directory.join(format!("{stem}-{}.archive", std::process::id()))
 }
 
 fn fetch_release(network: &Network, url: &str) -> Result<ReleaseInfo, CheckFailure> {

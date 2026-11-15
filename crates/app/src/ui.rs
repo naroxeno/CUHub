@@ -1,11 +1,13 @@
 //! Zoom-aware pixel primitives and the app's hub-backed state.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use cuhub_core::github::{CheckFailure, ReleaseInfo};
 use cuhub_core::hub::{CheckOutcome, Hub, HubError, MetadataRefresh};
+use cuhub_core::install::UpgradePlan;
 use cuhub_core::metadata::MetadataMod;
 use cuhub_core::mods::{InstalledMod, ModStatus};
 use cuhub_core::settings::Settings;
@@ -74,6 +76,7 @@ pub struct SourceRow {
     pub repo: Option<Repo>,
     pub options: Vec<SourceKind>,
     pub pinned: Option<SourceKind>,
+    pub asset: Option<String>,
 }
 
 impl SourceRow {
@@ -102,6 +105,11 @@ impl LocalModRow {
     pub fn row_key(&self) -> String {
         self.key.clone()
     }
+
+    pub fn can_update(&self) -> bool {
+        self.item.status == ModStatus::OutOfDate
+            && (self.item.metadata_id.is_some() || self.source.repo.is_some())
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -109,6 +117,16 @@ pub enum CheckState {
     Checking,
     Release(ReleaseInfo),
     Failed(CheckFailure),
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct PendingInstall {
+    pub mod_name: String,
+    pub source: SourceKind,
+    pub plan: UpgradePlan,
+    pub staging: PathBuf,
+    pub notes: Vec<String>,
+    pub game_running: bool,
 }
 
 #[derive(Clone)]
@@ -130,6 +148,11 @@ pub struct Ui {
     pub nexus_error: Signal<String>,
     pub local_rows: Signal<Vec<LocalModRow>>,
     pub checks: Signal<BTreeMap<String, CheckState>>,
+    pub pending_install: Signal<Option<PendingInstall>>,
+    pub update_busy: Signal<Option<String>>,
+    pub apply_running: Signal<bool>,
+    pub apply_cancel: Signal<bool>,
+    pub apply_status: Signal<String>,
     pub nexus_downloading: Signal<Option<String>>,
     pub nexus_list: ElementRef,
     pub metadata_synced: Signal<String>,
@@ -186,6 +209,11 @@ impl Ui {
             nexus_error: signal(String::new()),
             local_rows: signal(local_rows),
             checks: signal(checks),
+            pending_install: signal(None::<PendingInstall>),
+            update_busy: signal(None::<String>),
+            apply_running: signal(false),
+            apply_cancel: signal(false),
+            apply_status: signal(String::new()),
             nexus_downloading: signal(None::<String>),
             nexus_list: element_ref(),
             metadata_synced: signal(metadata_synced),
@@ -407,6 +435,182 @@ impl Ui {
         });
     }
 
+    pub fn update_source(&self, key: String) {
+        if self.update_busy.get().is_some() {
+            self.notice
+                .set(String::from("An update is already being prepared."));
+            return;
+        }
+        if self.pending_install.get().is_some() {
+            self.notice
+                .set(String::from("Apply or cancel the pending update first."));
+            return;
+        }
+        let row = self
+            .local_rows
+            .get()
+            .into_iter()
+            .find(|row| row.source_key == key);
+        let Some(row) = row else {
+            self.notice
+                .set(String::from("That mod is no longer in the list."));
+            return;
+        };
+        if !row.can_update() {
+            self.notice
+                .set(String::from("This mod is not ready for an update."));
+            return;
+        }
+        let item = row.item.clone();
+        let pinned = row.source.pinned;
+        let repo = row.source.repo.clone();
+        let asset = row.source.asset.clone();
+        let nexus_id = item.metadata_id.clone();
+        let name = item.name.clone();
+        self.update_busy.set(Some(key));
+        self.notice.set(format!("Preparing an update for {name}…"));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                prepare_update(
+                    &hub,
+                    &item,
+                    pinned,
+                    repo.as_ref(),
+                    asset.as_deref(),
+                    nexus_id.as_deref(),
+                )
+            })
+            .await;
+            match result {
+                Ok(Ok(pending)) => {
+                    let name = pending.mod_name.clone();
+                    let files = pending.plan.files.len();
+                    ui.pending_install.set(Some(pending));
+                    ui.apply_status.set(String::new());
+                    ui.notice.set(format!(
+                        "Ready to update {name}: {files} file(s). Review the plan below."
+                    ));
+                }
+                Ok(Err(error)) => ui.notice.set(error.to_string()),
+                Err(error) => ui.notice.set(format!("The update worker stopped: {error}")),
+            }
+            ui.update_busy.set(None);
+        });
+    }
+
+    pub fn apply_pending(&self) {
+        let Some(pending) = self.pending_install.get() else {
+            return;
+        };
+        if self.apply_running.get() {
+            return;
+        }
+        self.apply_running.set(true);
+        self.apply_cancel.set(false);
+        self.apply_status.set(if pending.game_running {
+            String::from("Waiting for Casualties Unknown to close…")
+        } else {
+            String::from("Applying the update…")
+        });
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            loop {
+                if ui.apply_cancel.get() {
+                    let staging = pending.staging.clone();
+                    let hub_for_cleanup = hub.clone();
+                    let _ = blocking(move || {
+                        let hub = hub_for_cleanup
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        hub.discard_staging(&staging);
+                    })
+                    .await;
+                    ui.pending_install.set(None);
+                    ui.apply_status.set(String::from("Update cancelled."));
+                    ui.notice.set(String::from("The update was cancelled."));
+                    break;
+                }
+                let plan = pending.plan.clone();
+                let worker_hub = hub.clone();
+                let result = blocking(move || {
+                    let hub = worker_hub
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    hub.apply_install(&plan)
+                })
+                .await;
+                match result {
+                    Ok(Ok(report)) => {
+                        let staging = pending.staging.clone();
+                        let cleanup_hub = hub.clone();
+                        let _ = blocking(move || {
+                            let hub = cleanup_hub
+                                .lock()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            hub.discard_staging(&staging);
+                        })
+                        .await;
+                        let count = report.replaced.len() + report.created.len();
+                        let backup = report
+                            .backup
+                            .as_ref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| String::from("none"));
+                        let name = pending.mod_name.clone();
+                        ui.pending_install.set(None);
+                        ui.apply_status.set(String::new());
+                        ui.refresh_mods();
+                        ui.notice.set(format!(
+                            "Updated {name}: {count} file(s). Backup: {backup}."
+                        ));
+                        break;
+                    }
+                    Ok(Err(HubError::GameRunning)) => {
+                        ui.apply_status
+                            .set(String::from("Waiting for Casualties Unknown to close…"));
+                        let _ = blocking(|| std::thread::sleep(Duration::from_secs(3))).await;
+                    }
+                    Ok(Err(error)) => {
+                        ui.apply_status.set(String::new());
+                        ui.notice.set(error.to_string());
+                        break;
+                    }
+                    Err(error) => {
+                        ui.apply_status.set(String::new());
+                        ui.notice
+                            .set(format!("The install worker stopped: {error}"));
+                        break;
+                    }
+                }
+            }
+            ui.apply_running.set(false);
+        });
+    }
+
+    pub fn discard_pending(&self) {
+        if self.apply_running.get() {
+            self.apply_cancel.set(true);
+            self.apply_status
+                .set(String::from("Cancelling after the current step…"));
+            return;
+        }
+        let Some(pending) = self.pending_install.get() else {
+            return;
+        };
+        {
+            let hub = self.hub();
+            hub.discard_staging(&pending.staging);
+        }
+        self.pending_install.set(None);
+        self.apply_status.set(String::new());
+        self.notice
+            .set(String::from("The pending update was discarded."));
+    }
+
     pub fn cycle_source_pin(&self, key: String, options: Vec<SourceKind>) {
         let current = {
             let hub = self.hub();
@@ -610,6 +814,85 @@ impl Ui {
     }
 }
 
+fn prepare_update(
+    hub: &Hub,
+    item: &InstalledMod,
+    pinned: Option<SourceKind>,
+    repo: Option<&Repo>,
+    asset: Option<&str>,
+    nexus_id: Option<&str>,
+) -> Result<PendingInstall, HubError> {
+    let mut source = choose_update_source(hub, pinned, nexus_id.is_some(), repo.is_some());
+    let mut notes = Vec::new();
+    let archive = match source {
+        SourceKind::Nexus => {
+            let id =
+                nexus_id.ok_or_else(|| HubError::Update(String::from("mod has no Nexus id")))?;
+            match hub.download_nexus_latest(id) {
+                Ok(download) => download.path,
+                Err(error) => match repo {
+                    Some(repo) if pinned.is_none() => {
+                        notes.push(format!(
+                            "Nexus download failed: {error}. Falling back to GitHub."
+                        ));
+                        source = SourceKind::Github;
+                        download_github_archive(hub, repo, asset)?
+                    }
+                    _ => return Err(error),
+                },
+            }
+        }
+        SourceKind::Github => {
+            let repo =
+                repo.ok_or_else(|| HubError::Update(String::from("mod has no GitHub repository")))?;
+            download_github_archive(hub, repo, asset)?
+        }
+    };
+    let staging = hub.staging_root();
+    let plan = hub.plan_archive(&archive, item, &staging)?;
+    let game_running = hub.game_running()?;
+    Ok(PendingInstall {
+        mod_name: item.name.clone(),
+        source,
+        plan,
+        staging,
+        notes,
+        game_running,
+    })
+}
+
+fn choose_update_source(
+    hub: &Hub,
+    pinned: Option<SourceKind>,
+    has_nexus: bool,
+    has_github: bool,
+) -> SourceKind {
+    if let Some(kind) = pinned {
+        return kind;
+    }
+    let premium = hub.nexus_has_key()
+        && hub
+            .validate_nexus_key()
+            .map(|account| account.is_premium)
+            .unwrap_or(false);
+    if premium && has_nexus {
+        SourceKind::Nexus
+    } else if has_github {
+        SourceKind::Github
+    } else {
+        SourceKind::Nexus
+    }
+}
+
+fn download_github_archive(
+    hub: &Hub,
+    repo: &Repo,
+    asset: Option<&str>,
+) -> Result<PathBuf, HubError> {
+    let destination = hub.app_data().join("Downloads");
+    hub.download_github_asset(repo, asset, &destination)
+}
+
 struct SourceInput<'a> {
     entries: &'a [SourceEntry],
     item: &'a InstalledMod,
@@ -679,6 +962,7 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
             repo: None,
             options: Vec::new(),
             pinned: input.pinned,
+            asset: None,
         };
     };
     let repo = &matched.entry.repo;
@@ -720,6 +1004,7 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
         repo: Some(repo.clone()),
         options,
         pinned: resolution.pinned,
+        asset: matched.entry.asset.clone(),
     }
 }
 
