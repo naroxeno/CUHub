@@ -33,5 +33,6 @@ pub fn App() -> impl IntoElement {
                 .child(view().flex_col().flex_1().child(shell::content(&ui))),
         )
         .child(shell::statusline(&ui))
+        .child(pages::delete_overlay(&ui))
         .child(shell::dev_overlay(&ui))
 }

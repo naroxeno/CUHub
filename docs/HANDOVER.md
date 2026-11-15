@@ -1,6 +1,6 @@
 # 交接说明
 
-截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），核心 165 个单测通过；禁用/启用与批量开关（FEATURES E6/E8）以及删除（E8 Delete all、E9 单项删除）已在 core 落地，app 未接；install 核心（zip/7z/rar 与裸 DLL staging、归属计划、备份/替换/回滚）与 Hub/UI 接线已落地（OutOfDate 或 GitHub release 版本更高的模组可 Update：选源、下载、解包、确认计划、Apply，游戏运行时排队）；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），核心 165 个单测通过；禁用/启用与批量开关（FEATURES E6/E8）以及删除（E8 Delete all、E9 单项删除）已在 core 落地，app 已接（删除走两段式确认弹窗，列出绝对路径与文件数）；install 核心（zip/7z/rar 与裸 DLL staging、归属计划、备份/替换/回滚）与 Hub/UI 接线已落地（OutOfDate 或 GitHub release 版本更高的模组可 Update：选源、下载、解包、确认计划、Apply，游戏运行时排队）；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
@@ -37,7 +37,7 @@
 | 多人页 | 保留占位页（假数据、明确标注），P2 |
 | 解压 | `zip` / `sevenz-rust` / `rars`（纯 Rust 库，外部 unrar 仅兜底） |
 | 单模组升级 | 解压到 staging；只覆盖当前 mod 自己的文件，其他已存在文件冲突即停；新增文件允许；release 只发裸 DLL 时只替换文件名唯一匹配的已装 DLL；备份到 `<AppData>/Backups/<timestamp>`；游戏运行时排队；不做一键升级 |
-| 禁用/启用 | core 只改 DLL 扩展名（`.dll` ⇄ `.dll.disabled`），预检后逐个 rename，目标存在即报错、失败回滚；批量按整棵 Plugins 递归处理；界面未接 |
+| 禁用/启用 | core 只改 DLL 扩展名（`.dll` ⇄ `.dll.disabled`），预检后逐个 rename，目标存在即报错、失败回滚；批量按整棵 Plugins 递归处理；界面已接，变更期间相关按钮一起置灰 |
 | 删除 | 只删 Plugins 的一级条目（目录或 DLL 文件），不碰 BepInEx/core、设置与受保护资源；界面弹窗先列出绝对路径与文件数；游戏运行时拒绝；不做备份 |
 | .NET 元数据 | `dotnetdll` 0.4（GPL-3.0+，与 AGPL 兼容）读取 Assembly 版本与 `BepInPlugin` GUID/版本；单个 DLL 解析失败降级跳过 |
 | 自研 | VDF 解析、SemVer 比较、皮肤合成（`image` + 自算变换） |
@@ -71,9 +71,9 @@
 1. **core 基座与只读扫描（已完成 2026-11-14）**：paths → settings → logs → steam → modlist → catalogs → version → metadata → network → hubconfig → mods → Hub；96 个单测通过，`cargo clippy --workspace --all-targets -- -D warnings` 通过。
 2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 目录列表与刷新、Steam 自动发现；app 仍不联网。
 3. **core 基座收尾（2026-11-14）**：`launch` 已接 Launch Game 并改为非阻塞，AGPL 许可证已落地；`dotnetdll` 读取 DLL 版本/GUID，Windows Steam 根接入注册表；真实游戏根反查 app id 4576490 验证通过。
-4. **下一步**：审查 GitHub 源代码；模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用的界面接线（core 已就绪）与删除（破坏性，先确认）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
+4. **下一步**：审查 GitHub 源代码；模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用与删除的界面接线（已完成）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
 5. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
-6. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地；接下来是界面接线（含删除确认弹窗）与 E7 禁用态视觉。
+6. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
 
 ## 6. 接手须知
 

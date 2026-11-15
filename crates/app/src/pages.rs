@@ -7,8 +7,8 @@ use nsh_core::prelude::*;
 
 use crate::palette::*;
 use crate::ui::{
-    LocalModRow, NexusModRow, Ui, button, nexus_page_count, panel, pix, pix_c, rise_in, scaled,
-    spinner,
+    LocalModRow, NexusModRow, Ui, button, danger_button, fade_in, nexus_page_count, panel, pix,
+    pix_c, rise_in, scaled, spinner,
 };
 
 pub fn nexus(ui: &Ui) -> impl IntoElement {
@@ -441,6 +441,7 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let bulk_locked = ui.clone();
     let bulk_free = ui.clone();
     let bulk_z = z;
+    let refresh_watch = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
     let rows = each(
@@ -479,17 +480,26 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                                 .gap(scaled(&z, 8.0))
                                 .child(
                                     when(
-                                        move || {
-                                            bulk_state.toggle_busy.get().is_some()
-                                                || bulk_state.bulk_busy.get()
-                                        },
+                                        move || bulk_state.mod_files_busy(),
                                         move || mod_bulk_buttons(&bulk_z, &bulk_locked, false),
                                     )
                                     .otherwise(move || mod_bulk_buttons(&bulk_z, &bulk_free, true)),
                                 )
-                                .child(button(&z, "Refresh", true, move || {
-                                    refresh.refresh_mods();
-                                })),
+                                .child(
+                                    when(
+                                        move || refresh_watch.mod_files_busy(),
+                                        move || button(&z, "Refresh", false, || {}),
+                                    )
+                                    .otherwise({
+                                        let refresh = refresh.clone();
+                                        move || {
+                                            let refresh = refresh.clone();
+                                            button(&z, "Refresh", true, move || {
+                                                refresh.refresh_mods();
+                                            })
+                                        }
+                                    }),
+                                ),
                         ),
                 )
                 .child(when(
@@ -511,6 +521,7 @@ fn mod_bulk_buttons(z: &Signal<u8>, ui: &Ui, enabled: bool) -> View {
     let z = *z;
     let disable_ui = ui.clone();
     let enable_ui = ui.clone();
+    let delete_ui = ui.clone();
     view()
         .flex_row()
         .items_center()
@@ -520,6 +531,9 @@ fn mod_bulk_buttons(z: &Signal<u8>, ui: &Ui, enabled: bool) -> View {
         }))
         .child(button(&z, "Enable all", enabled, move || {
             enable_ui.set_all_mods_enabled(true);
+        }))
+        .child(danger_button(&z, "Delete all", enabled, move || {
+            delete_ui.request_delete_all();
         }))
 }
 
@@ -675,7 +689,7 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     let toggle_watch = ui.clone();
     line = line.child(
         when(
-            move || toggle_watch.toggle_busy.get().is_some() || toggle_watch.bulk_busy.get(),
+            move || toggle_watch.mod_files_busy(),
             move || button(&toggle_z, toggle_label, false, || {}),
         )
         .otherwise({
@@ -685,6 +699,25 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                 let toggle_key = toggle_key.clone();
                 button(&toggle_z, toggle_label, true, move || {
                     toggle_ui.set_mod_enabled(toggle_key.clone(), enable);
+                })
+            }
+        }),
+    );
+    let delete_watch = ui.clone();
+    let delete_z = *z;
+    line = line.child(
+        when(
+            move || delete_watch.mod_files_busy(),
+            move || danger_button(&delete_z, "Delete", false, || {}),
+        )
+        .otherwise({
+            let delete_ui = ui.clone();
+            let delete_key = row.source_key.clone();
+            move || {
+                let delete_ui = delete_ui.clone();
+                let delete_key = delete_key.clone();
+                danger_button(&delete_z, "Delete", true, move || {
+                    delete_ui.request_delete_mod(delete_key.clone());
                 })
             }
         }),
@@ -730,6 +763,94 @@ fn table_header(z: &Signal<u8>) -> impl IntoElement {
                 .w(percentage(0.20))
                 .child(pix("STATE", 10.0, TEXT_MUTED, &z)),
         )
+}
+
+pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
+    let z = ui.zoom;
+    let prompt = ui.delete_prompt;
+    let busy = ui.delete_busy;
+    let confirm_ui = ui.clone();
+    let cancel_ui = ui.clone();
+    when(
+        move || prompt.get().is_some(),
+        move || {
+            let Some(prompt) = prompt.get() else {
+                return view();
+            };
+            let title = prompt.title();
+            let action = prompt.action_label();
+            let note = prompt.scope_note();
+            let files = prompt.scope.files;
+            let mut list = view().flex_col();
+            for root in &prompt.scope.roots {
+                list = list.child(pix(root.display().to_string(), 10.0, TEXT_MUTED, &z).w_full());
+            }
+            let veil = fade_in();
+            let card = rise_in();
+            let confirm_ui = confirm_ui.clone();
+            let cancel_ui = cancel_ui.clone();
+            let confirm = when(
+                move || busy.get(),
+                move || danger_button(&z, "Deleting…", false, || {}),
+            )
+            .otherwise({
+                let confirm_ui = confirm_ui.clone();
+                move || {
+                    let confirm_ui = confirm_ui.clone();
+                    danger_button(&z, action, true, move || confirm_ui.confirm_delete())
+                }
+            });
+            let cancel = when(
+                move || busy.get(),
+                move || button(&z, "Cancel", false, || {}),
+            )
+            .otherwise({
+                let cancel_ui = cancel_ui.clone();
+                move || {
+                    let cancel_ui = cancel_ui.clone();
+                    button(&z, "Cancel", true, move || cancel_ui.cancel_delete())
+                }
+            });
+            let body = view()
+                .flex_col()
+                .gap(scaled(&z, 8.0))
+                .child(pix(
+                    format!(
+                        "{files} file(s) in {} path(s) will be deleted.",
+                        prompt.scope.roots.len()
+                    ),
+                    12.0,
+                    TEXT,
+                    &z,
+                ))
+                .child(pix(note, 10.0, TEXT_MUTED, &z))
+                .child(pix("This cannot be undone.", 10.0, DANGER, &z))
+                .child(scroll().w_full().max_h(scaled(&z, 132.0)).child(list))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(scaled(&z, 8.0))
+                        .child(cancel)
+                        .child(confirm),
+                );
+            view()
+                .absolute()
+                .inset(px(0.0))
+                .w_full()
+                .h_full()
+                .bg(rgba(0x000000CC))
+                .bind_motion(&veil)
+                .items_center()
+                .justify_center()
+                .child(
+                    panel(&z, title, body)
+                        .w(scaled(&z, 460.0))
+                        .max_w(percentage(0.9))
+                        .bind_motion(&card),
+                )
+        },
+    )
 }
 
 pub fn multiplayer(ui: &Ui) -> impl IntoElement {

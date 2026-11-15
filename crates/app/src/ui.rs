@@ -9,7 +9,7 @@ use cuhub_core::github::{CheckFailure, ReleaseInfo};
 use cuhub_core::hub::{CheckOutcome, Hub, HubError, MetadataRefresh};
 use cuhub_core::install::UpgradePlan;
 use cuhub_core::metadata::MetadataMod;
-use cuhub_core::mods::{InstalledMod, ModStatus};
+use cuhub_core::mods::{DeleteScope, InstalledMod, ModStatus};
 use cuhub_core::settings::Settings;
 use cuhub_core::source_choice::mod_key;
 use cuhub_core::sources::{self, LocalMod, MatchKind, Repo, SourceEntry, SourceKind};
@@ -150,6 +150,54 @@ pub struct PendingInstall {
     pub game_running: bool,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub enum DeleteTarget {
+    Mod(Box<InstalledMod>),
+    All,
+}
+
+impl DeleteTarget {
+    pub fn label(&self) -> String {
+        match self {
+            DeleteTarget::Mod(item) => item.name.clone(),
+            DeleteTarget::All => String::from("all mods"),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct DeletePrompt {
+    pub target: DeleteTarget,
+    pub scope: DeleteScope,
+}
+
+impl DeletePrompt {
+    pub fn title(&self) -> String {
+        match &self.target {
+            DeleteTarget::Mod(item) => format!("DELETE {}", item.name),
+            DeleteTarget::All => String::from("DELETE ALL MODS"),
+        }
+    }
+
+    pub fn action_label(&self) -> &'static str {
+        match &self.target {
+            DeleteTarget::Mod(_) => "Delete",
+            DeleteTarget::All => "Delete all",
+        }
+    }
+
+    pub fn scope_note(&self) -> &'static str {
+        match &self.target {
+            DeleteTarget::Mod(_) => {
+                "Only this mod's source path is removed; the other entries in Plugins stay."
+            }
+            DeleteTarget::All => {
+                "Every top-level entry in Plugins is removed, including files that are not mods."
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Ui {
     pub page: Signal<usize>,
@@ -173,6 +221,8 @@ pub struct Ui {
     pub update_busy: Signal<Option<String>>,
     pub toggle_busy: Signal<Option<String>>,
     pub bulk_busy: Signal<bool>,
+    pub delete_prompt: Signal<Option<DeletePrompt>>,
+    pub delete_busy: Signal<bool>,
     pub apply_running: Signal<bool>,
     pub apply_cancel: Signal<bool>,
     pub apply_status: Signal<String>,
@@ -236,6 +286,8 @@ impl Ui {
             update_busy: signal(None::<String>),
             toggle_busy: signal(None::<String>),
             bulk_busy: signal(false),
+            delete_prompt: signal(None::<DeletePrompt>),
+            delete_busy: signal(false),
             apply_running: signal(false),
             apply_cancel: signal(false),
             apply_status: signal(String::new()),
@@ -501,6 +553,129 @@ impl Ui {
                     .set(format!("The mod toggle worker stopped: {error}")),
             }
         });
+    }
+
+    pub fn mod_files_busy(&self) -> bool {
+        self.toggle_busy.get().is_some()
+            || self.bulk_busy.get()
+            || self.delete_busy.get()
+            || self.delete_prompt.get().is_some()
+    }
+
+    pub fn request_delete_mod(&self, key: String) {
+        let row = self
+            .local_rows
+            .get()
+            .into_iter()
+            .find(|row| row.source_key == key);
+        let Some(row) = row else {
+            self.notice
+                .set(String::from("That mod is no longer in the list."));
+            return;
+        };
+        self.start_delete(DeleteTarget::Mod(Box::new(row.item.clone())));
+    }
+
+    pub fn request_delete_all(&self) {
+        self.start_delete(DeleteTarget::All);
+    }
+
+    fn start_delete(&self, target: DeleteTarget) {
+        if self.delete_prompt.get().is_some() {
+            return;
+        }
+        if self.delete_busy.get() || self.toggle_busy.get().is_some() || self.bulk_busy.get() {
+            self.notice
+                .set(String::from("Another mod file change is running."));
+            return;
+        }
+        let label = target.label();
+        self.delete_busy.set(true);
+        self.notice
+            .set(format!("Collecting the delete list for {label}…"));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let scope_target = target.clone();
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                match &scope_target {
+                    DeleteTarget::Mod(item) => hub.delete_scope(item),
+                    DeleteTarget::All => hub.delete_all_scope(),
+                }
+            })
+            .await;
+            ui.delete_busy.set(false);
+            match result {
+                Ok(Ok(scope)) => {
+                    if scope.roots.is_empty() {
+                        ui.notice.set(String::from("Plugins is already empty."));
+                        return;
+                    }
+                    ui.notice.set(format!(
+                        "{label}: {} file(s) in {} path(s) will be deleted.",
+                        scope.files,
+                        scope.roots.len()
+                    ));
+                    ui.delete_prompt.set(Some(DeletePrompt { target, scope }));
+                }
+                Ok(Err(error)) => ui.notice.set(format!("Could not list {label}: {error}")),
+                Err(error) => ui.notice.set(format!("The delete worker stopped: {error}")),
+            }
+        });
+    }
+
+    pub fn confirm_delete(&self) {
+        let Some(prompt) = self.delete_prompt.get() else {
+            return;
+        };
+        if self.delete_busy.get() {
+            return;
+        }
+        let label = prompt.target.label();
+        let failure = match &prompt.target {
+            DeleteTarget::Mod(item) => format!(
+                "Could not delete {} ({})",
+                item.name,
+                item.source_path.display()
+            ),
+            DeleteTarget::All => String::from("Could not delete all mods"),
+        };
+        self.delete_busy.set(true);
+        self.notice.set(format!("Deleting {label}…"));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let target = prompt.target.clone();
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                match &target {
+                    DeleteTarget::Mod(item) => hub.delete_mod(item),
+                    DeleteTarget::All => hub.delete_all_mods(),
+                }
+            })
+            .await;
+            ui.delete_busy.set(false);
+            ui.delete_prompt.set(None);
+            match result {
+                Ok(Ok(count)) => {
+                    ui.refresh_mods();
+                    ui.notice
+                        .set(format!("Deleted {count} file(s) from Plugins."));
+                }
+                Ok(Err(error)) => ui.notice.set(format!("{failure}: {error}")),
+                Err(error) => ui.notice.set(format!("The delete worker stopped: {error}")),
+            }
+        });
+    }
+
+    pub fn cancel_delete(&self) {
+        if self.delete_busy.get() || self.delete_prompt.get().is_none() {
+            return;
+        }
+        self.delete_prompt.set(None);
+        self.notice
+            .set(String::from("Delete cancelled; nothing was removed."));
     }
 
     pub fn check_source(&self, key: String, repo: Repo) {
@@ -1294,7 +1469,11 @@ pub fn pix_c(
         .text_color(color)
 }
 
-pub fn panel(zoom: &Signal<u8>, title: &'static str, body: impl IntoElement) -> View {
+pub fn panel(
+    zoom: &Signal<u8>,
+    title: impl IntoReactive<SharedString>,
+    body: impl IntoElement,
+) -> View {
     let z = *zoom;
     view()
         .flex_col()
@@ -1358,6 +1537,32 @@ pub fn button(
         button = button
             .hover(|s| s.bg(rgb(TEXT)).text_color(rgb(BG)))
             .active(|s| s.bg(rgb(ACCENT_PRESS)).text_color(rgb(TEXT)))
+            .on_press(on_press);
+    }
+    button
+}
+
+pub fn danger_button(
+    zoom: &Signal<u8>,
+    label: &'static str,
+    enabled: bool,
+    on_press: impl Fn() + 'static,
+) -> Text {
+    let z = *zoom;
+    let mut button = pix(label, 12.0, if enabled { DANGER } else { TEXT_DIM }, &z)
+        .px(scaled(&z, 10.0))
+        .py(scaled(&z, 4.0))
+        .bg(rgb(SURFACE_RAISED))
+        .border(scaled(&z, 1.0))
+        .border_color(if enabled {
+            rgb(DANGER)
+        } else {
+            rgb(BORDER_DIM)
+        });
+    if enabled {
+        button = button
+            .hover(|s| s.bg(rgb(DANGER)).text_color(rgb(BG)))
+            .active(|s| s.bg(rgb(DANGER)).text_color(rgb(BG)))
             .on_press(on_press);
     }
     button

@@ -24,6 +24,7 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
 | 侧栏选中项标签 | 该项被选中（`effect` 观察 `page`） | 标签淡入点亮 | 300ms，一次性 |
 | 状态行 | `notice` 变为非空 | 提示自左滑入 24pt + 淡入 | 300ms，一次性 |
 | 开发者控制台 | 打开浮层 | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
+| 删除确认弹窗 | 打开（`when` 重新挂载） | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
 | PENDING UPDATE 面板 | 待定计划出现 | 滑入 | 450ms |
 | Check 进行中 | `can_check` 为假且已知仓库 | 4 个 3px 方块脉冲追逐 | 640ms 循环，20 Hz 上限 |
 | 可更新行的 State 徽标 | `row.can_update()` | WARN 色呼吸 | 1800ms 循环，10 Hz 上限 |
@@ -33,10 +34,20 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
 ## 模组启用/禁用
 
 - 行内 Toggle：禁用行显示 `Enable`、启用行显示 `Disable`。点击后在后台线程调用 `Hub::set_mod_enabled`，成功后重新扫描并把改名的 DLL 数写进状态行；失败只把 `HubError` 文案写进状态行，不弹窗。
-- 面板批量：`Disable all` / `Enable all` 调 `Hub::set_all_mods_enabled`，同样后台执行并回写改名数。任一变更进行期间，行内 Toggle 与两个批量按钮一起置灰，避免重复点击。
+- 面板批量：`Disable all` / `Enable all` 调 `Hub::set_all_mods_enabled`，同样后台执行并回写改名数。任一变更进行期间，行内 Toggle、三个批量按钮（含 `Delete all`）与 `Refresh` 一起置灰，避免重复点击。
 - 禁用行视觉（FEATURES E7）：左缘 2px danger 竖条由 `status_color` 提供；名称、版本、作者、证据与详情文字转 danger，来源行在带 warning 时仍保留 WARN，避免丢掉来源匹配提示。
 - 行 key 里包含 `disabled`，刷新后 `each` 会重建该行，静态文本与按钮才能跟随状态变化。
-- 两项都是可逆操作，不做确认弹窗；Delete all 与单项 Delete 属破坏性操作，界面暂未实现，等开发者确认。
+- 启用与禁用都是可逆操作，不做确认弹窗；删除是破坏性操作，走下一节的确认弹窗。
+
+## 模组删除
+
+- 入口：每行来源行末尾的 `Delete`（启用行与禁用行都有），以及表头的 `Delete all`（危险色，和 `Disable all` / `Enable all` / `Refresh` 同一行、一起换行）。
+- 两段式：点击后先起后台线程取范围（`Hub::delete_scope` / `Hub::delete_all_scope`），成功才弹出确认遮罩；取范围失败只把 `HubError` 文案写进状态行，不弹窗。取范围期间相关按钮全部置灰并防连点。
+- 确认弹窗列出 core 返回的全部绝对路径（每条一行，路径多时列表滚动，不撑破窗口）、递归文件数，并写明不可回滚。标题区分 `DELETE <名称>` 与 `DELETE ALL MODS`，按钮是 `Cancel` 与红色确认按钮（`Delete` / `Delete all`）。
+- 范围完全由 core 决定：单项只删该模组的来源路径；`Delete all` 删除 Plugins 顶层全部条目（含 `notes.txt` 这类非模组文件）。不碰 BepInEx、core 文件、设置与受保护资源，越界路径由 core 拒绝。界面只展示 core 给的路径与文件数，不自行拼路径。
+- 确认后仍在后台执行（`Hub::delete_mod` / `Hub::delete_all_mods`）：成功关闭弹窗、重新扫描并刷新行与空状态，状态行写删除的文件数；失败同样关闭弹窗，并把带路径的错误文案完整写进状态行（scope 可能已过期，重试前重新打开确认）。`Cancel` 不做删除。
+- 忙态：取范围与执行删除期间，所有 `Delete` / `Delete all` / 行内 Toggle / 两个批量按钮 / `Refresh` 一起置灰；`Cancel` 在删除执行期间同样置灰，避免中途隐藏进度。游戏运行时 core 在删除时才返回 `HubError::GameRunning`，因此这条错误在确认之后出现。
+- 弹窗挂在根视图尾部（`pages::delete_overlay`），绝对定位盖住整页内容；排在开发者浮层之前，dev 浮层仍可盖住它。
 
 ## 帧预算
 
