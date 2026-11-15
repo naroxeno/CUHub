@@ -335,7 +335,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **U7 (P2)** 失败态可读：`source unreachable` / `version pattern did not match` / `no asset matched`；保留「Open source page」退路，同一会话不重复重试。
 - **U8 (P2)** 来源表存 `appdata/sources.json`（`schemaVersion` + `entries[]`，每项含 `match`（dllNames / guid / name 任一命中）与 `source`）；也可放可执行文件旁 `Data/sources.json` 全局共享。
 - **U9 (P2)** 表校验：正则编译失败、URL 非 https、`kind` 未知、`match` 全空的条目整条丢弃并报行号，坏条目不拖垮整表。
-- **U10 (P2)** 缓存：来源解析结果 6h + ETag；GitHub 未认证限 60 次/小时，只在「已安装模组且用户打开详情或点检查」时请求。
+- **U10 (P2)** 缓存：来源解析结果 6h + ETag；GitHub 未认证限 60 次/小时，只在「已安装模组且用户打开详情或点检查」时请求。实现状态（2026-11-15）：Settings 可保存/校验/清除个人 GitHub token（与 Nexus key 同一 AES-GCM 信封，独立文件），有 token 时 release 检查带 `Authorization: Bearer …`；Test token 用 `GET /rate_limit` 显示剩余额度，失败不打断已有 Check。
 - **U11 (P2)** 整合包：`CUPK1:` 分享码 = 来源表子集 + 模组名 / GUID / DLL 名 + 期望版本；导入只列缺失项与来源，逐个走「下载 → 收件箱 → 确认安装」既有流程，不静默安装。排在 M8：先把来源解析、缓存与失败态跑通，再做整合包。
 - **U12 (P2)** 导出与导入都要确认，且只允许 https 来源；导入前把「会从哪些域下载」列出来。
 

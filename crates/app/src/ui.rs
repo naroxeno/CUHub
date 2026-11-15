@@ -233,6 +233,9 @@ pub struct Ui {
     pub nexus_key_saved: Signal<bool>,
     pub nexus_key_draft: Signal<String>,
     pub nexus_key_check: Signal<String>,
+    pub github_token_saved: Signal<bool>,
+    pub github_token_draft: Signal<String>,
+    pub github_token_check: Signal<String>,
     pub app_data: String,
     owner: Owner,
 }
@@ -259,6 +262,12 @@ impl Ui {
             String::from("Saved; not checked.")
         } else {
             String::from("No key saved.")
+        };
+        let github_token_saved = hub.github_token_saved();
+        let github_token_check = if github_token_saved {
+            String::from("Saved; not checked.")
+        } else {
+            String::from("No token saved.")
         };
         let app_data = hub.app_data().display().to_string();
         let owner = Owner::current();
@@ -300,6 +309,9 @@ impl Ui {
             nexus_key_saved: signal(nexus_key_saved),
             nexus_key_draft: signal(String::new()),
             nexus_key_check: signal(nexus_key_check),
+            github_token_saved: signal(github_token_saved),
+            github_token_draft: signal(String::new()),
+            github_token_check: signal(github_token_check),
             app_data,
             owner,
         }
@@ -1095,6 +1107,89 @@ impl Ui {
             Err(error) => self
                 .notice
                 .set(format!("Could not clear the Nexus API key: {error}")),
+        }
+    }
+
+    pub fn save_github_token(&self) {
+        let token = self.github_token_draft.get();
+        if token.trim().is_empty() {
+            self.notice.set(String::from("Paste a GitHub token first."));
+            return;
+        }
+        let result = {
+            let mut hub = self.hub();
+            hub.save_github_token(&token)
+        };
+        match result {
+            Ok(()) => {
+                self.github_token_saved.set(true);
+                self.github_token_draft.set(String::new());
+                self.notice
+                    .set(String::from("GitHub token saved on this machine."));
+            }
+            Err(error) => self
+                .notice
+                .set(format!("Could not save the GitHub token: {error}")),
+        }
+    }
+
+    pub fn validate_github_token(&self) {
+        if !self.github_token_saved.get() {
+            self.github_token_check.set(String::from("No token saved."));
+            self.notice.set(String::from("Save a GitHub token first."));
+            return;
+        }
+        self.github_token_check
+            .set(String::from("Checking with GitHub…"));
+        let hub = self.hub.clone();
+        let saved = self.github_token_saved;
+        let check = self.github_token_check;
+        let notice = self.notice;
+        self.spawn_worker(async move {
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                hub.validate_github_token()
+            })
+            .await;
+            match result {
+                Ok(Ok(limit)) => {
+                    saved.set(true);
+                    check.set(format!(
+                        "GitHub accepted the token: {} of {} requests left.",
+                        limit.remaining, limit.limit
+                    ));
+                    notice.set(format!(
+                        "GitHub accepted the token: {} of {} API requests left.",
+                        limit.remaining, limit.limit
+                    ));
+                }
+                Ok(Err(error)) => {
+                    check.set(format!("GitHub check failed: {error}"));
+                    notice.set(format!("Could not check the GitHub token: {error}"));
+                }
+                Err(error) => {
+                    check.set(String::from("GitHub check did not finish."));
+                    notice.set(format!("Could not check the GitHub token: {error}"));
+                }
+            }
+        });
+    }
+
+    pub fn clear_github_token(&self) {
+        let result = {
+            let mut hub = self.hub();
+            hub.clear_github_token()
+        };
+        match result {
+            Ok(()) => {
+                self.github_token_saved.set(false);
+                self.github_token_draft.set(String::new());
+                self.github_token_check.set(String::from("No token saved."));
+                self.notice.set(String::from("GitHub token cleared."));
+            }
+            Err(error) => self
+                .notice
+                .set(format!("Could not clear the GitHub token: {error}")),
         }
     }
 

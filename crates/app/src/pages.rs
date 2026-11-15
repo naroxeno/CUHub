@@ -1,7 +1,7 @@
 //! The six pages behind the shell navigation; data comes from the Hub facade.
 
 use cuhub_core::mods::ModStatus;
-use cuhub_core::nexus_auth::NexusKeyStore;
+use cuhub_core::nexus_auth::{GithubTokenStore, NexusKeyStore};
 use nsh_base::input;
 use nsh_core::prelude::*;
 
@@ -1028,6 +1028,11 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
     let clear_key = ui.clone();
     let check_key = ui.clone();
     let draft = ui.nexus_key_draft;
+    let token_status = ui.clone();
+    let save_token = ui.clone();
+    let clear_token = ui.clone();
+    let check_token = ui.clone();
+    let token_draft = ui.github_token_draft;
     view()
         .flex_col()
         .flex_1()
@@ -1122,6 +1127,51 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
                 )
                 .child(pix(
                     move || key_status.nexus_key_check.get(),
+                    11.0,
+                    TEXT_DIM,
+                    &z,
+                ))
+                .child(pix("GitHub API key", 12.0, TEXT_MUTED, &z))
+                .child(pix(
+                    format!(
+                        "{} Optional; update checks talk to the GitHub API.",
+                        GithubTokenStore::protection_note()
+                    ),
+                    11.0,
+                    TEXT_DIM,
+                    &z,
+                ))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(scaled(&z, 8.0))
+                        .child(
+                            input()
+                                .value(token_draft)
+                                .masked(true)
+                                .placeholder("Paste a personal access token")
+                                .h(scaled(&z, 24.0))
+                                .flex_1()
+                                .px(scaled(&z, 6.0))
+                                .bg(rgb(SURFACE_RAISED))
+                                .border(scaled(&z, 1.0))
+                                .border_color(rgb(BORDER))
+                                .text_color(rgb(TEXT))
+                                .on_change(move |text: &str| token_draft.set(text.to_owned())),
+                        )
+                        .child(button(&z, "Save token", true, move || {
+                            save_token.save_github_token();
+                        }))
+                        .child(button(&z, "Test token", true, move || {
+                            check_token.validate_github_token();
+                        }))
+                        .child(button(&z, "Clear token", true, move || {
+                            clear_token.clear_github_token();
+                        })),
+                )
+                .child(pix(
+                    move || token_status.github_token_check.get(),
                     11.0,
                     TEXT_DIM,
                     &z,

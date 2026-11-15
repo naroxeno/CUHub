@@ -1,6 +1,6 @@
 # 交接说明
 
-截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），核心 167 个单测通过；禁用/启用与批量开关（FEATURES E6/E8）以及删除（E8 Delete all、E9 单项删除）已在 core 落地，app 已接（删除走两段式确认弹窗，列出绝对路径与文件数）；install 核心（zip/7z/rar 与裸 DLL staging、归属计划、备份/替换/回滚）与 Hub/UI 接线已落地（OutOfDate 或 GitHub release 版本更高的模组可 Update：选源、下载、解包、确认计划、Apply，游戏运行时排队）；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），核心 170 个单测通过；禁用/启用与批量开关（FEATURES E6/E8）以及删除（E8 Delete all、E9 单项删除）已在 core 落地，app 已接（删除走两段式确认弹窗，列出绝对路径与文件数）；install 核心（zip/7z/rar 与裸 DLL staging、归属计划、备份/替换/回滚）与 Hub/UI 接线已落地（OutOfDate 或 GitHub release 版本更高的模组可 Update：选源、下载、解包、确认计划、Apply，游戏运行时排队）；app 的 Local Mods、Settings（含 Nexus key 与 GitHub token 的保存/校验/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
@@ -49,6 +49,7 @@
 | 网络 | `core::network` 是唯一联网层（`reqwest` blocking）；`app` 不联网，封面由 core 落到 `IconCache` |
 | 目录 | `catalogs` 只读 `Data/Catalogs/` 与旧 `Services/`；内嵌 AGPL 数据未搬 |
 | Nexus key | 用户自己的 key 存 `NexusApiKey.dat`/`.key`（AES-256-GCM + 0600）；空值清除；不进日志/仓库；直连下载只走官方 API v1；Nexus 页已有目录列表与下载入口 |
+| GitHub token | 可选；与 Nexus key 同一信封，独立文件 `GithubToken.dat`/`.key`；只在 api.github.com 请求带 `Authorization: Bearer …`；校验走 `GET /rate_limit`；不写日志 |
 | GitHub 源 | 在 Nexus 之外新增 GitHub 源；清单由单独仓库维护（schema v1：schemaVersion/generatedAt/mods，条目 name+repo+match+可选 asset）；客户端只读清单与公开 release；匹配 guid > dll > name，name 仅兜底；两源都显示，默认最新版本，用户可 pin（`<AppData>/source-choice.json`）；release 不缓存，404 回退 prerelease；Check 不下载资产，Update 时按 asset、首个 zip/7z/rar 或裸 DLL 下载，计划确认后安装；不做一键升级 |
 | 公告 | `hubconfig` 按版本选 stable/prerelease，缓存 30 分钟，只保留 https 链接 |
 | 不做 | 自更新、遥测、应用内卸载器、Supabase、插件系统、用户主题 |
@@ -63,7 +64,7 @@
 6. macOS Steam 候选根、来源表 `sources.json` schema 未定。
 7. 目录刷新已接后台 worker，但 blocking 闭包持有 Hub 互斥锁（最长约 20s）；期间其它 Hub 操作等待。是否改为锁外抓取待定。
 8. Nexus 直连下载还没有真实 key 的端到端验证；Nexus 页已有下载入口（有 key 走官方 API，无 key 打开 Files 页），Standard 账号会收到 403，需要 Premium。
-9. Windows 上 `NexusApiKey.key` 仍靠用户配置目录 ACL，尚未用 DPAPI 包裹；跨平台迁移旧裸 DPAPI blob 也未实现。
+9. Windows 上 `NexusApiKey.key` 与 `GithubToken.key` 仍靠用户配置目录 ACL，尚未用 DPAPI 包裹；跨平台迁移旧裸 DPAPI blob 也未实现。
 10. GitHub 源：清单仓库 URL 与远程拉取未定（目前只读本地 `Sources/manifest.json`）；限流 reset 时间需要扩 `network::Fetch` 才能显示；资产下载与单模组升级已接（来源选择、staging、归属计划、备份/回滚、游戏运行排队），一键升级与恢复界面未做。
 
 ## 5. 建议的下一步
@@ -72,7 +73,8 @@
 2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 目录列表与刷新、Steam 自动发现；app 仍不联网。
 3. **core 基座收尾（2026-11-14）**：`launch` 已接 Launch Game 并改为非阻塞，AGPL 许可证已落地；`dotnetdll` 读取 DLL 版本/GUID，Windows Steam 根接入注册表；真实游戏根反查 app id 4576490 验证通过。
 4. **下一步**：审查 GitHub 源代码；模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用与删除的界面接线（已完成）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
-5. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队；裸 DLL 文件名不一致且模组只有一个 DLL 时按该 DLL 替换并写 warning。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
+5. **界面 i18n（2026-11-15 进行中）**：目标英文/日文/中文；语言存 `Settings.json` 的 `language` 字段，app 文案集中到 `crates/app/src/i18n.rs`，core 错误文案仍为英文（后续按错误码映射）。
+6. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队；裸 DLL 文件名不一致且模组只有一个 DLL 时按该 DLL 替换并写 warning。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
 6. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
 
 ## 6. 接手须知
