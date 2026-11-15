@@ -152,6 +152,8 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **F10 (P1)** 安装完成后通知本地模组列表刷新（缓存失效）。
 - **F11 (P1)** 安装失败要区分“解包失败 / 计划不支持 / 写盘失败”，并保持 Plugins 不被半成品污染（先 staging 校验，再落盘）。
 
+实现状态（2026-11-15）：`install` 模块已实现 zip/7z/rar staging、BepInEx/plugins 与 Mod 布局、归属冲突、备份/替换/回滚；Hub/UI 与来源下载未接。
+
 ### G. 依赖 / 兼容 / 已知 bug 数据
 
 - **G1 (P1)** 内嵌依赖目录 JSON：`{dependencies:[{mod, requires:[{name, minimumVersion, note}]}]}`；键名归一化（只留字母数字、小写）匹配。

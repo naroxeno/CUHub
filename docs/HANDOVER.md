@@ -1,12 +1,12 @@
 # 交接说明
 
-截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），135 个单测通过；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），147 个单测通过；install 核心（zip/7z/rar staging、归属计划、备份/替换/回滚）已落地；app 的 Local Mods、Settings（含 Nexus key 保存/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
 - jj 仓库（colocated，`main` 分支）；基础规则、app 原型与 core 分模块提交都在 `main`，`@` 是新的空 change。
 - 骨架：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
-- core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`nexus_auth`、`nexus`、`hub`、`github`、`sources`、`source_choice`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
+- core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`nexus_auth`、`nexus`、`hub`、`github`、`sources`、`source_choice`、`install`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
 - 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-only`；与上游一致。
 - app（2026-11-14）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。GitHub 源在 Local Mods 每行第三行显示仓库、匹配依据、check 结果与生效源，可手动 Check。Multiplayer、Skins & Backups 仍是占位。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
@@ -36,6 +36,7 @@
 | 无障碍 | 保留高对比模式（O12），P2 |
 | 多人页 | 保留占位页（假数据、明确标注），P2 |
 | 解压 | `zip` / `sevenz-rust` / `rars`（纯 Rust 库，外部 unrar 仅兜底） |
+| 单模组升级 | 解压到 staging；只覆盖当前 mod 自己的文件，其他已存在文件冲突即停；新增文件允许；备份到 `<AppData>/Backups/<timestamp>`；游戏运行时排队；不做一键升级 |
 | .NET 元数据 | `dotnetdll` 0.4（GPL-3.0+，与 AGPL 兼容）读取 Assembly 版本与 `BepInPlugin` GUID/版本；单个 DLL 解析失败降级跳过 |
 | 自研 | VDF 解析、SemVer 比较、皮肤合成（`image` + 自算变换） |
 | 来源 | 用户来源表 > 目录字段 > Nexus id；GitHub 内置 tag 解析，其它来源用用户正则；独立 GitHub 清单的优先级待定 |
@@ -61,7 +62,7 @@
 7. 目录刷新已接后台 worker，但 blocking 闭包持有 Hub 互斥锁（最长约 20s）；期间其它 Hub 操作等待。是否改为锁外抓取待定。
 8. Nexus 直连下载还没有真实 key 的端到端验证；Nexus 页已有下载入口（有 key 走官方 API，无 key 打开 Files 页），Standard 账号会收到 403，需要 Premium。
 9. Windows 上 `NexusApiKey.key` 仍靠用户配置目录 ACL，尚未用 DPAPI 包裹；跨平台迁移旧裸 DPAPI blob 也未实现。
-10. GitHub 源：清单仓库 URL 与远程拉取未定（目前只读本地 `Sources/manifest.json`）；pin 的 UI 按钮已做；资产下载未做；限流 reset 时间需要扩 `network::Fetch` 才能显示。
+10. GitHub 源：清单仓库 URL 与远程拉取未定（目前只读本地 `Sources/manifest.json`）；pin 的 UI 按钮已做；资产下载未做；限流 reset 时间需要扩 `network::Fetch` 才能显示。install 核心已落地（staging/plan/apply），但来源下载、游戏运行排队与 UI 未接。
 
 ## 5. 建议的下一步
 

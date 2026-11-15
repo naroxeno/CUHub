@@ -73,7 +73,7 @@ HubEvent::Status            // 外壳状态栏文案
 | `hubconfig` | 公告频道、缓存、https 过滤（经 `network` 拉取） |
 | `nexus_auth` | key 的保存/读取/清除（AES-GCM + 0600；Windows DPAPI 待接） |
 | `nexus` | 直连下载：files.json 选文件、download_link（经 `network`） |
-| `archive` | 分类、安装计划、覆盖检查、staging 后落盘 |
+| `install` | 压缩包 staging、安装计划、归属检查、备份/替换/回滚 |
 | `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除 |
 | `catalogs` | 依赖与不兼容目录（内嵌 + `Data/` 覆盖） |
 | `modlist` | `CUH1:` 编解码、缺失项匹配 |

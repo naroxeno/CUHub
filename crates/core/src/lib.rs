@@ -4,6 +4,7 @@ pub mod catalogs;
 pub mod github;
 pub mod hub;
 pub mod hubconfig;
+pub mod install;
 pub mod launch;
 pub mod logs;
 pub mod metadata;
