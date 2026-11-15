@@ -83,6 +83,7 @@
 6. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队；裸 DLL 文件名不一致且模组只有一个 DLL 时按该 DLL 替换并写 warning。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
 7. **BepInEx 自动安装与远程模组页（2026-11-15 晚完成）**：core 的 `install::bepinex`（Release 常量、detect、plan_install{Mode::Fresh,Repair}、ensure_plugins、sha256）、Hub 的 prepare/finish、设置页与本地模组空态入口、远程模组页与树形导航、两段式确认与游戏运行中拒绝；Windows 包已出 `dist/windows`（未真机验证）。
 8. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
+9. **修完本轮自查问题后：写踩坑总结**（落 `docs/core/pitfalls.md`，或并进 §6）。每条写「现象 / 根因 / 下次怎么避免」，至少覆盖：门禁与诊断层错位（`paths::game_paths` 把 BepInEx 当硬前提，而 `install::bepinex::detect` 本就能表达「没装」）；路径包含靠每个调用点自己补 symlink；core 里长出展示层导致与 app 的 i18n 两套并存；四处 `write_atomic` 各写一遍且多数没有 fsync；模块名与实际职责不符（`platform/linux.rs` 是非 Windows 实现、`install` 里塞了解包与进程检测）。先修再写，写完随修复一起提交。
 
 ## 6. 接手须知
 
