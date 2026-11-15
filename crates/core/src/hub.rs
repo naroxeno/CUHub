@@ -410,6 +410,36 @@ impl Hub {
         Ok(mods)
     }
 
+    pub fn set_mod_enabled(&self, item: &InstalledMod, enabled: bool) -> Result<usize, HubError> {
+        let plugins = self.plugins_dir()?;
+        let changed = mods::set_enabled(&plugins, item, enabled)?;
+        self.logs.activity(
+            "Mods",
+            &format!(
+                "{} {} ({} DLL file(s), {}).",
+                if enabled { "Enabled" } else { "Disabled" },
+                item.name,
+                changed,
+                item.source_path.display()
+            ),
+        );
+        Ok(changed)
+    }
+
+    pub fn set_all_mods_enabled(&self, enabled: bool) -> Result<usize, HubError> {
+        let plugins = self.plugins_dir()?;
+        let changed = mods::set_all_enabled(&plugins, enabled)?;
+        self.logs.activity(
+            "Mods",
+            &format!(
+                "{} {changed} DLL file(s) in {}.",
+                if enabled { "Enabled" } else { "Disabled" },
+                plugins.display()
+            ),
+        );
+        Ok(changed)
+    }
+
     pub fn metadata(&self) -> &[MetadataMod] {
         &self.metadata
     }

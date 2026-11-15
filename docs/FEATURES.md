@@ -138,6 +138,8 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E16 (P2)** 版本证据缺失、GUID 缺失的模组仍要能显示与操作，不能因缺数据整页失败。
 - **E17 (P1)** 匹配算法：DLL 名与元数据 `DllNames` 忽略大小写求交；优先“归一化名 == DLL 茎名”，其次 `DllNames` 只有一项的，最后按 `DllNames` 数量升序（避免同名不同模组串台，例如自带 CUCoreLib.dll 的模组）。
 
+实现状态（2026-11-15）：core 已落地 E1 扫描、E2 的主要字段、E3 版本证据、E4 更新判定、E5 状态文案、E6 禁用/启用、E8 的批量禁用/启用、E15 未收录模组、E17 匹配；分享码请求、已知 bug 数据、E8 的 Delete all、E9 单项删除、E7/E10–E14 的界面仍未做。
+
 ### F. 压缩包安装（安装计划）
 
 - **F1 (P0)** 支持 zip/7z/rar；解到临时 staging，生成计划后删除 staging。

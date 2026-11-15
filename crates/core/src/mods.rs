@@ -1,4 +1,4 @@
-//! Read-only scan of BepInEx plugins, matched against the cached community catalogue.
+//! Scan BepInEx plugins, match them against the cached community catalogue, and toggle them.
 
 use std::fs;
 use std::io;
@@ -19,7 +19,21 @@ const MAX_SCAN_DEPTH: usize = 16;
 #[derive(Debug)]
 pub enum ModsError {
     Missing(PathBuf),
-    Read { path: PathBuf, source: io::Error },
+    Read {
+        path: PathBuf,
+        source: io::Error,
+    },
+    OutsidePlugins(PathBuf),
+    NotAFile(PathBuf),
+    ToggleTargetExists {
+        from: PathBuf,
+        to: PathBuf,
+    },
+    Toggle {
+        from: PathBuf,
+        to: PathBuf,
+        source: io::Error,
+    },
 }
 
 impl std::fmt::Display for ModsError {
@@ -29,6 +43,28 @@ impl std::fmt::Display for ModsError {
             Self::Read { path, source } => {
                 write!(formatter, "Could not read {}: {source}", path.display())
             }
+            Self::OutsidePlugins(path) => {
+                write!(
+                    formatter,
+                    "{} is outside the Plugins folder.",
+                    path.display()
+                )
+            }
+            Self::NotAFile(path) => {
+                write!(formatter, "{} is not a regular file.", path.display())
+            }
+            Self::ToggleTargetExists { from, to } => write!(
+                formatter,
+                "Cannot rename '{}' because '{}' already exists.",
+                file_name(from),
+                file_name(to)
+            ),
+            Self::Toggle { from, to, source } => write!(
+                formatter,
+                "Could not rename '{}' to '{}': {source}",
+                file_name(from),
+                file_name(to)
+            ),
         }
     }
 }
@@ -36,10 +72,17 @@ impl std::fmt::Display for ModsError {
 impl std::error::Error for ModsError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Missing(_) => None,
-            Self::Read { source, .. } => Some(source),
+            Self::Missing(_) | Self::OutsidePlugins(_) | Self::NotAFile(_) => None,
+            Self::ToggleTargetExists { .. } => None,
+            Self::Read { source, .. } | Self::Toggle { source, .. } => Some(source),
         }
     }
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,6 +242,78 @@ pub fn scan(
     annotate_dependencies(&mut mods, catalogs, ignored_dependencies);
     mods.sort_by_key(|item| item.name.to_lowercase());
     Ok(mods)
+}
+
+pub fn set_enabled(plugins: &Path, item: &InstalledMod, enabled: bool) -> Result<usize, ModsError> {
+    rename_dlls(plugins, &item.dll_paths, enabled)
+}
+
+pub fn set_all_enabled(plugins: &Path, enabled: bool) -> Result<usize, ModsError> {
+    let dlls = collect_dlls(plugins);
+    rename_dlls(plugins, &dlls, enabled)
+}
+
+fn rename_dlls(plugins: &Path, dlls: &[PathBuf], enabled: bool) -> Result<usize, ModsError> {
+    let mut renames = Vec::new();
+    for dll in dlls {
+        if is_disabled_path(dll) != enabled {
+            continue;
+        }
+        if !paths::is_inside(dll, plugins) {
+            return Err(ModsError::OutsidePlugins(dll.clone()));
+        }
+        renames.push((dll.clone(), toggled_path(dll, enabled)?));
+    }
+
+    for (from, to) in &renames {
+        let metadata = fs::symlink_metadata(from).map_err(|source| ModsError::Read {
+            path: from.clone(),
+            source,
+        })?;
+        if !metadata.file_type().is_file() {
+            return Err(ModsError::NotAFile(from.clone()));
+        }
+        if fs::symlink_metadata(to).is_ok() {
+            return Err(ModsError::ToggleTargetExists {
+                from: from.clone(),
+                to: to.clone(),
+            });
+        }
+    }
+
+    let mut done = Vec::new();
+    for (from, to) in &renames {
+        if let Err(source) = fs::rename(from, to) {
+            for (done_from, done_to) in done.iter().rev() {
+                let _ = fs::rename(done_to, done_from);
+            }
+            return Err(ModsError::Toggle {
+                from: from.clone(),
+                to: to.clone(),
+                source,
+            });
+        }
+        done.push((from.clone(), to.clone()));
+    }
+    Ok(done.len())
+}
+
+fn toggled_path(path: &Path, enabled: bool) -> Result<PathBuf, ModsError> {
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| ModsError::NotAFile(path.to_path_buf()))?;
+    if enabled {
+        let lower = name.to_ascii_lowercase();
+        let stripped = if lower.ends_with(DISABLED_SUFFIX) {
+            &name[..name.len() - DISABLED_SUFFIX.len()]
+        } else {
+            name
+        };
+        Ok(path.with_file_name(stripped))
+    } else {
+        Ok(path.with_file_name(format!("{name}{DISABLED_SUFFIX}")))
+    }
 }
 
 fn is_mod_entry(path: &Path) -> bool {
@@ -647,6 +762,128 @@ mod tests {
         fs::create_dir_all(game.join("BepInEx").join("Plugins")).unwrap();
         let found = plugins_dir(&game).unwrap();
         assert_eq!(found, game.join("BepInEx").join("Plugins"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn toggles_every_dll_of_a_mod() {
+        let dir = temp_dir("mods-toggle");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Pack")).unwrap();
+        fs::write(plugins.join("Pack").join("PackCore.dll"), b"x").unwrap();
+        fs::write(plugins.join("Pack").join("PackExtra.dll"), b"x").unwrap();
+
+        let before = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        assert_eq!(before.len(), 1);
+        assert!(!before[0].disabled);
+
+        set_enabled(&plugins, &before[0], false).unwrap();
+        assert!(plugins.join("Pack").join("PackCore.dll.disabled").exists());
+        assert!(plugins.join("Pack").join("PackExtra.dll.disabled").exists());
+        let disabled = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        assert!(disabled[0].disabled);
+        assert_eq!(disabled[0].status, ModStatus::Disabled);
+
+        set_enabled(&plugins, &disabled[0], true).unwrap();
+        assert!(plugins.join("Pack").join("PackCore.dll").exists());
+        assert!(!plugins.join("Pack").join("PackCore.dll.disabled").exists());
+        let enabled = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        assert!(!enabled[0].disabled);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn enabling_a_partly_disabled_mod_enables_the_remaining_dlls() {
+        let dir = temp_dir("mods-toggle-mixed");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Pack")).unwrap();
+        fs::write(plugins.join("Pack").join("One.dll"), b"x").unwrap();
+        fs::write(plugins.join("Pack").join("Two.dll.disabled"), b"x").unwrap();
+
+        let mods = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        assert!(!mods[0].disabled);
+
+        set_enabled(&plugins, &mods[0], true).unwrap();
+        assert!(plugins.join("Pack").join("Two.dll").exists());
+        let enabled = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        assert!(!enabled[0].disabled);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn refuses_to_overwrite_a_disabled_target() {
+        let dir = temp_dir("mods-toggle-conflict");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Pack")).unwrap();
+        fs::write(plugins.join("Pack").join("One.dll"), b"x").unwrap();
+        fs::write(plugins.join("Pack").join("One.dll.disabled"), b"x").unwrap();
+
+        let mods = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        let error = set_enabled(&plugins, &mods[0], false).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Cannot rename 'One.dll' because 'One.dll.disabled' already exists."
+        );
+        assert!(plugins.join("Pack").join("One.dll").exists());
+        assert!(plugins.join("Pack").join("One.dll.disabled").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_to_toggle_a_symlinked_dll() {
+        use std::os::unix::fs::symlink;
+
+        let dir = temp_dir("mods-toggle-symlink");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        let outside = dir.join("Real.dll");
+        fs::write(&outside, b"x").unwrap();
+        symlink(&outside, plugins.join("Linked.dll")).unwrap();
+
+        let mods = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        assert_eq!(mods.len(), 1);
+        let error = set_enabled(&plugins, &mods[0], false).unwrap_err();
+        assert!(matches!(error, ModsError::NotAFile(_)));
+        assert!(outside.exists());
+        assert!(!plugins.join("Linked.dll.disabled").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn toggles_every_dll_in_the_plugins_folder() {
+        let dir = temp_dir("mods-toggle-all");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Nested")).unwrap();
+        fs::write(plugins.join("One.dll"), b"x").unwrap();
+        fs::write(plugins.join("Two.dll.disabled"), b"x").unwrap();
+        fs::write(plugins.join("Nested").join("Three.dll"), b"x").unwrap();
+
+        assert_eq!(set_all_enabled(&plugins, false).unwrap(), 2);
+        assert!(plugins.join("One.dll.disabled").exists());
+        assert!(plugins.join("Nested").join("Three.dll.disabled").exists());
+        assert!(plugins.join("Two.dll.disabled").exists());
+
+        assert_eq!(set_all_enabled(&plugins, true).unwrap(), 3);
+        assert!(plugins.join("One.dll").exists());
+        assert!(plugins.join("Nested").join("Three.dll").exists());
+        assert!(plugins.join("Two.dll").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_batch_toggle_stops_before_renaming_anything() {
+        let dir = temp_dir("mods-toggle-all-conflict");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        fs::write(plugins.join("A.dll"), b"x").unwrap();
+        fs::write(plugins.join("A.dll.disabled"), b"x").unwrap();
+        fs::write(plugins.join("B.dll"), b"x").unwrap();
+
+        let error = set_all_enabled(&plugins, false).unwrap_err();
+        assert!(matches!(error, ModsError::ToggleTargetExists { .. }));
+        assert!(plugins.join("B.dll").exists());
+        assert!(!plugins.join("B.dll.disabled").exists());
         let _ = fs::remove_dir_all(dir);
     }
 }
