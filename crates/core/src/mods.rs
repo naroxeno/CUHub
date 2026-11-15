@@ -1,8 +1,8 @@
-//! Scan BepInEx plugins, match them against the cached community catalogue, and toggle them.
+//! Scan BepInEx plugins, match them against the cached community catalogue, and toggle or delete them.
 
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
@@ -32,6 +32,10 @@ pub enum ModsError {
     Toggle {
         from: PathBuf,
         to: PathBuf,
+        source: io::Error,
+    },
+    Delete {
+        path: PathBuf,
         source: io::Error,
     },
 }
@@ -65,6 +69,9 @@ impl std::fmt::Display for ModsError {
                 file_name(from),
                 file_name(to)
             ),
+            Self::Delete { path, source } => {
+                write!(formatter, "Could not delete {}: {source}", path.display())
+            }
         }
     }
 }
@@ -74,7 +81,9 @@ impl std::error::Error for ModsError {
         match self {
             Self::Missing(_) | Self::OutsidePlugins(_) | Self::NotAFile(_) => None,
             Self::ToggleTargetExists { .. } => None,
-            Self::Read { source, .. } | Self::Toggle { source, .. } => Some(source),
+            Self::Read { source, .. }
+            | Self::Toggle { source, .. }
+            | Self::Delete { source, .. } => Some(source),
         }
     }
 }
@@ -222,18 +231,7 @@ pub fn scan(
     catalogs: &Catalogs,
     ignored_dependencies: &[String],
 ) -> Result<Vec<InstalledMod>, ModsError> {
-    let mut entries = Vec::new();
-    let listing = fs::read_dir(plugins).map_err(|source| ModsError::Read {
-        path: plugins.to_path_buf(),
-        source,
-    })?;
-    for entry in listing.flatten() {
-        let path = entry.path();
-        if is_mod_entry(&path) {
-            entries.push(path);
-        }
-    }
-    entries.sort_by_key(|path| path.to_string_lossy().to_lowercase());
+    let entries = mod_entries(plugins)?;
 
     let mut mods = entries
         .iter()
@@ -251,6 +249,108 @@ pub fn set_enabled(plugins: &Path, item: &InstalledMod, enabled: bool) -> Result
 pub fn set_all_enabled(plugins: &Path, enabled: bool) -> Result<usize, ModsError> {
     let dlls = collect_dlls(plugins);
     rename_dlls(plugins, &dlls, enabled)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteScope {
+    pub roots: Vec<PathBuf>,
+    pub files: usize,
+}
+
+pub fn delete_scope(plugins: &Path, item: &InstalledMod) -> Result<DeleteScope, ModsError> {
+    scope_of(plugins, vec![item.source_path.clone()])
+}
+
+pub fn delete_all_scope(plugins: &Path) -> Result<DeleteScope, ModsError> {
+    scope_of(plugins, all_entries(plugins)?)
+}
+
+pub fn delete_mod(plugins: &Path, item: &InstalledMod) -> Result<usize, ModsError> {
+    delete_roots(plugins, vec![item.source_path.clone()])
+}
+
+pub fn delete_all(plugins: &Path) -> Result<usize, ModsError> {
+    delete_roots(plugins, all_entries(plugins)?)
+}
+
+fn scope_of(plugins: &Path, roots: Vec<PathBuf>) -> Result<DeleteScope, ModsError> {
+    for root in &roots {
+        ensure_direct_child(plugins, root)?;
+    }
+    let files = roots.iter().map(|root| count_files(root)).sum();
+    Ok(DeleteScope { roots, files })
+}
+
+fn delete_roots(plugins: &Path, roots: Vec<PathBuf>) -> Result<usize, ModsError> {
+    for root in &roots {
+        ensure_direct_child(plugins, root)?;
+    }
+    let mut removed = 0;
+    for root in &roots {
+        let metadata = fs::symlink_metadata(root).map_err(|source| ModsError::Read {
+            path: root.clone(),
+            source,
+        })?;
+        let files = count_files(root);
+        let result = if metadata.is_dir() {
+            fs::remove_dir_all(root)
+        } else {
+            fs::remove_file(root)
+        };
+        result.map_err(|source| ModsError::Delete {
+            path: root.clone(),
+            source,
+        })?;
+        removed += files;
+    }
+    Ok(removed)
+}
+
+fn ensure_direct_child(plugins: &Path, path: &Path) -> Result<(), ModsError> {
+    let relative = path
+        .strip_prefix(plugins)
+        .map_err(|_| ModsError::OutsidePlugins(path.to_path_buf()))?;
+    let mut parts = relative.components();
+    match (parts.next(), parts.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => Err(ModsError::OutsidePlugins(path.to_path_buf())),
+    }
+}
+
+fn count_files(path: &Path) -> usize {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if !metadata.is_dir() {
+        return 1;
+    }
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| count_files(&entry.path()))
+        .sum()
+}
+
+fn mod_entries(plugins: &Path) -> Result<Vec<PathBuf>, ModsError> {
+    Ok(all_entries(plugins)?
+        .into_iter()
+        .filter(|path| is_mod_entry(path))
+        .collect())
+}
+
+fn all_entries(plugins: &Path) -> Result<Vec<PathBuf>, ModsError> {
+    let listing = fs::read_dir(plugins).map_err(|source| ModsError::Read {
+        path: plugins.to_path_buf(),
+        source,
+    })?;
+    let mut entries = listing
+        .flatten()
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    entries.sort_by_key(|path| path.to_string_lossy().to_lowercase());
+    Ok(entries)
 }
 
 fn rename_dlls(plugins: &Path, dlls: &[PathBuf], enabled: bool) -> Result<usize, ModsError> {
@@ -826,6 +926,69 @@ mod tests {
         );
         assert!(plugins.join("Pack").join("One.dll").exists());
         assert!(plugins.join("Pack").join("One.dll.disabled").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn delete_scope_counts_files_before_removing_a_mod() {
+        let dir = temp_dir("mods-delete");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Pack").join("Lib")).unwrap();
+        fs::write(plugins.join("Pack").join("Core.dll"), b"x").unwrap();
+        fs::write(plugins.join("Pack").join("Lib").join("Extra.dll"), b"x").unwrap();
+        fs::write(plugins.join("Keep.dll"), b"x").unwrap();
+
+        let mods = scan(&plugins, &[], &Catalogs::default(), &[]).unwrap();
+        let pack = mods
+            .iter()
+            .find(|item| item.source_path == plugins.join("Pack"))
+            .unwrap();
+        let scope = delete_scope(&plugins, pack).unwrap();
+        assert_eq!(scope.roots, vec![plugins.join("Pack")]);
+        assert_eq!(scope.files, 2);
+
+        assert_eq!(delete_mod(&plugins, pack).unwrap(), 2);
+        assert!(!plugins.join("Pack").exists());
+        assert!(plugins.join("Keep.dll").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn delete_all_removes_every_mod_entry_only() {
+        let dir = temp_dir("mods-delete-all");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Pack")).unwrap();
+        fs::write(plugins.join("Pack").join("Core.dll"), b"x").unwrap();
+        fs::write(plugins.join("Loose.dll"), b"x").unwrap();
+        fs::write(plugins.join("Off.dll.disabled"), b"x").unwrap();
+        fs::write(plugins.join("notes.txt"), b"x").unwrap();
+
+        let scope = delete_all_scope(&plugins).unwrap();
+        assert_eq!(scope.roots.len(), 4);
+        assert_eq!(scope.files, 4);
+
+        assert_eq!(delete_all(&plugins).unwrap(), 4);
+        assert!(plugins.is_dir());
+        assert!(!plugins.join("notes.txt").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn refuses_to_delete_outside_the_plugins_folder() {
+        let dir = temp_dir("mods-delete-outside");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Pack")).unwrap();
+        fs::write(dir.join("Outside.dll"), b"x").unwrap();
+
+        let outside = dir.join("Outside.dll");
+        let error = delete_roots(&plugins, vec![outside.clone()]).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("{} is outside the Plugins folder.", outside.display())
+        );
+        assert!(delete_roots(&plugins, vec![plugins.join("Pack").join("Core.dll")]).is_err());
+        assert!(delete_roots(&plugins, vec![plugins.clone()]).is_err());
+        assert!(outside.exists());
         let _ = fs::remove_dir_all(dir);
     }
 

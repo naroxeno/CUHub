@@ -91,7 +91,7 @@ impl std::fmt::Display for HubError {
             Self::GameRunning => {
                 write!(
                     formatter,
-                    "Close Casualties Unknown before applying the update."
+                    "Close Casualties Unknown before changing mod files."
                 )
             }
             Self::Github(message) => write!(formatter, "GitHub update failed: {message}"),
@@ -440,6 +440,50 @@ impl Hub {
         Ok(changed)
     }
 
+    pub fn delete_scope(&self, item: &InstalledMod) -> Result<mods::DeleteScope, HubError> {
+        let plugins = self.plugins_dir()?;
+        Ok(mods::delete_scope(&plugins, item)?)
+    }
+
+    pub fn delete_mod(&self, item: &InstalledMod) -> Result<usize, HubError> {
+        self.ensure_game_closed()?;
+        let plugins = self.plugins_dir()?;
+        let removed = mods::delete_mod(&plugins, item)?;
+        self.logs.activity(
+            "Mods",
+            &format!(
+                "Deleted {} ({} file(s), {}).",
+                item.name,
+                removed,
+                item.source_path.display()
+            ),
+        );
+        Ok(removed)
+    }
+
+    pub fn delete_all_scope(&self) -> Result<mods::DeleteScope, HubError> {
+        let plugins = self.plugins_dir()?;
+        Ok(mods::delete_all_scope(&plugins)?)
+    }
+
+    pub fn delete_all_mods(&self) -> Result<usize, HubError> {
+        self.ensure_game_closed()?;
+        let plugins = self.plugins_dir()?;
+        let removed = mods::delete_all(&plugins)?;
+        self.logs.activity(
+            "Mods",
+            &format!("Deleted {removed} file(s) from {}.", plugins.display()),
+        );
+        Ok(removed)
+    }
+
+    fn ensure_game_closed(&self) -> Result<(), HubError> {
+        if self.game_running()? {
+            return Err(HubError::GameRunning);
+        }
+        Ok(())
+    }
+
     pub fn metadata(&self) -> &[MetadataMod] {
         &self.metadata
     }
@@ -653,9 +697,7 @@ impl Hub {
     }
 
     pub fn apply_install(&self, plan: &UpgradePlan) -> Result<install::ApplyReport, HubError> {
-        if self.game_running()? {
-            return Err(HubError::GameRunning);
-        }
+        self.ensure_game_closed()?;
         let report = install::apply_upgrade(plan, &self.backup_root())
             .map_err(|error| HubError::Apply(error.to_string()))?;
         self.logs.activity(

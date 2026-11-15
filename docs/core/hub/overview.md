@@ -9,6 +9,7 @@
 - `Hub::open()` 在真实 appdata 根下加载设置、启动会话日志、加载磁盘目录与元数据缓存，并创建网络客户端。
 - `set_game_folder` 校验游戏目录后写入 `Settings.json`；`detect_game_folder` 先用 Steam 清单发现安装。
 - `plugins_dir` 把游戏根解析到 `BepInEx/Plugins`；`scan_mods` 调用 `mods::scan` 并写一条活动日志。
+- `set_mod_enabled` / `set_all_mods_enabled` 走 `mods` 的改名；`delete_scope` / `delete_all_scope` 只返回将删的一级条目与文件数，`delete_mod` / `delete_all_mods` 先确认游戏未运行再执行删除，并写活动日志。
 - `launch_game` 调用 `launch::launch_game`，返回 app id 并记录一条活动日志；找不到游戏目录或 app id 时返回错误。
 - `metadata_needs_refresh` 在内存列表为空或缓存超过 6 小时时返回 true，调用方据此决定是否后台刷新。
 - `refresh_metadata(force)` 通过 `network` 做条件请求，更新缓存与内存列表；`force` 为 true 时忽略 ETag/Last-Modified，供手动刷新使用。
@@ -19,6 +20,7 @@
 
 - 所有阻塞操作由调用方放在 worker 上；app 启动时把过期的目录刷新放到 worker，用户触发的本地扫描仍是同步调用。
 - 没有游戏目录时 `plugins_dir` / `scan_mods` / `launch_game` 返回 `HubError::NoGameFolder`。
+- 安装与删除共用 `game_running` 防护：游戏运行时返回 `HubError::GameRunning`，文案要求先关闭游戏再改动模组文件。
 - 网络失败不会清空缓存；`refresh_metadata` 的错误直接返回给调用方，缓存由 `metadata::MetadataCache` 决定。
 - 目录条目缺少 Nexus 链接、链接不是 HTTPS 或无法启动浏览器时，`open_nexus_download_page` 返回对应错误，不尝试降级到不受信任的 URL。
 - 设置解析失败已经在 `SettingsStore` 里降级为默认值，`Hub` 只记录警告，不覆盖原文件。
