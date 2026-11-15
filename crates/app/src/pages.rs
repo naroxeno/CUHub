@@ -630,8 +630,13 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                 .gap(scaled(&z, 12.0))
                 .px(scaled(&z, 6.0))
                 .pb(scaled(&z, 3.0))
-                .child(pix(item.evidence_label(), 10.0, detail_color, &z))
-                .child(pix(detail, 10.0, detail_color, &z)),
+                .child(pix(item.evidence_label(), 10.0, detail_color, &z).flex_shrink_0())
+                .child(
+                    view()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .child(pix(detail, 10.0, detail_color, &z).truncate()),
+                ),
         )
         .child(source_line(&z, row, ui))
 }
@@ -651,7 +656,12 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         } else {
             TEXT_MUTED
         };
-        line = line.child(pix(row.source.text.clone(), 10.0, color, z));
+        line = line.child(
+            view()
+                .flex_1()
+                .min_w(px(0.0))
+                .child(pix(row.source.text.clone(), 10.0, color, z).truncate()),
+        );
     }
     if !row.source.can_check && row.source.repo.is_some() {
         line = line.child(spinner(z));

@@ -31,10 +31,15 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
 | Nexus 刷新中 | `nexus_refreshing` | 同款方块 spinner + 文案 | 640ms 循环，20 Hz 上限 |
 | 行 hover / 侧栏按下 | 指针 | 底色 `surface_raised`、底部分隔线转白；导航按下转 `border_dim` | 即时 |
 
+## 模组行布局
+
+- 证据行与来源行的说明文字放在 `flex_1` + `min_w(0)` 容器里并截断，行内按钮 `flex_shrink_0`。窗口较窄或来源说明很长时先裁掉文字，按钮不会被挤出面板（修掉过 Disable 因按钮在窗口外而点不到的回归）。
+
 ## 模组启用/禁用
 
 - 行内 Toggle：禁用行显示 `Enable`、启用行显示 `Disable`。点击后在后台线程调用 `Hub::set_mod_enabled`，成功后重新扫描并把改名的 DLL 数写进状态行；失败只把 `HubError` 文案写进状态行，不弹窗。
 - 面板批量：`Disable all` / `Enable all` 调 `Hub::set_all_mods_enabled`，同样后台执行并回写改名数。任一变更进行期间，行内 Toggle、三个批量按钮（含 `Delete all`）与 `Refresh` 一起置灰，避免重复点击。
+- 后台任务挂在 App 组件 owner（`Ui::spawn_worker`）上，而不是按钮所在分支：按钮在忙时会整块换成禁用副本，分支 owner 销毁后挂在它下面的任务会被取消，忙碌信号永远不复位。
 - 禁用行视觉（FEATURES E7）：左缘 2px danger 竖条由 `status_color` 提供；名称、版本、作者、证据与详情文字转 danger，来源行在带 warning 时仍保留 WARN，避免丢掉来源匹配提示。
 - 行 key 里包含 `disabled`，刷新后 `each` 会重建该行，静态文本与按钮才能跟随状态变化。
 - 启用与禁用都是可逆操作，不做确认弹窗；删除是破坏性操作，走下一节的确认弹窗。

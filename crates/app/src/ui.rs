@@ -1,6 +1,7 @@
 //! Zoom-aware pixel primitives, motion helpers and the app's hub-backed state.
 
 use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -233,6 +234,7 @@ pub struct Ui {
     pub nexus_key_draft: Signal<String>,
     pub nexus_key_check: Signal<String>,
     pub app_data: String,
+    owner: Owner,
 }
 
 impl Ui {
@@ -259,6 +261,7 @@ impl Ui {
             String::from("No key saved.")
         };
         let app_data = hub.app_data().display().to_string();
+        let owner = Owner::current();
         let notice = if settings.game_path.trim().is_empty() {
             String::from("No game folder set. Open Settings to detect it.")
         } else {
@@ -298,7 +301,15 @@ impl Ui {
             nexus_key_draft: signal(String::new()),
             nexus_key_check: signal(nexus_key_check),
             app_data,
+            owner,
         }
+    }
+
+    // A handler's task belongs to the view that handled it; swapping that
+    // view out (a button replaced by its disabled twin) cancels the task and
+    // leaves its busy signal set. Workers live with the app instead.
+    fn spawn_worker(&self, future: impl Future<Output = ()> + 'static) {
+        self.owner.run(|| spawn(future));
     }
 
     fn hub(&self) -> MutexGuard<'_, Hub> {
@@ -364,7 +375,7 @@ impl Ui {
         self.nexus_error.set(String::new());
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let result = blocking(move || {
                 let mut hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 let refresh = hub.refresh_metadata(force)?;
@@ -428,7 +439,7 @@ impl Ui {
             .set(String::from("Downloading the latest Nexus file…"));
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 hub.download_nexus_latest(&mod_id)
@@ -484,7 +495,7 @@ impl Ui {
         ));
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 hub.set_mod_enabled(&item, enabled)
@@ -529,7 +540,7 @@ impl Ui {
         }));
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 hub.set_all_mods_enabled(enabled)
@@ -595,7 +606,7 @@ impl Ui {
             .set(format!("Collecting the delete list for {label}…"));
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let scope_target = target.clone();
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -645,7 +656,7 @@ impl Ui {
         self.notice.set(format!("Deleting {label}…"));
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let target = prompt.target.clone();
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -690,7 +701,7 @@ impl Ui {
             .set(format!("Checking GitHub for {}…", repo.slug()));
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let target = repo.clone();
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -768,7 +779,7 @@ impl Ui {
         self.notice.set(format!("Preparing an update for {name}…"));
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 prepare_update(
@@ -815,7 +826,7 @@ impl Ui {
         });
         let hub = self.hub.clone();
         let ui = self.clone();
-        spawn(async move {
+        self.spawn_worker(async move {
             loop {
                 if ui.apply_cancel.get() {
                     let staging = pending.staging.clone();
@@ -1037,7 +1048,7 @@ impl Ui {
         let saved = self.nexus_key_saved;
         let check = self.nexus_key_check;
         let notice = self.notice;
-        spawn(async move {
+        self.spawn_worker(async move {
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 hub.validate_nexus_key()
@@ -1539,7 +1550,7 @@ pub fn button(
             .active(|s| s.bg(rgb(ACCENT_PRESS)).text_color(rgb(TEXT)))
             .on_press(on_press);
     }
-    button
+    button.flex_shrink_0()
 }
 
 pub fn danger_button(
@@ -1565,7 +1576,7 @@ pub fn danger_button(
             .active(|s| s.bg(rgb(DANGER)).text_color(rgb(BG)))
             .on_press(on_press);
     }
-    button
+    button.flex_shrink_0()
 }
 
 pub fn rise_in() -> Motion {
