@@ -66,7 +66,7 @@
 ## 测试与打包
 
 - headless：`nsh-testing` + `nsh_engine::{EngineConfig, Root}`；`Headless::start(config)`、`app.type_text(id, text)`、`app.press(selector)`、`app.wait_for(selector)`、`app.screen().texts()`；在 `cargo test` 里跑，不需要显示器。CLI 的 `--trace` 打印原生操作与耗时。
-- `nsh package --target linux` 产出 `.nsh/out/<Name>/`（可执行文件、`nsh/bundle.nshc`、`nsh/assets`、`nsh/app.json`、`.desktop`、PNG、`.tar.gz`）；Windows 另出 zip 和 Inno Setup 安装器。
+- `nsh package --target linux` 默认产出 `.nsh/out/<Name>/`（可执行文件、`nsh/bundle.nshc`、`nsh/assets`、`nsh/app.json`、`.desktop`、PNG、`.tar.gz`）；Windows 另出 zip 和 Inno Setup 安装器。`just package` / `package-*` 传 `--out dist/<platform>`，产物落在仓库根 `dist/linux|windows|macos/`。
 - 打包要 release runner，Linux 运行需要 GTK 4.14+ 与 GStreamer，构建还要 clang。
 - 单文件打包、体积、Windows 交叉编译还没测。
 
