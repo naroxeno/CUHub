@@ -1,6 +1,6 @@
 # 交接说明
 
-截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），核心 170 个单测通过；禁用/启用与批量开关（FEATURES E6/E8）以及删除（E8 Delete all、E9 单项删除）已在 core 落地，app 已接（删除走两段式确认弹窗，列出绝对路径与文件数）；install 核心（zip/7z/rar 与裸 DLL staging、归属计划、备份/替换/回滚）与 Hub/UI 接线已落地（OutOfDate 或 GitHub release 版本更高的模组可 Update：选源、下载、解包、确认计划、Apply，游戏运行时排队）；app 的 Local Mods、Settings（含 Nexus key 与 GitHub token 的保存/校验/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），核心 170 个单测通过；禁用/启用与批量开关（FEATURES E6/E8）以及删除（E8 Delete all、E9 单项删除）已在 core 落地，app 已接（删除走两段式确认弹窗，列出绝对路径与文件数）；install 核心（zip/7z/rar 与裸 DLL staging、归属计划、备份/替换/回滚）与 Hub/UI 接线已落地（OutOfDate 或 GitHub release 版本更高的模组可 Update：选源、下载、解包、确认计划、Apply，游戏运行时排队）；app 的 Local Mods、Settings（含 Nexus key 与 GitHub token 的保存/校验/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。界面已接 en / 简体中文 / 日本語 三语（Settings.language 持久化，locales 在仓库根，nsh 注入）；spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
 
 ## 1. 仓库现状
 
@@ -8,7 +8,7 @@
 - 骨架：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
 - core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`nexus_auth`、`nexus`、`hub`、`github`、`sources`、`source_choice`、`install`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
 - 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-only`；与上游一致。
-- app（2026-11-14）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。GitHub 源在 Local Mods 每行第三行显示仓库、匹配依据、check 结果与生效源，可手动 Check；OutOfDate 或 GitHub release 版本更高的行可 Update（未列入清单的模组同样适用），下载归档后先展示计划再 Apply，游戏运行中排队。Multiplayer、Skins & Backups 仍是占位。
+- app（2026-11-15）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。GitHub 源在 Local Mods 每行第三行显示仓库、匹配依据、check 结果与生效源，可手动 Check；OutOfDate 或 GitHub release 版本更高的行可 Update（未列入清单的模组同样适用），下载归档后先展示计划再 Apply，游戏运行中排队。Multiplayer、Skins & Backups 仍是占位。界面文案已接 i18n：`locales/app.yml` 在仓库根（与 `nsh.json` 同级），`_version: 2` 采用 key 在外、语言在内的写法；nsh 在 run/dev/test/package 时写成 `.nsh/rust/translations.json` 并注入入口，普通 cargo 构建不注入。Settings 页 Language 可选 System / English / 日本語 / 简体中文，`Settings.language` 持久化；切换语言会 `set_locale` 并重建 local / nexus 行。core 错误文案仍为英文。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
 
 ## 2. 已有文档
@@ -73,7 +73,7 @@
 2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 目录列表与刷新、Steam 自动发现；app 仍不联网。
 3. **core 基座收尾（2026-11-14）**：`launch` 已接 Launch Game 并改为非阻塞，AGPL 许可证已落地；`dotnetdll` 读取 DLL 版本/GUID，Windows Steam 根接入注册表；真实游戏根反查 app id 4576490 验证通过。
 4. **下一步**：审查 GitHub 源代码；模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用与删除的界面接线（已完成）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
-5. **界面 i18n（2026-11-15 进行中）**：目标英文/日文/中文；语言存 `Settings.json` 的 `language` 字段，app 文案集中到 `crates/app/src/i18n.rs`，core 错误文案仍为英文（后续按错误码映射）。
+5. **界面 i18n（2026-11-15 已完成）**：英文 / 简体中文 / 日本語；语言存 `Settings.json` 的 `language` 字段（默认 `system`，跟随设备），app 文案集中在仓库根的 `locales/app.yml`与 `crates/app/src/i18n.rs`，`t!` 写在显示处并由 `set_locale` 驱动重渲染，切换语言会重建行文案；core 错误文案仍为英文（后续按错误码映射）。nsh 的 `_version: 2` 是 key 在外、语言在内，写成语言在外会生成方向相反的 `translations.json`，`t!` 只显示键名。
 6. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队；裸 DLL 文件名不一致且模组只有一个 DLL 时按该 DLL 替换并写 warning。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
 6. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
 

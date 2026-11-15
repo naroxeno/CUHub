@@ -60,6 +60,21 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
 - 循环动画只有两类，且都随元素卸载停止：checking / refreshing 期间的 spinner（每个 20 Hz），以及可更新行的徽标呼吸（每行 10 Hz，行数极少）。
 - 一次性入场动画不占稳态帧；Motion preset 自带 `reduce_motion` 处理（无位移、直接到终态）。
 
+## 界面文案与多语言
+
+- 文案全部来自仓库根目录的 `locales/app.yml`（与 `nsh.json` 同级），由 nsh 在 `nsh run` / `nsh dev` / `nsh test` / `nsh package` 时读取、写成 `.nsh/rust/translations.json` 并注入生成的入口。内置三种语言：`en`、`zh-CN`、`ja`；顶层必须写 `_version: 2`，**格式是 key 在外、语言在内**（rust-i18n 的 `_version: 2` 写法）：
+  ```yaml
+  _version: 2
+  nav.settings:
+    en: Settings
+    zh-CN: 设置
+    ja: 設定
+  ```
+  每个 key 下三种语言都要有；缺键时 `t!` 直接渲染 `<locale>.<key>`。
+- 取文案一律用 `nsh_core::prelude::t!`：`t!("key")`、`t!("key", name = expr)`，占位符写 `%{name}`。**`t!` 必须写在显示处**——`text(move || t!("…"))`、`pix(move || t!("…"), …)`、`button(move || t!("…"), …)`——因为 `translate` 读取的是当前 locale 的响应式状态，只有显示闭包里的调用会在 `set_locale` 后重渲染。先把结果算成 `String` 存进 signal 或结构体字段再显示，切换语言时不会更新，只能靠 `Ui::set_language` 手动重建。动态文案（如 Enable/Disable）同样在闭包里 `match` 后调 `t!`，不要在外面拼字符串。
+- 语言存在 core 的 `Settings.language`（默认 `"system"`）。`"system"` 表示跟随设备首选语言，其余存 BCP 47 标签（`en` / `ja` / `zh-CN`）；`src/i18n.rs` 里是白名单 `LANGUAGES`，解析失败按 `system` 处理。启动时 `Ui::new` 读该字段：`system` → `set_locale(None)`，否则 `Locale::parse` 成功后 `set_locale(Some(locale))`。Settings 页的 Language 段四个按钮调用 `Ui::set_language`：先 `set_locale`，再写 `settings.language` 并 `Hub::save_settings`（失败只写本地化状态行），然后复用现有缓存重建 local / nexus 行——不联网、不重新扫盘，重启后从 settings 恢复。
+- 限制：普通 `cargo run` / `cargo test` 不注入翻译表，`t!` 只会回退到键名或英文；要验证注入行为必须走 nsh 命令（本仓库日常仍用 cargo fmt/clippy/test，不启动 GUI）。因此不要把翻译表当作运行时可选资源加载，也不要新增 `build.rs` 去复制 locales。
+- 新增语言：① 在 `app.yml` 的每个 key 下加该 locale 一行（如 `de: ...`），补齐与 `en` 相同的键；② 在 `src/i18n.rs` 的 `LANGUAGES` 加 `(code, 显示名)`——显示名用该语言自己的写法，不翻译；③ Settings 页按钮由 `LANGUAGES` 长度驱动，无需改布局；④ 设备语言为新增语言时，`system` 会自动命中。core 的 `HubError` / `ModsError` 文案与 `nsh 0.5.1 · prototype shell` 保持英文，不翻译。
 ## 已知边界
 
 - nsh 的条件区域翻转即销毁，没有退出动画，因此浮层、pending 面板都是瞬时消失。

@@ -19,18 +19,12 @@ use nsh_core::RevealOptions;
 use nsh_core::element::FontAsset;
 use nsh_core::prelude::*;
 
+use crate::i18n;
 use crate::palette::*;
 
-pub const PIXEL_FONT: FontAsset = asset!("fonts/fusion-pixel-12px-proportional-zh_hans.otf");
+pub use crate::i18n::PAGE_KEYS as PAGES;
 
-pub const PAGES: [&str; 6] = [
-    "Nexus Dashboard",
-    "Local Mods",
-    "Multiplayer",
-    "Skins & Backups",
-    "Hub Home",
-    "Settings",
-];
+pub const PIXEL_FONT: FontAsset = asset!("fonts/fusion-pixel-12px-proportional-zh_hans.otf");
 
 pub const NEXUS_PAGE_SIZE: usize = 50;
 
@@ -57,15 +51,17 @@ impl NexusModRow {
             self.author,
             self.version,
             self.downloads,
-            self.state_label(),
+            self.state_key(),
             self.installed_version.as_deref().unwrap_or(""),
             self.adult,
             self.has_page
         )
     }
 
-    pub fn state_label(&self) -> &'static str {
-        self.status.map(ModStatus::label).unwrap_or("Not installed")
+    pub fn state_key(&self) -> &'static str {
+        self.status
+            .map(i18n::status_key)
+            .unwrap_or("status.not_installed")
     }
 }
 
@@ -87,11 +83,11 @@ impl SourceRow {
         self.options.len() > 1 || self.pinned.is_some()
     }
 
-    pub fn pin_label(&self) -> &'static str {
+    pub fn pin_key(&self) -> &'static str {
         match self.pinned {
-            None => "Pin: auto",
-            Some(SourceKind::Github) => "Pin: GitHub",
-            Some(SourceKind::Nexus) => "Pin: Nexus",
+            None => "local.pin_auto",
+            Some(SourceKind::Github) => "local.pin_github",
+            Some(SourceKind::Nexus) => "local.pin_nexus",
         }
     }
 }
@@ -161,7 +157,7 @@ impl DeleteTarget {
     pub fn label(&self) -> String {
         match self {
             DeleteTarget::Mod(item) => item.name.clone(),
-            DeleteTarget::All => String::from("all mods"),
+            DeleteTarget::All => t!("delete.all_mods"),
         }
     }
 }
@@ -173,28 +169,24 @@ pub struct DeletePrompt {
 }
 
 impl DeletePrompt {
-    pub fn title(&self) -> String {
+    pub fn title_key(&self) -> &'static str {
         match &self.target {
-            DeleteTarget::Mod(item) => format!("DELETE {}", item.name),
-            DeleteTarget::All => String::from("DELETE ALL MODS"),
+            DeleteTarget::Mod(_) => "panel.delete_mod",
+            DeleteTarget::All => "panel.delete_all",
         }
     }
 
-    pub fn action_label(&self) -> &'static str {
+    pub fn action_key(&self) -> &'static str {
         match &self.target {
-            DeleteTarget::Mod(_) => "Delete",
-            DeleteTarget::All => "Delete all",
+            DeleteTarget::Mod(_) => "common.delete",
+            DeleteTarget::All => "common.delete_all",
         }
     }
 
-    pub fn scope_note(&self) -> &'static str {
+    pub fn scope_note_key(&self) -> &'static str {
         match &self.target {
-            DeleteTarget::Mod(_) => {
-                "Only this mod's source path is removed; the other entries in Plugins stay."
-            }
-            DeleteTarget::All => {
-                "Every top-level entry in Plugins is removed, including files that are not mods."
-            }
+            DeleteTarget::Mod(_) => "delete.scope_mod",
+            DeleteTarget::All => "delete.scope_all",
         }
     }
 }
@@ -247,6 +239,7 @@ impl Ui {
             hub.detect_game_folder();
         }
         let settings = hub.settings().clone();
+        i18n::set_language(&settings.language);
         let zoom = settings.ui_scale;
         let mods = hub.scan_mods().unwrap_or_default();
         let checks = BTreeMap::new();
@@ -256,25 +249,25 @@ impl Ui {
         let nexus_page_rows = page_slice(&nexus_rows, 0);
         let metadata_synced = hub
             .metadata_last_synced_label()
-            .unwrap_or_else(|| String::from("Never"));
+            .unwrap_or_else(|| t!("common.never"));
         let nexus_key_saved = hub.nexus_has_key();
         let nexus_key_check = if nexus_key_saved {
-            String::from("Saved; not checked.")
+            t!("notice.saved_not_checked")
         } else {
-            String::from("No key saved.")
+            t!("notice.no_key_saved")
         };
         let github_token_saved = hub.github_token_saved();
         let github_token_check = if github_token_saved {
-            String::from("Saved; not checked.")
+            t!("notice.saved_not_checked")
         } else {
-            String::from("No token saved.")
+            t!("notice.no_token_saved")
         };
         let app_data = hub.app_data().display().to_string();
         let owner = Owner::current();
         let notice = if settings.game_path.trim().is_empty() {
-            String::from("No game folder set. Open Settings to detect it.")
+            t!("notice.no_game_folder")
         } else {
-            format!("{} mod(s) found in Plugins.", mods.len())
+            t!("notice.mods_found", count = mods.len())
         };
         Self {
             page: signal(0usize),
@@ -351,8 +344,7 @@ impl Ui {
                 self.mods.set(mods);
                 self.rebuild_nexus(&metadata);
                 self.rebuild_local_rows();
-                self.notice
-                    .set(format!("Scanned {count} mod(s) in Plugins."));
+                self.notice.set(t!("notice.scanned", count = count));
             }
             Err(error) => self.notice.set(error.to_string()),
         }
@@ -405,31 +397,28 @@ impl Ui {
                     ui.rebuild_nexus(&metadata);
                     ui.rebuild_local_rows();
                     ui.metadata_synced
-                        .set(synced.unwrap_or_else(|| String::from("Never")));
+                        .set(synced.unwrap_or_else(|| t!("common.never")));
                     ui.nexus_refreshing.set(false);
                     match refresh {
                         MetadataRefresh::Updated(count) => ui
                             .notice
-                            .set(format!("Community catalogue refreshed: {count} entries.")),
-                        MetadataRefresh::NotModified => ui
-                            .notice
-                            .set(String::from("The community catalogue is already current.")),
+                            .set(t!("notice.catalogue_refreshed", count = count)),
+                        MetadataRefresh::NotModified => {
+                            ui.notice.set(t!("notice.catalogue_current"))
+                        }
                     }
                 }
                 Ok(Err(error)) => {
                     ui.nexus_error.set(error.to_string());
                     ui.nexus_refreshing.set(false);
-                    ui.notice.set(format!(
-                        "Could not refresh the community catalogue: {error}"
-                    ));
+                    ui.notice
+                        .set(t!("notice.catalogue_refresh_failed", error = error));
                 }
                 Err(error) => {
-                    ui.nexus_error
-                        .set(String::from("The catalogue worker stopped."));
+                    ui.nexus_error.set(t!("notice.catalogue_worker_stopped"));
                     ui.nexus_refreshing.set(false);
-                    ui.notice.set(format!(
-                        "Could not refresh the community catalogue: {error}"
-                    ));
+                    ui.notice
+                        .set(t!("notice.catalogue_refresh_failed", error = error));
                 }
             }
         });
@@ -437,18 +426,15 @@ impl Ui {
 
     pub fn download_nexus(&self, mod_id: String) {
         if self.nexus_downloading.get().is_some() {
-            self.notice
-                .set(String::from("A Nexus download is already running."));
+            self.notice.set(t!("notice.nexus_download_running"));
             return;
         }
         if mod_id.trim().is_empty() {
-            self.notice
-                .set(String::from("This catalogue entry has no Nexus mod id."));
+            self.notice.set(t!("notice.no_nexus_id"));
             return;
         }
         self.nexus_downloading.set(Some(mod_id.clone()));
-        self.notice
-            .set(String::from("Downloading the latest Nexus file…"));
+        self.notice.set(t!("notice.nexus_downloading"));
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -459,17 +445,17 @@ impl Ui {
             .await;
             ui.nexus_downloading.set(None);
             match result {
-                Ok(Ok(download)) => ui.notice.set(format!(
-                    "Downloaded {} to {}.",
-                    download.file_name,
-                    download.path.display()
+                Ok(Ok(download)) => ui.notice.set(t!(
+                    "notice.downloaded",
+                    file = download.file_name,
+                    path = download.path.display().to_string()
                 )),
                 Ok(Err(error)) => ui
                     .notice
-                    .set(format!("Could not download from Nexus: {error}")),
+                    .set(t!("notice.nexus_download_failed", error = error)),
                 Err(error) => ui
                     .notice
-                    .set(format!("Could not download from Nexus: {error}")),
+                    .set(t!("notice.nexus_download_failed", error = error)),
             }
         });
     }
@@ -484,8 +470,7 @@ impl Ui {
 
     pub fn set_mod_enabled(&self, key: String, enabled: bool) {
         if self.toggle_busy.get().is_some() || self.bulk_busy.get() {
-            self.notice
-                .set(String::from("Another enable or disable change is running."));
+            self.notice.set(t!("notice.change_busy"));
             return;
         }
         let row = self
@@ -494,17 +479,17 @@ impl Ui {
             .into_iter()
             .find(|row| row.source_key == key);
         let Some(row) = row else {
-            self.notice
-                .set(String::from("That mod is no longer in the list."));
+            self.notice.set(t!("notice.mod_gone"));
             return;
         };
         let item = row.item.clone();
         let name = item.name.clone();
         self.toggle_busy.set(Some(key));
-        self.notice.set(format!(
-            "{} {name}…",
-            if enabled { "Enabling" } else { "Disabling" }
-        ));
+        self.notice.set(if enabled {
+            t!("notice.enabling", name = name)
+        } else {
+            t!("notice.disabling", name = name)
+        });
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -517,39 +502,39 @@ impl Ui {
             match result {
                 Ok(Ok(count)) => {
                     ui.refresh_mods();
-                    ui.notice.set(format!(
-                        "{} {name}: {count} DLL file(s) renamed.",
-                        if enabled { "Enabled" } else { "Disabled" }
-                    ));
+                    ui.notice.set(if enabled {
+                        t!("notice.enabled", name = name, count = count)
+                    } else {
+                        t!("notice.disabled", name = name, count = count)
+                    });
                 }
-                Ok(Err(error)) => ui.notice.set(format!(
-                    "Could not {} {name}: {error}",
-                    if enabled { "enable" } else { "disable" }
-                )),
+                Ok(Err(error)) => ui.notice.set(if enabled {
+                    t!("notice.enable_failed", name = name, error = error)
+                } else {
+                    t!("notice.disable_failed", name = name, error = error)
+                }),
                 Err(error) => ui
                     .notice
-                    .set(format!("The mod toggle worker stopped: {error}")),
+                    .set(t!("notice.toggle_worker_stopped", error = error)),
             }
         });
     }
 
     pub fn set_all_mods_enabled(&self, enabled: bool) {
         if self.toggle_busy.get().is_some() || self.bulk_busy.get() {
-            self.notice
-                .set(String::from("Another enable or disable change is running."));
+            self.notice.set(t!("notice.change_busy"));
             return;
         }
         if self.mods.get().is_empty() {
-            self.notice
-                .set(String::from("There are no mods to change."));
+            self.notice.set(t!("notice.no_mods_to_change"));
             return;
         }
         self.bulk_busy.set(true);
-        self.notice.set(String::from(if enabled {
-            "Enabling every mod…"
+        self.notice.set(if enabled {
+            t!("notice.enabling_all")
         } else {
-            "Disabling every mod…"
-        }));
+            t!("notice.disabling_all")
+        });
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -562,18 +547,20 @@ impl Ui {
             match result {
                 Ok(Ok(count)) => {
                     ui.refresh_mods();
-                    ui.notice.set(format!(
-                        "{} all mods: {count} DLL file(s) renamed.",
-                        if enabled { "Enabled" } else { "Disabled" }
-                    ));
+                    ui.notice.set(if enabled {
+                        t!("notice.enabled_all", count = count)
+                    } else {
+                        t!("notice.disabled_all", count = count)
+                    });
                 }
-                Ok(Err(error)) => ui.notice.set(format!(
-                    "Could not {} every mod: {error}",
-                    if enabled { "enable" } else { "disable" }
-                )),
+                Ok(Err(error)) => ui.notice.set(if enabled {
+                    t!("notice.enable_all_failed", error = error)
+                } else {
+                    t!("notice.disable_all_failed", error = error)
+                }),
                 Err(error) => ui
                     .notice
-                    .set(format!("The mod toggle worker stopped: {error}")),
+                    .set(t!("notice.toggle_worker_stopped", error = error)),
             }
         });
     }
@@ -592,8 +579,7 @@ impl Ui {
             .into_iter()
             .find(|row| row.source_key == key);
         let Some(row) = row else {
-            self.notice
-                .set(String::from("That mod is no longer in the list."));
+            self.notice.set(t!("notice.mod_gone"));
             return;
         };
         self.start_delete(DeleteTarget::Mod(Box::new(row.item.clone())));
@@ -608,14 +594,13 @@ impl Ui {
             return;
         }
         if self.delete_busy.get() || self.toggle_busy.get().is_some() || self.bulk_busy.get() {
-            self.notice
-                .set(String::from("Another mod file change is running."));
+            self.notice.set(t!("notice.file_change_busy"));
             return;
         }
         let label = target.label();
         self.delete_busy.set(true);
         self.notice
-            .set(format!("Collecting the delete list for {label}…"));
+            .set(t!("notice.collecting_delete", label = label));
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -632,18 +617,24 @@ impl Ui {
             match result {
                 Ok(Ok(scope)) => {
                     if scope.roots.is_empty() {
-                        ui.notice.set(String::from("Plugins is already empty."));
+                        ui.notice.set(t!("notice.plugins_empty"));
                         return;
                     }
-                    ui.notice.set(format!(
-                        "{label}: {} file(s) in {} path(s) will be deleted.",
-                        scope.files,
-                        scope.roots.len()
+                    ui.notice.set(t!(
+                        "notice.delete_scope",
+                        label = label,
+                        files = scope.files,
+                        paths = scope.roots.len()
                     ));
                     ui.delete_prompt.set(Some(DeletePrompt { target, scope }));
                 }
-                Ok(Err(error)) => ui.notice.set(format!("Could not list {label}: {error}")),
-                Err(error) => ui.notice.set(format!("The delete worker stopped: {error}")),
+                Ok(Err(error)) => {
+                    ui.notice
+                        .set(t!("notice.list_failed", label = label, error = error))
+                }
+                Err(error) => ui
+                    .notice
+                    .set(t!("notice.delete_worker_stopped", error = error)),
             }
         });
     }
@@ -657,15 +648,15 @@ impl Ui {
         }
         let label = prompt.target.label();
         let failure = match &prompt.target {
-            DeleteTarget::Mod(item) => format!(
-                "Could not delete {} ({})",
-                item.name,
-                item.source_path.display()
+            DeleteTarget::Mod(item) => t!(
+                "notice.delete_mod_failed",
+                name = item.name,
+                path = item.source_path.display().to_string()
             ),
-            DeleteTarget::All => String::from("Could not delete all mods"),
+            DeleteTarget::All => t!("notice.delete_all_failed"),
         };
         self.delete_busy.set(true);
-        self.notice.set(format!("Deleting {label}…"));
+        self.notice.set(t!("notice.deleting", label = label));
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -683,11 +674,15 @@ impl Ui {
             match result {
                 Ok(Ok(count)) => {
                     ui.refresh_mods();
-                    ui.notice
-                        .set(format!("Deleted {count} file(s) from Plugins."));
+                    ui.notice.set(t!("notice.deleted", count = count));
                 }
-                Ok(Err(error)) => ui.notice.set(format!("{failure}: {error}")),
-                Err(error) => ui.notice.set(format!("The delete worker stopped: {error}")),
+                Ok(Err(error)) => {
+                    ui.notice
+                        .set(t!("notice.delete_failed", failure = failure, error = error))
+                }
+                Err(error) => ui
+                    .notice
+                    .set(t!("notice.delete_worker_stopped", error = error)),
             }
         });
     }
@@ -697,8 +692,7 @@ impl Ui {
             return;
         }
         self.delete_prompt.set(None);
-        self.notice
-            .set(String::from("Delete cancelled; nothing was removed."));
+        self.notice.set(t!("notice.delete_cancelled"));
     }
 
     pub fn check_source(&self, key: String, repo: Repo) {
@@ -710,7 +704,7 @@ impl Ui {
         self.checks.set(checks);
         self.rebuild_local_rows();
         self.notice
-            .set(format!("Checking GitHub for {}…", repo.slug()));
+            .set(t!("notice.checking_github_repo", repo = repo.slug()));
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -740,7 +734,8 @@ impl Ui {
                     );
                 }
                 Err(error) => {
-                    ui.notice.set(format!("The GitHub check stopped: {error}"));
+                    ui.notice
+                        .set(t!("notice.check_worker_stopped", error = error));
                     checks.insert(
                         key.clone(),
                         CheckState::Failed(CheckFailure::Network {
@@ -756,13 +751,11 @@ impl Ui {
 
     pub fn update_source(&self, key: String) {
         if self.update_busy.get().is_some() {
-            self.notice
-                .set(String::from("An update is already being prepared."));
+            self.notice.set(t!("notice.update_preparing"));
             return;
         }
         if self.pending_install.get().is_some() {
-            self.notice
-                .set(String::from("Apply or cancel the pending update first."));
+            self.notice.set(t!("notice.pending_first"));
             return;
         }
         let row = self
@@ -771,13 +764,11 @@ impl Ui {
             .into_iter()
             .find(|row| row.source_key == key);
         let Some(row) = row else {
-            self.notice
-                .set(String::from("That mod is no longer in the list."));
+            self.notice.set(t!("notice.mod_gone"));
             return;
         };
         if !row.can_update() {
-            self.notice
-                .set(String::from("This mod is not ready for an update."));
+            self.notice.set(t!("notice.not_ready_for_update"));
             return;
         }
         let item = row.item.clone();
@@ -788,7 +779,7 @@ impl Ui {
         let nexus_id = item.metadata_id.clone();
         let name = item.name.clone();
         self.update_busy.set(Some(key));
-        self.notice.set(format!("Preparing an update for {name}…"));
+        self.notice.set(t!("notice.preparing_update", name = name));
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -811,12 +802,13 @@ impl Ui {
                     let files = pending.plan.files.len();
                     ui.pending_install.set(Some(pending));
                     ui.apply_status.set(String::new());
-                    ui.notice.set(format!(
-                        "Ready to update {name}: {files} file(s). Review the plan below."
-                    ));
+                    ui.notice
+                        .set(t!("notice.update_ready", name = name, files = files));
                 }
                 Ok(Err(error)) => ui.notice.set(error.to_string()),
-                Err(error) => ui.notice.set(format!("The update worker stopped: {error}")),
+                Err(error) => ui
+                    .notice
+                    .set(t!("notice.update_worker_stopped", error = error)),
             }
             ui.update_busy.set(None);
         });
@@ -832,9 +824,9 @@ impl Ui {
         self.apply_running.set(true);
         self.apply_cancel.set(false);
         self.apply_status.set(if pending.game_running {
-            String::from("Waiting for Casualties Unknown to close…")
+            t!("notice.waiting_for_game")
         } else {
-            String::from("Applying the update…")
+            t!("notice.applying")
         });
         let hub = self.hub.clone();
         let ui = self.clone();
@@ -851,8 +843,8 @@ impl Ui {
                     })
                     .await;
                     ui.pending_install.set(None);
-                    ui.apply_status.set(String::from("Update cancelled."));
-                    ui.notice.set(String::from("The update was cancelled."));
+                    ui.apply_status.set(t!("notice.update_cancelled_status"));
+                    ui.notice.set(t!("notice.update_cancelled"));
                     break;
                 }
                 let plan = pending.plan.clone();
@@ -880,19 +872,21 @@ impl Ui {
                             .backup
                             .as_ref()
                             .map(|path| path.display().to_string())
-                            .unwrap_or_else(|| String::from("none"));
+                            .unwrap_or_else(|| t!("common.none"));
                         let name = pending.mod_name.clone();
                         ui.pending_install.set(None);
                         ui.apply_status.set(String::new());
                         ui.refresh_mods();
-                        ui.notice.set(format!(
-                            "Updated {name}: {count} file(s). Backup: {backup}."
+                        ui.notice.set(t!(
+                            "notice.updated",
+                            name = name,
+                            count = count,
+                            backup = backup
                         ));
                         break;
                     }
                     Ok(Err(HubError::GameRunning)) => {
-                        ui.apply_status
-                            .set(String::from("Waiting for Casualties Unknown to close…"));
+                        ui.apply_status.set(t!("notice.waiting_for_game"));
                         let _ = blocking(|| std::thread::sleep(Duration::from_secs(3))).await;
                     }
                     Ok(Err(error)) => {
@@ -903,7 +897,7 @@ impl Ui {
                     Err(error) => {
                         ui.apply_status.set(String::new());
                         ui.notice
-                            .set(format!("The install worker stopped: {error}"));
+                            .set(t!("notice.install_worker_stopped", error = error));
                         break;
                     }
                 }
@@ -915,8 +909,7 @@ impl Ui {
     pub fn discard_pending(&self) {
         if self.apply_running.get() {
             self.apply_cancel.set(true);
-            self.apply_status
-                .set(String::from("Cancelling after the current step…"));
+            self.apply_status.set(t!("notice.cancelling"));
             return;
         }
         let Some(pending) = self.pending_install.get() else {
@@ -928,8 +921,7 @@ impl Ui {
         }
         self.pending_install.set(None);
         self.apply_status.set(String::new());
-        self.notice
-            .set(String::from("The pending update was discarded."));
+        self.notice.set(t!("notice.discarded"));
     }
 
     pub fn cycle_source_pin(&self, key: String, options: Vec<SourceKind>) {
@@ -959,13 +951,13 @@ impl Ui {
             Ok(()) => {
                 self.rebuild_local_rows();
                 self.notice.set(match kind {
-                    Some(kind) => format!("Pinned the source to {}.", source_kind_label(kind)),
-                    None => String::from("Source choice set to automatic."),
+                    Some(kind) => t!("notice.pinned", kind = source_kind_label(kind)),
+                    None => t!("notice.pin_auto"),
                 });
             }
             Err(error) => self
                 .notice
-                .set(format!("Could not save the source choice: {error}")),
+                .set(t!("notice.save_source_failed", error = error)),
         }
     }
 
@@ -975,18 +967,15 @@ impl Ui {
             hub.open_nexus_download_page(&mod_id)
         };
         match result {
-            Ok(()) => self.notice.set(String::from(
-                "Opened the Nexus download page in the browser.",
-            )),
+            Ok(()) => self.notice.set(t!("notice.opened_nexus")),
             Err(error) => self
                 .notice
-                .set(format!("Could not open the Nexus page: {error}")),
+                .set(t!("notice.open_nexus_failed", error = error)),
         }
     }
 
     pub fn show_mod_details(&self, name: &str) {
-        self.notice
-            .set(format!("Mod details for {name} are not implemented yet."));
+        self.notice.set(t!("notice.details_todo", name = name));
     }
 
     pub fn launch_game(&self) {
@@ -995,10 +984,8 @@ impl Ui {
             hub.launch_game()
         };
         match result {
-            Ok(app_id) => self.notice.set(format!(
-                "Asked Steam to launch Casualties Unknown (app {app_id})."
-            )),
-            Err(error) => self.notice.set(format!("Could not launch: {error}")),
+            Ok(app_id) => self.notice.set(t!("notice.launched", app = app_id)),
+            Err(error) => self.notice.set(t!("notice.launch_failed", error = error)),
         }
     }
 
@@ -1014,21 +1001,20 @@ impl Ui {
                     hub.settings().clone()
                 };
                 self.settings.set(settings);
-                self.notice
-                    .set(format!("Game folder set to {}.", path.display()));
+                self.notice.set(t!(
+                    "notice.game_folder_set",
+                    path = path.display().to_string()
+                ));
                 self.refresh_mods();
             }
-            None => self.notice.set(String::from(
-                "Casualties Unknown was not found in the Steam libraries.",
-            )),
+            None => self.notice.set(t!("notice.game_not_found")),
         }
     }
 
     pub fn save_nexus_key(&self) {
         let key = self.nexus_key_draft.get();
         if key.trim().is_empty() {
-            self.notice
-                .set(String::from("Paste a Nexus API key first."));
+            self.notice.set(t!("notice.paste_nexus_key"));
             return;
         }
         let result = {
@@ -1039,23 +1025,21 @@ impl Ui {
             Ok(()) => {
                 self.nexus_key_saved.set(true);
                 self.nexus_key_draft.set(String::new());
-                self.notice
-                    .set(String::from("Nexus API key saved on this machine."));
+                self.notice.set(t!("notice.nexus_key_saved"));
             }
             Err(error) => self
                 .notice
-                .set(format!("Could not save the Nexus API key: {error}")),
+                .set(t!("notice.save_nexus_key_failed", error = error)),
         }
     }
 
     pub fn validate_nexus_key(&self) {
         if !self.nexus_key_saved.get() {
-            self.nexus_key_check.set(String::from("No key saved."));
-            self.notice.set(String::from("Save a Nexus API key first."));
+            self.nexus_key_check.set(t!("notice.no_key_saved"));
+            self.notice.set(t!("notice.save_nexus_key_first"));
             return;
         }
-        self.nexus_key_check
-            .set(String::from("Checking with Nexus…"));
+        self.nexus_key_check.set(t!("notice.checking_nexus"));
         let hub = self.hub.clone();
         let saved = self.nexus_key_saved;
         let check = self.nexus_key_check;
@@ -1070,24 +1054,20 @@ impl Ui {
                 Ok(Ok(account)) => {
                     saved.set(true);
                     if account.is_premium {
-                        check.set(String::from("Nexus account: Premium."));
-                        notice.set(String::from("Nexus accepted the key: Premium account."));
+                        check.set(t!("notice.nexus_premium"));
+                        notice.set(t!("notice.nexus_accepted_premium"));
                     } else {
-                        check.set(String::from(
-                            "Nexus account: Standard (direct downloads need Premium).",
-                        ));
-                        notice.set(String::from(
-                            "Nexus accepted the key, but this account is not Premium.",
-                        ));
+                        check.set(t!("notice.nexus_standard"));
+                        notice.set(t!("notice.nexus_accepted_standard"));
                     }
                 }
                 Ok(Err(error)) => {
-                    check.set(format!("Nexus check failed: {error}"));
-                    notice.set(format!("Could not check the Nexus key: {error}"));
+                    check.set(t!("notice.nexus_check_failed", error = error));
+                    notice.set(t!("notice.check_nexus_key_failed", error = error));
                 }
                 Err(error) => {
-                    check.set(String::from("Nexus check did not finish."));
-                    notice.set(format!("Could not check the Nexus key: {error}"));
+                    check.set(t!("notice.nexus_check_unfinished"));
+                    notice.set(t!("notice.check_nexus_key_failed", error = error));
                 }
             }
         });
@@ -1102,18 +1082,18 @@ impl Ui {
             Ok(()) => {
                 self.nexus_key_saved.set(false);
                 self.nexus_key_draft.set(String::new());
-                self.notice.set(String::from("Nexus API key cleared."));
+                self.notice.set(t!("notice.nexus_key_cleared"));
             }
             Err(error) => self
                 .notice
-                .set(format!("Could not clear the Nexus API key: {error}")),
+                .set(t!("notice.clear_nexus_key_failed", error = error)),
         }
     }
 
     pub fn save_github_token(&self) {
         let token = self.github_token_draft.get();
         if token.trim().is_empty() {
-            self.notice.set(String::from("Paste a GitHub token first."));
+            self.notice.set(t!("notice.paste_github_token"));
             return;
         }
         let result = {
@@ -1124,23 +1104,21 @@ impl Ui {
             Ok(()) => {
                 self.github_token_saved.set(true);
                 self.github_token_draft.set(String::new());
-                self.notice
-                    .set(String::from("GitHub token saved on this machine."));
+                self.notice.set(t!("notice.github_token_saved"));
             }
             Err(error) => self
                 .notice
-                .set(format!("Could not save the GitHub token: {error}")),
+                .set(t!("notice.save_github_token_failed", error = error)),
         }
     }
 
     pub fn validate_github_token(&self) {
         if !self.github_token_saved.get() {
-            self.github_token_check.set(String::from("No token saved."));
-            self.notice.set(String::from("Save a GitHub token first."));
+            self.github_token_check.set(t!("notice.no_token_saved"));
+            self.notice.set(t!("notice.save_github_token_first"));
             return;
         }
-        self.github_token_check
-            .set(String::from("Checking with GitHub…"));
+        self.github_token_check.set(t!("notice.checking_github"));
         let hub = self.hub.clone();
         let saved = self.github_token_saved;
         let check = self.github_token_check;
@@ -1154,22 +1132,24 @@ impl Ui {
             match result {
                 Ok(Ok(limit)) => {
                     saved.set(true);
-                    check.set(format!(
-                        "GitHub accepted the token: {} of {} requests left.",
-                        limit.remaining, limit.limit
+                    check.set(t!(
+                        "notice.github_token_accepted",
+                        remaining = limit.remaining,
+                        limit = limit.limit
                     ));
-                    notice.set(format!(
-                        "GitHub accepted the token: {} of {} API requests left.",
-                        limit.remaining, limit.limit
+                    notice.set(t!(
+                        "notice.github_token_accepted_notice",
+                        remaining = limit.remaining,
+                        limit = limit.limit
                     ));
                 }
                 Ok(Err(error)) => {
-                    check.set(format!("GitHub check failed: {error}"));
-                    notice.set(format!("Could not check the GitHub token: {error}"));
+                    check.set(t!("notice.github_check_failed", error = error));
+                    notice.set(t!("notice.check_github_token_failed", error = error));
                 }
                 Err(error) => {
-                    check.set(String::from("GitHub check did not finish."));
-                    notice.set(format!("Could not check the GitHub token: {error}"));
+                    check.set(t!("notice.github_check_unfinished"));
+                    notice.set(t!("notice.check_github_token_failed", error = error));
                 }
             }
         });
@@ -1184,13 +1164,61 @@ impl Ui {
             Ok(()) => {
                 self.github_token_saved.set(false);
                 self.github_token_draft.set(String::new());
-                self.github_token_check.set(String::from("No token saved."));
-                self.notice.set(String::from("GitHub token cleared."));
+                self.github_token_check.set(t!("notice.no_token_saved"));
+                self.notice.set(t!("notice.github_token_cleared"));
             }
             Err(error) => self
                 .notice
-                .set(format!("Could not clear the GitHub token: {error}")),
+                .set(t!("notice.clear_github_token_failed", error = error)),
         }
+    }
+
+    pub fn set_language(&self, code: &str) {
+        let code = if i18n::is_known_language(code) {
+            code
+        } else {
+            i18n::FOLLOW_SYSTEM
+        };
+        i18n::set_language(code);
+        let saved = {
+            let mut hub = self.hub();
+            let mut settings = hub.settings().clone();
+            settings.language = code.to_owned();
+            hub.save_settings(&settings)
+                .map(|()| hub.settings().clone())
+                .map_err(|error| error.to_string())
+        };
+        match saved {
+            Ok(settings) => {
+                self.settings.set(settings);
+                self.reset_credential_checks();
+                self.rebuild_local_rows();
+                let metadata = self.hub().metadata().to_vec();
+                self.rebuild_nexus(&metadata);
+                self.notice.set(t!(
+                    "notice.language_set",
+                    language = i18n::language_label(code)
+                ));
+            }
+            Err(error) => self
+                .notice
+                .set(t!("notice.save_language_failed", error = error)),
+        }
+    }
+
+    fn reset_credential_checks(&self) {
+        let key_saved = self.nexus_key_saved.get();
+        self.nexus_key_check.set(if key_saved {
+            t!("notice.saved_not_checked")
+        } else {
+            t!("notice.no_key_saved")
+        });
+        let token_saved = self.github_token_saved.get();
+        self.github_token_check.set(if token_saved {
+            t!("notice.saved_not_checked")
+        } else {
+            t!("notice.no_token_saved")
+        });
     }
 
     pub fn set_ui_scale(&self, level: u8) {
@@ -1211,9 +1239,11 @@ impl Ui {
             Ok(settings) => {
                 self.zoom.set(settings.ui_scale);
                 self.settings.set(settings);
-                self.notice.set(format!("Interface scale set to {level}x."));
+                self.notice.set(t!("notice.ui_scale_set", level = level));
             }
-            Err(error) => self.notice.set(format!("Could not save settings: {error}")),
+            Err(error) => self
+                .notice
+                .set(t!("notice.save_settings_failed", error = error)),
         }
     }
 }
@@ -1238,9 +1268,7 @@ fn prepare_update(
                 Ok(download) => download.path,
                 Err(error) => match repo {
                     Some(repo) if pinned.is_none() => {
-                        notes.push(format!(
-                            "Nexus download failed: {error}. Falling back to GitHub."
-                        ));
+                        notes.push(t!("pending.nexus_fallback", error = error));
                         source = SourceKind::Github;
                         download_github_archive(hub, repo, asset)?
                     }
@@ -1360,11 +1388,8 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
     let resolution = sources::resolve_mod(input.entries, &local, github, nexus, input.pinned);
     let Some(matched) = resolution.matched else {
         let text = match input.pinned {
-            Some(kind) => format!(
-                "Sources: not listed in the GitHub manifest. Pinned to {}.",
-                source_kind_label(kind)
-            ),
-            None => String::from("Sources: not listed in the GitHub manifest."),
+            Some(kind) => t!("source.not_listed_pinned", kind = source_kind_label(kind)),
+            None => t!("source.not_listed"),
         };
         return SourceRow {
             text,
@@ -1380,28 +1405,28 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
     };
     let repo = &matched.entry.repo;
     let mut parts = vec![
-        format!("GitHub {}", repo.slug()),
-        String::from(match_label(matched.kind)),
+        t!("source.github", repo = repo.slug()),
+        t!(match_key(matched.kind)),
     ];
     match input.check {
-        None => parts.push(String::from("not checked")),
-        Some(CheckState::Checking) => parts.push(String::from("checking…")),
+        None => parts.push(t!("source.not_checked")),
+        Some(CheckState::Checking) => parts.push(t!("source.checking")),
         Some(CheckState::Release(release)) => {
             parts.push(release.tag.clone());
             if release.prerelease {
-                parts.push(String::from("prerelease only"));
+                parts.push(t!("source.prerelease_only"));
             }
         }
         Some(CheckState::Failed(failure)) => parts.push(failure.summary()),
     }
     if let Some(effective) = &resolution.effective {
-        parts.push(format!(
-            "uses {}",
-            source_label(effective.kind, input.check, input.item)
+        parts.push(t!(
+            "source.uses",
+            source = source_label(effective.kind, input.check, input.item)
         ));
     }
     if resolution.pinned.is_some() {
-        parts.push(String::from("pinned"));
+        parts.push(t!("source.pinned"));
     }
     let warning = matched.kind == MatchKind::Name
         || matches!(input.check, Some(CheckState::Release(release)) if release.prerelease);
@@ -1466,8 +1491,8 @@ fn source_kind_label(kind: SourceKind) -> &'static str {
 fn source_label(kind: SourceKind, check: Option<&CheckState>, item: &InstalledMod) -> String {
     match kind {
         SourceKind::Github => match check {
-            Some(CheckState::Release(release)) => format!("GitHub {}", release.tag),
-            _ => String::from("GitHub (not checked)"),
+            Some(CheckState::Release(release)) => t!("source.github", repo = release.tag),
+            _ => t!("source.github_not_checked"),
         },
         SourceKind::Nexus => item
             .expected_version
@@ -1477,23 +1502,27 @@ fn source_label(kind: SourceKind, check: Option<&CheckState>, item: &InstalledMo
     }
 }
 
-fn match_label(kind: MatchKind) -> &'static str {
+fn match_key(kind: MatchKind) -> &'static str {
     match kind {
-        MatchKind::Guid => "GUID match",
-        MatchKind::Dll => "DLL match",
-        MatchKind::Name => "name match",
+        MatchKind::Guid => "source.match_guid",
+        MatchKind::Dll => "source.match_dll",
+        MatchKind::Name => "source.match_name",
     }
 }
 
 fn release_notice(repo: &Repo, release: &ReleaseInfo) -> String {
     if release.prerelease {
-        format!(
-            "{} only has a prerelease: {}. Review it before updating.",
-            repo.slug(),
-            release.tag
+        t!(
+            "notice.release_prerelease",
+            repo = repo.slug(),
+            tag = release.tag
         )
     } else {
-        format!("{} has release {}.", repo.slug(), release.tag)
+        t!(
+            "notice.release_found",
+            repo = repo.slug(),
+            tag = release.tag
+        )
     }
 }
 
@@ -1514,17 +1543,17 @@ fn build_nexus_rows(metadata: &[MetadataMod], mods: &[InstalledMod]) -> Vec<Nexu
             NexusModRow {
                 id: entry.id.clone(),
                 name: if entry.name.trim().is_empty() {
-                    String::from("Unknown mod")
+                    t!("nexus.unknown_mod")
                 } else {
                     entry.name.clone()
                 },
                 author: if entry.author.trim().is_empty() {
-                    String::from("Unknown author")
+                    t!("nexus.unknown_author")
                 } else {
                     entry.author.clone()
                 },
                 version: if entry.version.trim().is_empty() {
-                    String::from("Unknown")
+                    t!("nexus.unknown_version")
                 } else {
                     entry.version.clone()
                 },
@@ -1624,7 +1653,7 @@ pub fn panel(
 
 pub fn button(
     zoom: &Signal<u8>,
-    label: &'static str,
+    label: impl IntoReactive<SharedString>,
     enabled: bool,
     on_press: impl Fn() + 'static,
 ) -> Text {
@@ -1650,7 +1679,7 @@ pub fn button(
 
 pub fn danger_button(
     zoom: &Signal<u8>,
-    label: &'static str,
+    label: impl IntoReactive<SharedString>,
     enabled: bool,
     on_press: impl Fn() + 'static,
 ) -> Text {

@@ -1,5 +1,6 @@
 //! Cuhub app crate: the nsh root component and the shell it renders.
 
+mod i18n;
 mod pages;
 mod palette;
 mod shell;

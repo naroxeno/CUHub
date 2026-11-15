@@ -32,12 +32,22 @@ pub fn top_bar(ui: &Ui) -> impl IntoElement {
                 .flex_row()
                 .items_center()
                 .gap(scaled(&z, 8.0))
-                .child(button(&z, "Launch Game", true, move || {
-                    launch.launch_game();
-                }))
-                .child(button(&z, "Report issues", false, move || {
-                    let _ = &report;
-                })),
+                .child(button(
+                    &z,
+                    move || t!("topbar.launch"),
+                    true,
+                    move || {
+                        launch.launch_game();
+                    },
+                ))
+                .child(button(
+                    &z,
+                    move || t!("topbar.report_issues"),
+                    false,
+                    move || {
+                        let _ = &report;
+                    },
+                )),
         )
 }
 
@@ -57,7 +67,7 @@ pub fn sidebar(ui: &Ui) -> impl IntoElement {
         .child(version_row(ui))
 }
 
-fn nav_item(ui: &Ui, index: usize, label: &'static str) -> impl IntoElement {
+fn nav_item(ui: &Ui, index: usize, label_key: &'static str) -> impl IntoElement {
     let z = ui.zoom;
     let bg = ui.clone();
     let edge = ui.clone();
@@ -97,7 +107,7 @@ fn nav_item(ui: &Ui, index: usize, label: &'static str) -> impl IntoElement {
         .on_press(move || press.page.set(index))
         .child(
             pix_c(
-                label,
+                move || t!(label_key),
                 12.0,
                 move || {
                     if text.page.get() == index {
@@ -165,10 +175,10 @@ pub fn statusline(ui: &Ui) -> impl IntoElement {
             text(move || {
                 let notice = state.notice.get();
                 if notice.is_empty() {
-                    format!(
-                        "Ready · {} · {}x",
-                        PAGES[state.page.get()],
-                        state.zoom.get()
+                    t!(
+                        "statusline.ready",
+                        page = t!(PAGES[state.page.get()]),
+                        zoom = state.zoom.get()
                     )
                 } else {
                     notice
@@ -243,14 +253,19 @@ pub fn dev_overlay(ui: &Ui) -> impl IntoElement {
                 .child(
                     panel(
                         &z,
-                        "DEVELOPER CONSOLE",
+                        move || t!("panel.developer_console"),
                         view()
                             .flex_col()
                             .gap(scaled(&z, 8.0))
                             .child(pix("nsh 0.5.1 · prototype shell", 12.0, TEXT_MUTED, &z))
-                            .child(pix(format!("page = {page}"), 12.0, TEXT, &z))
-                            .child(pix(format!("zoom = {zoom}x"), 12.0, TEXT, &z))
-                            .child(button(&z, "Close", true, move || done.dev.set(false))),
+                            .child(pix(move || t!("dev.page", page = t!(page)), 12.0, TEXT, &z))
+                            .child(pix(move || t!("dev.zoom", zoom = zoom), 12.0, TEXT, &z))
+                            .child(button(
+                                &z,
+                                move || t!("common.close"),
+                                true,
+                                move || done.dev.set(false),
+                            )),
                     )
                     .w(scaled(&z, 320.0))
                     .bind_motion(&card),
