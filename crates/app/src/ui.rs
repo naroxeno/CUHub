@@ -1,4 +1,4 @@
-//! Zoom-aware pixel primitives and the app's hub-backed state.
+//! Zoom-aware pixel primitives, motion helpers and the app's hub-backed state.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -1256,4 +1256,32 @@ pub fn button(
             .on_press(on_press);
     }
     button
+}
+
+pub fn rise_in() -> Motion {
+    motion().entering(MotionPreset::FadeInUp)
+}
+
+pub fn fade_in() -> Motion {
+    motion().entering(MotionPreset::FadeIn)
+}
+
+pub fn spinner(zoom: &Signal<u8>) -> View {
+    let z = *zoom;
+    let mut dots = view().flex_row().items_center().gap(scaled(&z, 2.0));
+    for step in 0..4 {
+        dots = dots.child(
+            view()
+                .w(scaled(&z, 3.0))
+                .h(scaled(&z, 3.0))
+                .bg(rgb(ACCENT))
+                .animation(
+                    KeyframeAnimation::new(Keyframes::Pulse)
+                        .duration(640.0)
+                        .delay(step as f32 * 120.0)
+                        .frame_rate(20.0),
+                ),
+        );
+    }
+    dots
 }

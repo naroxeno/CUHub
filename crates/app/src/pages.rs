@@ -7,7 +7,8 @@ use nsh_core::prelude::*;
 
 use crate::palette::*;
 use crate::ui::{
-    LocalModRow, NexusModRow, Ui, button, nexus_page_count, panel, pix, pix_c, scaled,
+    LocalModRow, NexusModRow, Ui, button, nexus_page_count, panel, pix, pix_c, rise_in, scaled,
+    spinner,
 };
 
 pub fn nexus(ui: &Ui) -> impl IntoElement {
@@ -38,6 +39,7 @@ pub fn nexus(ui: &Ui) -> impl IntoElement {
     view()
         .flex_col()
         .flex_1()
+        .bind_motion(&rise_in())
         .gap(scaled(&z, 12.0))
         .child(panel(
             &z,
@@ -116,7 +118,14 @@ pub fn nexus(ui: &Ui) -> impl IntoElement {
                         .child(
                             when(
                                 move || refreshing.get(),
-                                move || pix("Refreshing catalogue…", 11.0, WARN, &z),
+                                move || {
+                                    view()
+                                        .flex_row()
+                                        .items_center()
+                                        .gap(scaled(&z, 6.0))
+                                        .child(spinner(&z))
+                                        .child(pix("Refreshing catalogue…", 11.0, WARN, &z))
+                                },
                             )
                             .otherwise(move || {
                                 let refresh = refresh.clone();
@@ -263,7 +272,7 @@ fn nexus_row(z: &Signal<u8>, row: &NexusModRow, ui: &Ui) -> View {
         .border_b_color(rgb(BORDER_DIM))
         .border_l(scaled(&z, 2.0))
         .border_l_color(rgb(color))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
+        .hover(|s| s.bg(rgb(SURFACE_RAISED)).border_b_color(rgb(BORDER)))
         .child(
             view()
                 .flex_row()
@@ -415,7 +424,7 @@ fn pending_panel(z: &Signal<u8>, ui: &Ui) -> View {
                 cancel_ui.discard_pending();
             })),
     );
-    panel(&z, "PENDING UPDATE", body)
+    panel(&z, "PENDING UPDATE", body).bind_motion(&rise_in())
 }
 
 pub fn local_mods(ui: &Ui) -> impl IntoElement {
@@ -438,7 +447,7 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
             mod_row(&list_z, &row, &rows_ui)
         },
     );
-    view().flex_col().flex_1().child(
+    view().flex_col().flex_1().bind_motion(&rise_in()).child(
         panel(
             &z,
             "LOCAL MODS",
@@ -507,6 +516,14 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     } else {
         status_color(item.status)
     };
+    let mut state = pix(status_label, 11.0, color, &z);
+    if update_ready {
+        state = state.animation(
+            KeyframeAnimation::new(Keyframes::Pulse)
+                .duration(1800.0)
+                .frame_rate(10.0),
+        );
+    }
     let mut detail = item.status_detail();
     if !item.missing_dependencies.is_empty() {
         detail.push_str(" Missing: ");
@@ -522,7 +539,7 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         .border_b_color(rgb(BORDER_DIM))
         .border_l(scaled(&z, 2.0))
         .border_l_color(rgb(color))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
+        .hover(|s| s.bg(rgb(SURFACE_RAISED)).border_b_color(rgb(BORDER)))
         .child(
             view()
                 .flex_row()
@@ -546,11 +563,7 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                     TEXT_MUTED,
                     &z,
                 )))
-                .child(
-                    view()
-                        .w(percentage(0.20))
-                        .child(pix(status_label, 11.0, color, &z)),
-                ),
+                .child(view().w(percentage(0.20)).child(state)),
         )
         .child(
             view()
@@ -575,6 +588,9 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     if !row.source.text.is_empty() {
         let color = if row.source.warning { WARN } else { TEXT_MUTED };
         line = line.child(pix(row.source.text.clone(), 10.0, color, z));
+    }
+    if !row.source.can_check && row.source.repo.is_some() {
+        line = line.child(spinner(z));
     }
     if row.source.can_pin() {
         let pin_ui = ui.clone();
@@ -646,35 +662,39 @@ fn table_header(z: &Signal<u8>) -> impl IntoElement {
 
 pub fn multiplayer(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
-    view().flex_col().flex_1().child(panel(
-        &z,
-        "MULTIPLAYER",
-        view()
-            .flex_col()
-            .gap(scaled(&z, 10.0))
-            .child(pix(
-                "Session list and share codes land here at runtime.",
-                12.0,
-                TEXT_MUTED,
-                &z,
-            ))
-            .child(
-                view()
-                    .flex_row()
-                    .items_center()
-                    .gap(scaled(&z, 10.0))
-                    .child(pix("Share code", 11.0, TEXT_DIM, &z))
-                    .child(pix("CUHB-0000-0000", 14.0, REQUEST, &z)),
-            )
-            .child(
-                view()
-                    .flex_row()
-                    .gap(scaled(&z, 8.0))
-                    .child(button(&z, "Host session", false, || {}))
-                    .child(button(&z, "Join session", false, || {})),
-            )
-            .child(pix("Not wired in the prototype.", 11.0, TEXT_DIM, &z)),
-    ))
+    view()
+        .flex_col()
+        .flex_1()
+        .bind_motion(&rise_in())
+        .child(panel(
+            &z,
+            "MULTIPLAYER",
+            view()
+                .flex_col()
+                .gap(scaled(&z, 10.0))
+                .child(pix(
+                    "Session list and share codes land here at runtime.",
+                    12.0,
+                    TEXT_MUTED,
+                    &z,
+                ))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(scaled(&z, 10.0))
+                        .child(pix("Share code", 11.0, TEXT_DIM, &z))
+                        .child(pix("CUHB-0000-0000", 14.0, REQUEST, &z)),
+                )
+                .child(
+                    view()
+                        .flex_row()
+                        .gap(scaled(&z, 8.0))
+                        .child(button(&z, "Host session", false, || {}))
+                        .child(button(&z, "Join session", false, || {})),
+                )
+                .child(pix("Not wired in the prototype.", 11.0, TEXT_DIM, &z)),
+        ))
 }
 
 pub fn skins_backups(ui: &Ui) -> impl IntoElement {
@@ -682,6 +702,7 @@ pub fn skins_backups(ui: &Ui) -> impl IntoElement {
     view()
         .flex_row()
         .flex_1()
+        .bind_motion(&rise_in())
         .gap(scaled(&z, 12.0))
         .child(
             panel(
@@ -725,32 +746,36 @@ pub fn hub_home(ui: &Ui) -> impl IntoElement {
     let data = ui.clone();
     let mods = ui.clone();
     let catalogue = ui.clone();
-    view().flex_col().flex_1().child(panel(
-        &z,
-        "HUB HOME",
-        view()
-            .flex_col()
-            .gap(scaled(&z, 10.0))
-            .child(pix(
-                "Curated collections from the community hub.",
-                12.0,
-                TEXT_MUTED,
-                &z,
-            ))
-            .child(row(&z, "Featured collection", "Not loaded", TEXT_DIM))
-            .child(setting_row(&z, "Game folder", move || {
-                game_folder_label(&folder)
-            }))
-            .child(setting_row(&z, "Installed mods", move || {
-                mods.mods.get().len().to_string()
-            }))
-            .child(setting_row(&z, "Catalogue entries", move || {
-                catalogue.nexus_total.get().to_string()
-            }))
-            .child(setting_row(&z, "Local data folder", move || {
-                data.app_data.clone()
-            })),
-    ))
+    view()
+        .flex_col()
+        .flex_1()
+        .bind_motion(&rise_in())
+        .child(panel(
+            &z,
+            "HUB HOME",
+            view()
+                .flex_col()
+                .gap(scaled(&z, 10.0))
+                .child(pix(
+                    "Curated collections from the community hub.",
+                    12.0,
+                    TEXT_MUTED,
+                    &z,
+                ))
+                .child(row(&z, "Featured collection", "Not loaded", TEXT_DIM))
+                .child(setting_row(&z, "Game folder", move || {
+                    game_folder_label(&folder)
+                }))
+                .child(setting_row(&z, "Installed mods", move || {
+                    mods.mods.get().len().to_string()
+                }))
+                .child(setting_row(&z, "Catalogue entries", move || {
+                    catalogue.nexus_total.get().to_string()
+                }))
+                .child(setting_row(&z, "Local data folder", move || {
+                    data.app_data.clone()
+                })),
+        ))
 }
 
 fn game_folder_label(ui: &Ui) -> String {
@@ -800,101 +825,105 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
     let clear_key = ui.clone();
     let check_key = ui.clone();
     let draft = ui.nexus_key_draft;
-    view().flex_col().flex_1().child(panel(
-        &z,
-        "SETTINGS",
-        view()
-            .flex_col()
-            .gap(scaled(&z, 10.0))
-            .child(pix("Game folder", 12.0, TEXT_MUTED, &z))
-            .child(setting_row(&z, "Detected folder", move || {
-                game_folder_label(&folder)
-            }))
-            .child(
-                view()
-                    .flex_row()
-                    .gap(scaled(&z, 8.0))
-                    .child(button(&z, "Detect game", true, move || {
-                        detect.detect_game();
-                    }))
-                    .child(button(&z, "Rescan mods", true, move || {
-                        rescan.refresh_mods();
-                    })),
-            )
-            .child(pix(
-                "Detection reads the Steam libraries; BepInEx must already be installed.",
-                11.0,
-                TEXT_DIM,
-                &z,
-            ))
-            .child(pix("Interface scale", 12.0, TEXT_MUTED, &z))
-            .child(
-                view()
-                    .flex_row()
-                    .flex_wrap()
-                    .gap(scaled(&z, 8.0))
-                    .child(zoom_button(ui, 1))
-                    .child(zoom_button(ui, 2))
-                    .child(zoom_button(ui, 3)),
-            )
-            .child(pix(
-                "Integer steps only, saved to Settings.json.",
-                11.0,
-                TEXT_DIM,
-                &z,
-            ))
-            .child(pix("Theme", 12.0, TEXT_MUTED, &z))
-            .child(pix("Pixel (fixed)", 12.0, TEXT, &z))
-            .child(pix("Storage", 12.0, TEXT_MUTED, &z))
-            .child(setting_row(&z, "Data folder", move || {
-                path.app_data.clone()
-            }))
-            .child(pix("Nexus API key", 12.0, TEXT_MUTED, &z))
-            .child(pix(
-                format!(
-                    "{} Direct downloads need a Nexus Premium account.",
-                    NexusKeyStore::protection_note()
-                ),
-                11.0,
-                TEXT_DIM,
-                &z,
-            ))
-            .child(
-                view()
-                    .flex_row()
-                    .items_center()
-                    .gap(scaled(&z, 8.0))
-                    .child(
-                        input()
-                            .value(ui.nexus_key_draft)
-                            .masked(true)
-                            .placeholder("Paste your personal API key")
-                            .h(scaled(&z, 24.0))
-                            .flex_1()
-                            .px(scaled(&z, 6.0))
-                            .bg(rgb(SURFACE_RAISED))
-                            .border(scaled(&z, 1.0))
-                            .border_color(rgb(BORDER))
-                            .text_color(rgb(TEXT))
-                            .on_change(move |text: &str| draft.set(text.to_owned())),
-                    )
-                    .child(button(&z, "Save key", true, move || {
-                        save_key.save_nexus_key();
-                    }))
-                    .child(button(&z, "Test key", true, move || {
-                        check_key.validate_nexus_key();
-                    }))
-                    .child(button(&z, "Clear key", true, move || {
-                        clear_key.clear_nexus_key();
-                    })),
-            )
-            .child(pix(
-                move || key_status.nexus_key_check.get(),
-                11.0,
-                TEXT_DIM,
-                &z,
-            )),
-    ))
+    view()
+        .flex_col()
+        .flex_1()
+        .bind_motion(&rise_in())
+        .child(panel(
+            &z,
+            "SETTINGS",
+            view()
+                .flex_col()
+                .gap(scaled(&z, 10.0))
+                .child(pix("Game folder", 12.0, TEXT_MUTED, &z))
+                .child(setting_row(&z, "Detected folder", move || {
+                    game_folder_label(&folder)
+                }))
+                .child(
+                    view()
+                        .flex_row()
+                        .gap(scaled(&z, 8.0))
+                        .child(button(&z, "Detect game", true, move || {
+                            detect.detect_game();
+                        }))
+                        .child(button(&z, "Rescan mods", true, move || {
+                            rescan.refresh_mods();
+                        })),
+                )
+                .child(pix(
+                    "Detection reads the Steam libraries; BepInEx must already be installed.",
+                    11.0,
+                    TEXT_DIM,
+                    &z,
+                ))
+                .child(pix("Interface scale", 12.0, TEXT_MUTED, &z))
+                .child(
+                    view()
+                        .flex_row()
+                        .flex_wrap()
+                        .gap(scaled(&z, 8.0))
+                        .child(zoom_button(ui, 1))
+                        .child(zoom_button(ui, 2))
+                        .child(zoom_button(ui, 3)),
+                )
+                .child(pix(
+                    "Integer steps only, saved to Settings.json.",
+                    11.0,
+                    TEXT_DIM,
+                    &z,
+                ))
+                .child(pix("Theme", 12.0, TEXT_MUTED, &z))
+                .child(pix("Pixel (fixed)", 12.0, TEXT, &z))
+                .child(pix("Storage", 12.0, TEXT_MUTED, &z))
+                .child(setting_row(&z, "Data folder", move || {
+                    path.app_data.clone()
+                }))
+                .child(pix("Nexus API key", 12.0, TEXT_MUTED, &z))
+                .child(pix(
+                    format!(
+                        "{} Direct downloads need a Nexus Premium account.",
+                        NexusKeyStore::protection_note()
+                    ),
+                    11.0,
+                    TEXT_DIM,
+                    &z,
+                ))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(scaled(&z, 8.0))
+                        .child(
+                            input()
+                                .value(ui.nexus_key_draft)
+                                .masked(true)
+                                .placeholder("Paste your personal API key")
+                                .h(scaled(&z, 24.0))
+                                .flex_1()
+                                .px(scaled(&z, 6.0))
+                                .bg(rgb(SURFACE_RAISED))
+                                .border(scaled(&z, 1.0))
+                                .border_color(rgb(BORDER))
+                                .text_color(rgb(TEXT))
+                                .on_change(move |text: &str| draft.set(text.to_owned())),
+                        )
+                        .child(button(&z, "Save key", true, move || {
+                            save_key.save_nexus_key();
+                        }))
+                        .child(button(&z, "Test key", true, move || {
+                            check_key.validate_nexus_key();
+                        }))
+                        .child(button(&z, "Clear key", true, move || {
+                            clear_key.clear_nexus_key();
+                        })),
+                )
+                .child(pix(
+                    move || key_status.nexus_key_check.get(),
+                    11.0,
+                    TEXT_DIM,
+                    &z,
+                )),
+        ))
 }
 
 fn zoom_button(ui: &Ui, level: u8) -> Text {

@@ -4,7 +4,7 @@ use nsh_core::prelude::*;
 
 use crate::pages;
 use crate::palette::*;
-use crate::ui::{PAGES, Ui, button, panel, pix, pix_c, scaled};
+use crate::ui::{PAGES, Ui, button, fade_in, panel, pix, pix_c, rise_in, scaled};
 
 pub fn top_bar(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
@@ -63,6 +63,13 @@ fn nav_item(ui: &Ui, index: usize, label: &'static str) -> impl IntoElement {
     let edge = ui.clone();
     let text = ui.clone();
     let press = ui.clone();
+    let lit = ui.clone();
+    let glow = motion();
+    effect(move || {
+        if lit.page.get() == index {
+            glow.play(MotionPreset::FadeIn);
+        }
+    });
     view()
         .flex_row()
         .items_center()
@@ -86,19 +93,23 @@ fn nav_item(ui: &Ui, index: usize, label: &'static str) -> impl IntoElement {
             }
         })
         .hover(|s| s.bg(rgb(SURFACE_RAISED)))
+        .active(|s| s.bg(rgb(BORDER_DIM)))
         .on_press(move || press.page.set(index))
-        .child(pix_c(
-            label,
-            12.0,
-            move || {
-                if text.page.get() == index {
-                    rgb(ACCENT)
-                } else {
-                    rgb(TEXT_MUTED)
-                }
-            },
-            &z,
-        ))
+        .child(
+            pix_c(
+                label,
+                12.0,
+                move || {
+                    if text.page.get() == index {
+                        rgb(ACCENT)
+                    } else {
+                        rgb(TEXT_MUTED)
+                    }
+                },
+                &z,
+            )
+            .bind_motion(&glow),
+        )
 }
 
 fn version_row(ui: &Ui) -> impl IntoElement {
@@ -135,6 +146,13 @@ fn tap_version(ui: &Ui) {
 pub fn statusline(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let state = ui.clone();
+    let watched = ui.clone();
+    let toast = motion();
+    effect(move || {
+        if !watched.notice.get().is_empty() {
+            toast.play(MotionPreset::FadeInLeft);
+        }
+    });
     view()
         .flex_row()
         .items_center()
@@ -158,7 +176,8 @@ pub fn statusline(ui: &Ui) -> impl IntoElement {
             })
             .text_size(scaled(&z, 10.0))
             .font_family(crate::ui::PIXEL_FONT.family)
-            .text_color(rgb(TEXT_MUTED)),
+            .text_color(rgb(TEXT_MUTED))
+            .bind_motion(&toast),
         )
 }
 
@@ -210,12 +229,15 @@ pub fn dev_overlay(ui: &Ui) -> impl IntoElement {
             let z = close.zoom;
             let page = PAGES[close.page.get()];
             let zoom = close.zoom.get();
+            let veil = fade_in();
+            let card = rise_in();
             view()
                 .absolute()
                 .inset(px(0.0))
                 .w_full()
                 .h_full()
                 .bg(rgba(0x000000CC))
+                .bind_motion(&veil)
                 .items_center()
                 .justify_center()
                 .child(
@@ -230,7 +252,8 @@ pub fn dev_overlay(ui: &Ui) -> impl IntoElement {
                             .child(pix(format!("zoom = {zoom}x"), 12.0, TEXT, &z))
                             .child(button(&z, "Close", true, move || done.dev.set(false))),
                     )
-                    .w(scaled(&z, 320.0)),
+                    .w(scaled(&z, 320.0))
+                    .bind_motion(&card),
                 )
         },
     )
