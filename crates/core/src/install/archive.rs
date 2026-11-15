@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Component, Path, PathBuf};
 
 use crate::paths;
@@ -48,6 +48,7 @@ pub struct StagedArchive {
 #[derive(Debug)]
 pub enum ArchiveError {
     UnsupportedFormat(PathBuf),
+    NotPeFile(String),
     UnsupportedEntry(String),
     UnsafeEntry(String),
     DuplicateEntry(String),
@@ -80,6 +81,7 @@ impl std::fmt::Display for ArchiveError {
             Self::UnsupportedFormat(path) => {
                 write!(formatter, "unsupported archive format: {}", path.display())
             }
+            Self::NotPeFile(name) => write!(formatter, "{name} is not a Windows PE file"),
             Self::UnsupportedEntry(name) => {
                 write!(formatter, "archive entry is not a regular file: {name}")
             }
@@ -178,6 +180,100 @@ pub fn stage_archive(
             Err(error)
         }
     }
+}
+
+pub fn is_dll_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("dll"))
+}
+
+pub fn stage_dll(path: &Path, staging_root: &Path) -> Result<StagedArchive, ArchiveError> {
+    if !is_dll_file(path) {
+        return Err(ArchiveError::UnsupportedFormat(path.to_path_buf()));
+    }
+    if staging_root.exists() {
+        return Err(ArchiveError::StagingExists(staging_root.to_path_buf()));
+    }
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| ArchiveError::UnsupportedFormat(path.to_path_buf()))?
+        .to_string();
+    let mut input = File::open(path).map_err(|source| ArchiveError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let size = input
+        .metadata()
+        .map_err(|source| ArchiveError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?
+        .len();
+    if size == 0 || size > MAX_FILE_BYTES {
+        return Err(ArchiveError::EntryTooLarge { name, size });
+    }
+    let mut magic = [0u8; 2];
+    input
+        .read_exact(&mut magic)
+        .map_err(|source| ArchiveError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if magic != *b"MZ" {
+        return Err(ArchiveError::NotPeFile(name));
+    }
+    input
+        .seek(SeekFrom::Start(0))
+        .map_err(|source| ArchiveError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    fs::create_dir_all(staging_root).map_err(|source| ArchiveError::Io {
+        path: staging_root.to_path_buf(),
+        source,
+    })?;
+    let target = staging_root.join(&name);
+    match copy_dll(&mut input, &target, &name, size) {
+        Ok(file) => Ok(StagedArchive {
+            staging_root: staging_root.to_path_buf(),
+            files: vec![file],
+        }),
+        Err(error) => {
+            let _ = fs::remove_dir_all(staging_root);
+            Err(error)
+        }
+    }
+}
+
+fn copy_dll(
+    input: &mut File,
+    target: &Path,
+    name: &str,
+    size: u64,
+) -> Result<StagedFile, ArchiveError> {
+    let mut output = File::create(target).map_err(|source| ArchiveError::Io {
+        path: target.to_path_buf(),
+        source,
+    })?;
+    let copied =
+        io::copy(&mut input.take(size + 1), &mut output).map_err(|source| ArchiveError::Io {
+            path: target.to_path_buf(),
+            source,
+        })?;
+    if copied != size {
+        return Err(ArchiveError::SizeMismatch {
+            name: name.to_string(),
+            expected: size,
+            actual: copied,
+        });
+    }
+    Ok(StagedFile {
+        relative: PathBuf::from(name),
+        path: target.to_path_buf(),
+        size,
+    })
 }
 
 fn stage_zip(path: &Path, staging_root: &Path) -> Result<BTreeMap<String, u64>, ArchiveError> {
@@ -606,5 +702,43 @@ mod tests {
         let error = stage_archive(&archive, &staging).unwrap_err();
         assert!(matches!(error, ArchiveError::UnsafeEntry(_)));
         assert!(!staging.exists());
+    }
+}
+
+#[cfg(test)]
+mod dll_tests {
+    use super::*;
+    use crate::test_support::temp_dir;
+
+    #[test]
+    fn stages_a_pe_dll() {
+        let dir = temp_dir("archive-dll");
+        let source = dir.join("Mod.dll");
+        fs::write(&source, b"MZpayload").unwrap();
+        let staging = dir.join("staging");
+        let staged = stage_dll(&source, &staging).unwrap();
+        assert_eq!(staged.files.len(), 1);
+        assert_eq!(staged.files[0].relative, PathBuf::from("Mod.dll"));
+        assert_eq!(fs::read(&staged.files[0].path).unwrap(), b"MZpayload");
+    }
+
+    #[test]
+    fn rejects_a_file_without_a_pe_header() {
+        let dir = temp_dir("archive-dll-bad");
+        let source = dir.join("Mod.dll");
+        fs::write(&source, b"not a dll").unwrap();
+        let staging = dir.join("staging");
+        let error = stage_dll(&source, &staging).unwrap_err();
+        assert!(matches!(error, ArchiveError::NotPeFile(_)));
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn rejects_a_non_dll_extension() {
+        let dir = temp_dir("archive-dll-ext");
+        let source = dir.join("Mod.zip");
+        fs::write(&source, b"MZpayload").unwrap();
+        let error = stage_dll(&source, &dir.join("staging")).unwrap_err();
+        assert!(matches!(error, ArchiveError::UnsupportedFormat(_)));
     }
 }

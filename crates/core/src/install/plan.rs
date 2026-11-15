@@ -13,6 +13,7 @@ use super::archive::{StagedArchive, StagedFile};
 pub enum Layout {
     BepInEx,
     Mod,
+    Dll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +55,10 @@ pub struct PlanTarget<'a> {
 #[derive(Debug)]
 pub enum PlanError {
     NoPayload,
+    SingleDllOnly,
+    NotDll(String),
+    NoMatchingDll(String),
+    AmbiguousDll(String),
     UnsafePath(String),
     Outside(PathBuf),
     Duplicate(PathBuf),
@@ -64,6 +69,22 @@ impl std::fmt::Display for PlanError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoPayload => formatter.write_str("archive has no installable files"),
+            Self::SingleDllOnly => {
+                formatter.write_str("a bare DLL update must contain exactly one file")
+            }
+            Self::NotDll(name) => write!(formatter, "{name} is not a DLL"),
+            Self::NoMatchingDll(name) => {
+                write!(
+                    formatter,
+                    "release DLL {name} does not match an installed DLL"
+                )
+            }
+            Self::AmbiguousDll(name) => {
+                write!(
+                    formatter,
+                    "release DLL {name} matches more than one installed DLL"
+                )
+            }
             Self::UnsafePath(path) => write!(formatter, "archive path is not safe: {path}"),
             Self::Outside(path) => write!(
                 formatter,
@@ -186,6 +207,89 @@ pub fn plan_upgrade(
     })
 }
 
+pub fn plan_payload(
+    staged: &StagedArchive,
+    target: PlanTarget<'_>,
+) -> Result<UpgradePlan, PlanError> {
+    let usable: Vec<&StagedFile> = staged
+        .files
+        .iter()
+        .filter(|file| !is_skipped(&file.relative))
+        .collect();
+    let single_dll = usable.len() == 1
+        && usable[0]
+            .relative
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("dll"));
+    if single_dll {
+        plan_bare_dll(&usable, target)
+    } else {
+        plan_upgrade(staged, target)
+    }
+}
+
+fn plan_bare_dll(files: &[&StagedFile], target: PlanTarget<'_>) -> Result<UpgradePlan, PlanError> {
+    let [file] = files else {
+        return Err(PlanError::SingleDllOnly);
+    };
+    let name = file
+        .relative
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| PlanError::UnsafePath(file.relative.display().to_string()))?;
+    if !name.to_ascii_lowercase().ends_with(".dll") {
+        return Err(PlanError::NotDll(name.to_string()));
+    }
+    let mut matches = target.owned_files.iter().filter(|owned| {
+        owned
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|owned| owned.eq_ignore_ascii_case(name))
+    });
+    let owned = match (matches.next(), matches.next()) {
+        (Some(owned), None) => owned.clone(),
+        (None, _) => return Err(PlanError::NoMatchingDll(name.to_string())),
+        (Some(_), Some(_)) => return Err(PlanError::AmbiguousDll(name.to_string())),
+    };
+    if !paths::is_inside(&owned, target.root) {
+        return Err(PlanError::Outside(owned));
+    }
+    let mut conflicts = Vec::new();
+    let action = match fs::symlink_metadata(&owned) {
+        Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+            FileAction::Replace
+        }
+        Ok(_) => {
+            conflicts.push(owned.clone());
+            FileAction::Replace
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => FileAction::Create,
+        Err(source) => {
+            return Err(PlanError::Io {
+                path: owned,
+                source,
+            });
+        }
+    };
+    let target_root = owned
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| target.root.to_path_buf());
+    Ok(UpgradePlan {
+        layout: Layout::Dll,
+        target_root,
+        files: vec![PlannedFile {
+            staged: file.path.clone(),
+            target: owned,
+            action,
+            size: file.size,
+        }],
+        conflicts,
+        warnings: Vec::new(),
+    })
+}
+
 fn detect_layout(files: &[&StagedFile]) -> Layout {
     if files
         .iter()
@@ -240,6 +344,7 @@ fn relative_for(
                 .is_some_and(|name| name.eq_ignore_ascii_case("plugins"));
             has_prefix.then(|| strip_first(&file.relative)).flatten()
         }
+        Layout::Dll => None,
         Layout::Mod => match wrapper {
             Some(wrapper) if first_component(&file.relative).as_deref() == Some(wrapper) => {
                 strip_first(&file.relative)
@@ -434,5 +539,76 @@ mod tests {
         let plan = plan_upgrade(&staging, target(&root, &root, &root)).unwrap();
         assert_eq!(plan.files.len(), 1);
         assert_eq!(plan.files[0].target, root.join("Mod.dll"));
+    }
+
+    #[test]
+    fn bare_dll_replaces_the_matching_owned_file() {
+        let dir = temp_dir("plan-dll");
+        let staging = staged(&dir, &["Mod.dll"]);
+        let plugins = dir.join("plugins");
+        let root = plugins.join("Mod");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("Mod.dll"), b"old").unwrap();
+        let owned = vec![root.join("Mod.dll")];
+        let plan = plan_payload(
+            &staging,
+            PlanTarget {
+                root: &root,
+                plugins: &plugins,
+                owned_root: &root,
+                owned_files: &owned,
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.layout, Layout::Dll);
+        assert_eq!(plan.files[0].target, root.join("Mod.dll"));
+        assert_eq!(plan.files[0].action, FileAction::Replace);
+        assert!(plan.can_apply());
+    }
+
+    #[test]
+    fn bare_dll_requires_a_matching_owned_file() {
+        let dir = temp_dir("plan-dll-mismatch");
+        let staging = staged(&dir, &["Other.dll"]);
+        let plugins = dir.join("plugins");
+        let root = plugins.join("Mod");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("Mod.dll"), b"old").unwrap();
+        let owned = vec![root.join("Mod.dll")];
+        let error = plan_payload(
+            &staging,
+            PlanTarget {
+                root: &root,
+                plugins: &plugins,
+                owned_root: &root,
+                owned_files: &owned,
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(error, PlanError::NoMatchingDll(_)));
+    }
+
+    #[test]
+    fn a_single_dll_archive_targets_the_owned_path() {
+        let dir = temp_dir("plan-dll-archive");
+        let staging = staged(&dir, &["Pack/BepInEx/plugins/Mod/Mod.dll"]);
+        let game = dir.join("game");
+        let plugins = game.join("BepInEx/plugins");
+        let root = plugins.join("Mod");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("Mod.dll"), b"old").unwrap();
+        let owned = vec![root.join("Mod.dll")];
+        let plan = plan_payload(
+            &staging,
+            PlanTarget {
+                root: &root,
+                plugins: &plugins,
+                owned_root: &root,
+                owned_files: &owned,
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.files[0].target, root.join("Mod.dll"));
+        assert_eq!(plan.files[0].action, FileAction::Replace);
     }
 }

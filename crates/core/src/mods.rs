@@ -142,7 +142,7 @@ impl InstalledMod {
         match self.status {
             ModStatus::Disabled => String::from("Disabled — re-enable to manage updates."),
             ModStatus::Unlisted => String::from(
-                "Not listed in the community catalogue, so update status is not checked.",
+                "Not listed in the community catalogue; release checks can still find updates.",
             ),
             ModStatus::UpToDate => String::from(
                 "Up to date: the available version or file-time evidence is not older than the catalogue.",

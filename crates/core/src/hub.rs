@@ -571,9 +571,9 @@ impl Hub {
             .join(format!("{stamp}-{}", std::process::id()))
     }
 
-    pub fn plan_archive(
+    pub fn plan_download(
         &self,
-        archive: &Path,
+        download: &Path,
         installed: &InstalledMod,
         staging: &Path,
     ) -> Result<UpgradePlan, HubError> {
@@ -587,15 +587,25 @@ impl Hub {
                 .ok_or_else(|| HubError::Install(String::from("mod path has no parent")))?
                 .to_path_buf()
         };
-        let staged = install::stage_archive(archive, staging)
-            .map_err(|error| HubError::Install(error.to_string()))?;
+        let staged = if install::is_dll_file(download) {
+            install::stage_dll(download, staging)
+        } else {
+            install::stage_archive(download, staging)
+        };
+        let staged = match staged {
+            Ok(staged) => staged,
+            Err(error) => {
+                let _ = fs::remove_dir_all(staging);
+                return Err(HubError::Install(error.to_string()));
+            }
+        };
         let target = install::PlanTarget {
             root: &root,
             plugins: &plugins,
             owned_root: &installed.source_path,
             owned_files: &installed.dll_paths,
         };
-        match install::plan_upgrade(&staged, target) {
+        match install::plan_payload(&staged, target) {
             Ok(plan) => Ok(plan),
             Err(error) => {
                 let _ = fs::remove_dir_all(&staged.staging_root);
@@ -646,7 +656,7 @@ impl Hub {
         let asset = select_github_asset(&release.assets, requested).ok_or_else(|| {
             HubError::Github(match requested {
                 Some(name) => format!("release has no asset named {name}"),
-                None => String::from("release has no zip, 7z or rar asset"),
+                None => String::from("release has no zip, 7z, rar or DLL asset"),
             })
         })?;
         let name = safe_asset_name(&asset.name)
@@ -687,17 +697,17 @@ fn select_github_asset<'a>(
             .iter()
             .find(|asset| asset.name.eq_ignore_ascii_case(name));
     }
-    assets.iter().find(|asset| is_archive_name(&asset.name))
+    assets.iter().find(|asset| is_installable_name(&asset.name))
 }
 
-fn is_archive_name(name: &str) -> bool {
+fn is_installable_name(name: &str) -> bool {
     matches!(
         Path::new(name)
             .extension()
             .and_then(|extension| extension.to_str())
             .map(|extension| extension.to_ascii_lowercase())
             .as_deref(),
-        Some("zip" | "7z" | "rar")
+        Some("zip" | "7z" | "rar" | "dll")
     )
 }
 

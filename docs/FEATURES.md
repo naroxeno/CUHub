@@ -326,7 +326,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 - **U1 (P2)** 优先级：用户来源表 > 目录可选字段（`github` / `url`）> 元数据里的 Nexus id > 无来源（只显示本地信息，不给更新判定）。
 - **U2 (P2)** 三种来源：`nexus`（内置，files.json 选文件）、`github`（内置，`releases/latest` 取 tag 与资产）、`custom`（用户写正则）。
-- **U3 (P2)** **只有 GitHub 内置版本解析**：`tag_name` 去掉前缀 `v` 后按 S4 规则与本地 assembly／BepInEx 版本比较；资产由用户给的正则挑，没给就只提供 release 页链接。用户点 `Update` 时把匹配到的资产下到下载收件箱，再由收件箱的确认流程决定是否安装；不点则只给链接，绝不后台下载。（实现偏差：2026-11-15 的单模组升级在计划确认后直接安装，不经过收件箱；收件箱仍未实现。）
+- **U3 (P2)** **只有 GitHub 内置版本解析**：`tag_name` 去掉前缀 `v` 后按 S4 规则与本地 assembly／BepInEx 版本比较；资产由用户给的正则挑，没给就只提供 release 页链接。用户点 `Update` 时把匹配到的资产下到下载收件箱，再由收件箱的确认流程决定是否安装；不点则只给链接，绝不后台下载。（实现偏差：2026-11-15 的单模组升级在计划确认后直接安装，不经过收件箱；收件箱仍未实现。同日补：release 只发裸 DLL 也可升级；未列入清单的 GitHub 模组在 release 版本更高时显示 Update。）
 - **U4 (P2)** 自定义来源：`page` URL + `version` 正则（捕获组 1 = 版本）+ 可选 `download` 正则（捕获组 1 = 下载地址，相对地址按 page 解析）。正则用 `regex`，线性时间，允许用户写坏但不会卡死。
 - **U5 (P2)** 抓取约束：只 GET、只 https、只带本应用 UA，不带 cookie 与任何凭据，不跟随到 `file:`/`data:`，响应上限 2 MB，超时 15 s，重定向最多 3 次。
 - **U6 (P2)** 自定义来源一律拒绝 `nexusmods.com` 及其子域，提示改用 `nexus` 类型——既不抓 Nexus，也不伪装成别的东西。
@@ -341,7 +341,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 社区目录是从 Nexus 生成的，作者只在 GitHub 发版的模组常常不在里面。清单是项目单独维护的公开仓库：`sources.json` 人工维护条目，`releases.json` 由 Actions 预生成；客户端只读，不抓网页、不代提交。V1/V2 是清单的维护面与开关面，清单的读取与匹配随 GitHub 源本体落地。
 
-实现状态（2026-11-15）：GitHub 清单读取、匹配、pin 与手动 Check 已落地（见 `docs/core/sources/overview.md`）；release 结果不缓存。GitHub 资产下载与单模组升级已接：`OutOfDate` 行可 Update，下载归档后先展示计划再 Apply，游戏运行中排队；未做一键升级、收件箱中间层与 `Open release`。V1/V2 的编辑器、源开关仍在待办。清单暂读本地 `<AppData>/Sources/manifest.json`，远程清单仓库待定。
+实现状态（2026-11-15）：GitHub 清单读取、匹配、pin 与手动 Check 已落地（见 `docs/core/sources/overview.md`）；release 结果不缓存。GitHub 资产下载与单模组升级已接：`OutOfDate` 行可 Update，下载归档后先展示计划再 Apply，游戏运行中排队；未做一键升级、收件箱中间层与 `Open release`；裸 DLL release 与「生效源为 GitHub 且 release 版本更高即显示 Update」已接。V1/V2 的编辑器、源开关仍在待办。清单暂读本地 `<AppData>/Sources/manifest.json`，远程清单仓库待定。
 
 - **V1 (P2)** 清单 schema 编辑器：Settings → Mod sources → Edit manifest 打开，表单与原始 JSON 双视图，切换视图前先校验；表单含 `repo`（`owner/name`）、`name`、`match.guid` / `match.dll` / `match.name`（均多值）、可选 `asset.include` / `asset.exclude` 与 `notes`，`id` 从 `repo` 派生并去重。保存前跑与运行时同一套校验（`schemaVersion`、`owner/name` 形状、`match` 至少一项、正则可编译），错误定位到条目与字段，只拒绝坏条目、不整表报废。结果写成草稿 `appdata/GithubSourcesDraft.json`（粘贴上限 1 MB），不写远端仓库、不写游戏目录；另给 Copy JSON / Save as… 导出，由人自己提 PR。删除条目与覆盖导入要确认，且只影响草稿。编辑器内可对已安装模组做一次只读试匹配，列出每个条目命中的 DLL/GUID（不发网络请求）。
 - **V2 (P2)** Settings 的 Mod 源管理：设置页新增 MOD SOURCES 区块，列出 Nexus 目录（只读、常开）、GitHub 清单（开关 / URL / Last synced / Refresh now / Clear cache）、用户来源表（U8 落地前显示为未配置）；顶部只读显示当前生效的优先级顺序，本版不做拖拽排序。关掉清单只影响解析、不删缓存；URL 必须 https，否则就地拒绝且不保存；写入只碰设置与缓存，不碰游戏目录。

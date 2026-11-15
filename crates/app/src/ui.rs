@@ -76,6 +76,8 @@ pub struct SourceRow {
     pub repo: Option<Repo>,
     pub options: Vec<SourceKind>,
     pub pinned: Option<SourceKind>,
+    pub effective: Option<SourceKind>,
+    pub release_version: Option<HubVersion>,
     pub asset: Option<String>,
 }
 
@@ -107,8 +109,27 @@ impl LocalModRow {
     }
 
     pub fn can_update(&self) -> bool {
-        self.item.status == ModStatus::OutOfDate
-            && (self.item.metadata_id.is_some() || self.source.repo.is_some())
+        if self.item.disabled {
+            return false;
+        }
+        let has_source = self.item.metadata_id.is_some() || self.source.repo.is_some();
+        if !has_source {
+            return false;
+        }
+        if self.item.status == ModStatus::OutOfDate {
+            return true;
+        }
+        if self.source.effective != Some(SourceKind::Github) {
+            return false;
+        }
+        let Some(release) = self.source.release_version.as_ref() else {
+            return false;
+        };
+        self.item
+            .installed_version
+            .as_deref()
+            .and_then(HubVersion::parse)
+            .is_some_and(|installed| installed < *release)
     }
 }
 
@@ -463,6 +484,7 @@ impl Ui {
         }
         let item = row.item.clone();
         let pinned = row.source.pinned;
+        let effective = row.source.effective;
         let repo = row.source.repo.clone();
         let asset = row.source.asset.clone();
         let nexus_id = item.metadata_id.clone();
@@ -478,6 +500,7 @@ impl Ui {
                     &hub,
                     &item,
                     pinned,
+                    effective,
                     repo.as_ref(),
                     asset.as_deref(),
                     nexus_id.as_deref(),
@@ -818,11 +841,13 @@ fn prepare_update(
     hub: &Hub,
     item: &InstalledMod,
     pinned: Option<SourceKind>,
+    effective: Option<SourceKind>,
     repo: Option<&Repo>,
     asset: Option<&str>,
     nexus_id: Option<&str>,
 ) -> Result<PendingInstall, HubError> {
-    let mut source = choose_update_source(hub, pinned, nexus_id.is_some(), repo.is_some());
+    let mut source = effective
+        .unwrap_or_else(|| choose_update_source(hub, pinned, nexus_id.is_some(), repo.is_some()));
     let mut notes = Vec::new();
     let archive = match source {
         SourceKind::Nexus => {
@@ -849,7 +874,7 @@ fn prepare_update(
         }
     };
     let staging = hub.staging_root();
-    let plan = hub.plan_archive(&archive, item, &staging)?;
+    let plan = hub.plan_download(&archive, item, &staging)?;
     let game_running = hub.game_running()?;
     Ok(PendingInstall {
         mod_name: item.name.clone(),
@@ -962,6 +987,8 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
             repo: None,
             options: Vec::new(),
             pinned: input.pinned,
+            effective: None,
+            release_version: None,
             asset: None,
         };
     };
@@ -1004,6 +1031,11 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
         repo: Some(repo.clone()),
         options,
         pinned: resolution.pinned,
+        effective: resolution.effective.as_ref().map(|option| option.kind),
+        release_version: match input.check {
+            Some(CheckState::Release(release)) => Some(release.version.clone()),
+            _ => None,
+        },
         asset: matched.entry.asset.clone(),
     }
 }

@@ -496,7 +496,17 @@ fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
 fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     let z = *z;
     let item = &row.item;
-    let color = status_color(item.status);
+    let update_ready = row.can_update();
+    let status_label = if update_ready && item.status != ModStatus::OutOfDate {
+        "Update available"
+    } else {
+        item.status_label()
+    };
+    let color = if update_ready && item.status != ModStatus::OutOfDate {
+        WARN
+    } else {
+        status_color(item.status)
+    };
     let mut detail = item.status_detail();
     if !item.missing_dependencies.is_empty() {
         detail.push_str(" Missing: ");
@@ -539,7 +549,7 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                 .child(
                     view()
                         .w(percentage(0.20))
-                        .child(pix(item.status_label(), 11.0, color, &z)),
+                        .child(pix(status_label, 11.0, color, &z)),
                 ),
         )
         .child(
