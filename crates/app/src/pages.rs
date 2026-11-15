@@ -437,6 +437,10 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let pending_z = z;
     let pending_ui = ui.clone();
     let refresh = ui.clone();
+    let bulk_state = ui.clone();
+    let bulk_locked = ui.clone();
+    let bulk_free = ui.clone();
+    let bulk_z = z;
     let list_z = z;
     let rows_ui = ui.clone();
     let rows = each(
@@ -457,17 +461,36 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                 .child(
                     view()
                         .flex_row()
+                        .flex_wrap()
                         .items_center()
                         .justify_between()
+                        .gap(scaled(&z, 8.0))
                         .child(pix(
                             move || format!("{} mod(s) in Plugins", summary.mods.get().len()),
                             11.0,
                             TEXT_MUTED,
                             &z,
                         ))
-                        .child(button(&z, "Refresh", true, move || {
-                            refresh.refresh_mods();
-                        })),
+                        .child(
+                            view()
+                                .flex_row()
+                                .flex_wrap()
+                                .items_center()
+                                .gap(scaled(&z, 8.0))
+                                .child(
+                                    when(
+                                        move || {
+                                            bulk_state.toggle_busy.get().is_some()
+                                                || bulk_state.bulk_busy.get()
+                                        },
+                                        move || mod_bulk_buttons(&bulk_z, &bulk_locked, false),
+                                    )
+                                    .otherwise(move || mod_bulk_buttons(&bulk_z, &bulk_free, true)),
+                                )
+                                .child(button(&z, "Refresh", true, move || {
+                                    refresh.refresh_mods();
+                                })),
+                        ),
                 )
                 .child(when(
                     move || empty.mods.get().is_empty(),
@@ -482,6 +505,22 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
         )
         .flex_1(),
     )
+}
+
+fn mod_bulk_buttons(z: &Signal<u8>, ui: &Ui, enabled: bool) -> View {
+    let z = *z;
+    let disable_ui = ui.clone();
+    let enable_ui = ui.clone();
+    view()
+        .flex_row()
+        .items_center()
+        .gap(scaled(&z, 8.0))
+        .child(button(&z, "Disable all", enabled, move || {
+            disable_ui.set_all_mods_enabled(false);
+        }))
+        .child(button(&z, "Enable all", enabled, move || {
+            enable_ui.set_all_mods_enabled(true);
+        }))
 }
 
 fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
@@ -505,6 +544,10 @@ fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
 fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     let z = *z;
     let item = &row.item;
+    let disabled = item.disabled;
+    let name_color = if disabled { DANGER } else { TEXT };
+    let meta_color = if disabled { DANGER } else { TEXT_MUTED };
+    let detail_color = if disabled { DANGER } else { TEXT_DIM };
     let update_ready = row.can_update();
     let status_label = if update_ready && item.status != ModStatus::OutOfDate {
         "Update available"
@@ -546,21 +589,22 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                 .items_center()
                 .h(scaled(&z, 24.0))
                 .px(scaled(&z, 6.0))
-                .child(
-                    view()
-                        .w(percentage(0.38))
-                        .child(pix(item.name.clone(), 12.0, TEXT, &z)),
-                )
+                .child(view().w(percentage(0.38)).child(pix(
+                    item.name.clone(),
+                    12.0,
+                    name_color,
+                    &z,
+                )))
                 .child(view().w(percentage(0.18)).child(pix(
                     item.version_label(),
                     11.0,
-                    TEXT_MUTED,
+                    meta_color,
                     &z,
                 )))
                 .child(view().w(percentage(0.24)).child(pix(
                     item.author_label(),
                     11.0,
-                    TEXT_MUTED,
+                    meta_color,
                     &z,
                 )))
                 .child(view().w(percentage(0.20)).child(state)),
@@ -572,8 +616,8 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                 .gap(scaled(&z, 12.0))
                 .px(scaled(&z, 6.0))
                 .pb(scaled(&z, 3.0))
-                .child(pix(item.evidence_label(), 10.0, TEXT_DIM, &z))
-                .child(pix(detail, 10.0, TEXT_DIM, &z)),
+                .child(pix(item.evidence_label(), 10.0, detail_color, &z))
+                .child(pix(detail, 10.0, detail_color, &z)),
         )
         .child(source_line(&z, row, ui))
 }
@@ -586,7 +630,13 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         .px(scaled(z, 6.0))
         .pb(scaled(z, 3.0));
     if !row.source.text.is_empty() {
-        let color = if row.source.warning { WARN } else { TEXT_MUTED };
+        let color = if row.source.warning {
+            WARN
+        } else if row.item.disabled {
+            DANGER
+        } else {
+            TEXT_MUTED
+        };
         line = line.child(pix(row.source.text.clone(), 10.0, color, z));
     }
     if !row.source.can_check && row.source.repo.is_some() {
@@ -617,6 +667,28 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
             update_ui.update_source(key.clone());
         }));
     }
+    let toggle_ui = ui.clone();
+    let toggle_key = row.source_key.clone();
+    let enable = row.item.disabled;
+    let toggle_label = if enable { "Enable" } else { "Disable" };
+    let toggle_z = *z;
+    let toggle_watch = ui.clone();
+    line = line.child(
+        when(
+            move || toggle_watch.toggle_busy.get().is_some() || toggle_watch.bulk_busy.get(),
+            move || button(&toggle_z, toggle_label, false, || {}),
+        )
+        .otherwise({
+            let toggle_ui = toggle_ui.clone();
+            move || {
+                let toggle_ui = toggle_ui.clone();
+                let toggle_key = toggle_key.clone();
+                button(&toggle_z, toggle_label, true, move || {
+                    toggle_ui.set_mod_enabled(toggle_key.clone(), enable);
+                })
+            }
+        }),
+    );
     line
 }
 

@@ -30,6 +30,14 @@ nsh 0.5.1 桌面壳：顶栏、侧栏导航、状态行、六页内容区（Nexu
 | Nexus 刷新中 | `nexus_refreshing` | 同款方块 spinner + 文案 | 640ms 循环，20 Hz 上限 |
 | 行 hover / 侧栏按下 | 指针 | 底色 `surface_raised`、底部分隔线转白；导航按下转 `border_dim` | 即时 |
 
+## 模组启用/禁用
+
+- 行内 Toggle：禁用行显示 `Enable`、启用行显示 `Disable`。点击后在后台线程调用 `Hub::set_mod_enabled`，成功后重新扫描并把改名的 DLL 数写进状态行；失败只把 `HubError` 文案写进状态行，不弹窗。
+- 面板批量：`Disable all` / `Enable all` 调 `Hub::set_all_mods_enabled`，同样后台执行并回写改名数。任一变更进行期间，行内 Toggle 与两个批量按钮一起置灰，避免重复点击。
+- 禁用行视觉（FEATURES E7）：左缘 2px danger 竖条由 `status_color` 提供；名称、版本、作者、证据与详情文字转 danger，来源行在带 warning 时仍保留 WARN，避免丢掉来源匹配提示。
+- 行 key 里包含 `disabled`，刷新后 `each` 会重建该行，静态文本与按钮才能跟随状态变化。
+- 两项都是可逆操作，不做确认弹窗；Delete all 与单项 Delete 属破坏性操作，界面暂未实现，等开发者确认。
+
 ## 帧预算
 
 - 无常驻空转：全仓库没有为动画服务的 `set_interval`。

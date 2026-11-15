@@ -171,6 +171,8 @@ pub struct Ui {
     pub checks: Signal<BTreeMap<String, CheckState>>,
     pub pending_install: Signal<Option<PendingInstall>>,
     pub update_busy: Signal<Option<String>>,
+    pub toggle_busy: Signal<Option<String>>,
+    pub bulk_busy: Signal<bool>,
     pub apply_running: Signal<bool>,
     pub apply_cancel: Signal<bool>,
     pub apply_status: Signal<String>,
@@ -232,6 +234,8 @@ impl Ui {
             checks: signal(checks),
             pending_install: signal(None::<PendingInstall>),
             update_busy: signal(None::<String>),
+            toggle_busy: signal(None::<String>),
+            bulk_busy: signal(false),
             apply_running: signal(false),
             apply_cancel: signal(false),
             apply_status: signal(String::new()),
@@ -401,6 +405,102 @@ impl Ui {
             build_local_rows(&hub, &self.mods.get(), &self.checks.get())
         };
         self.local_rows.set(rows);
+    }
+
+    pub fn set_mod_enabled(&self, key: String, enabled: bool) {
+        if self.toggle_busy.get().is_some() || self.bulk_busy.get() {
+            self.notice
+                .set(String::from("Another enable or disable change is running."));
+            return;
+        }
+        let row = self
+            .local_rows
+            .get()
+            .into_iter()
+            .find(|row| row.source_key == key);
+        let Some(row) = row else {
+            self.notice
+                .set(String::from("That mod is no longer in the list."));
+            return;
+        };
+        let item = row.item.clone();
+        let name = item.name.clone();
+        self.toggle_busy.set(Some(key));
+        self.notice.set(format!(
+            "{} {name}…",
+            if enabled { "Enabling" } else { "Disabling" }
+        ));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                hub.set_mod_enabled(&item, enabled)
+            })
+            .await;
+            ui.toggle_busy.set(None);
+            match result {
+                Ok(Ok(count)) => {
+                    ui.refresh_mods();
+                    ui.notice.set(format!(
+                        "{} {name}: {count} DLL file(s) renamed.",
+                        if enabled { "Enabled" } else { "Disabled" }
+                    ));
+                }
+                Ok(Err(error)) => ui.notice.set(format!(
+                    "Could not {} {name}: {error}",
+                    if enabled { "enable" } else { "disable" }
+                )),
+                Err(error) => ui
+                    .notice
+                    .set(format!("The mod toggle worker stopped: {error}")),
+            }
+        });
+    }
+
+    pub fn set_all_mods_enabled(&self, enabled: bool) {
+        if self.toggle_busy.get().is_some() || self.bulk_busy.get() {
+            self.notice
+                .set(String::from("Another enable or disable change is running."));
+            return;
+        }
+        if self.mods.get().is_empty() {
+            self.notice
+                .set(String::from("There are no mods to change."));
+            return;
+        }
+        self.bulk_busy.set(true);
+        self.notice.set(String::from(if enabled {
+            "Enabling every mod…"
+        } else {
+            "Disabling every mod…"
+        }));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        spawn(async move {
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                hub.set_all_mods_enabled(enabled)
+            })
+            .await;
+            ui.bulk_busy.set(false);
+            match result {
+                Ok(Ok(count)) => {
+                    ui.refresh_mods();
+                    ui.notice.set(format!(
+                        "{} all mods: {count} DLL file(s) renamed.",
+                        if enabled { "Enabled" } else { "Disabled" }
+                    ));
+                }
+                Ok(Err(error)) => ui.notice.set(format!(
+                    "Could not {} every mod: {error}",
+                    if enabled { "enable" } else { "disable" }
+                )),
+                Err(error) => ui
+                    .notice
+                    .set(format!("The mod toggle worker stopped: {error}")),
+            }
+        });
     }
 
     pub fn check_source(&self, key: String, repo: Repo) {
@@ -946,7 +1046,12 @@ fn build_local_rows(
                 pinned,
             });
             LocalModRow {
-                key: format!("{key}|{}|{}", check_tag(check), pin_tag(pinned)),
+                key: format!(
+                    "{key}|{}|{}|{}",
+                    check_tag(check),
+                    pin_tag(pinned),
+                    item.disabled
+                ),
                 source_key: key,
                 item: item.clone(),
                 source,
