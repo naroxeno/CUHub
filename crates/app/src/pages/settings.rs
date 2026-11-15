@@ -10,6 +10,7 @@ use crate::ui::{Ui, button, panel, pix, pix_c, rise_in, scaled};
 use cuhub_core::install::Flavor;
 use cuhub_core::nexus_auth::{GithubTokenStore, NexusKeyStore};
 use nsh_base::input;
+use nsh_core::EllipsizeMode;
 use nsh_core::prelude::*;
 
 pub(super) fn game_folder_path(ui: &Ui) -> Option<String> {
@@ -48,6 +49,22 @@ pub(super) fn setting_row(
     row(z, label_key, value, TEXT)
 }
 
+fn path_row(z: &Signal<u8>, value: impl IntoReactive<SharedString>) -> impl IntoElement {
+    let z = *z;
+    view()
+        .flex_col()
+        .justify_center()
+        .h(scaled(&z, 28.0))
+        .px(scaled(&z, 6.0))
+        .border_b(scaled(&z, 1.0))
+        .border_b_color(rgb(BORDER_DIM))
+        .child(
+            pix(value, 12.0, TEXT, &z)
+                .number_of_lines(1)
+                .text_overflow(EllipsizeMode::Middle),
+        )
+}
+
 pub fn settings(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let folder = ui.clone();
@@ -64,6 +81,7 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
     let clear_token = ui.clone();
     let check_token = ui.clone();
     let token_draft = ui.github_token_draft;
+    let wizard = ui.clone();
     let bepinex_watch = ui.clone();
     let bepinex_ui = ui.clone();
     let bepinex_conflict = ui.clone();
@@ -78,13 +96,19 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
             view()
                 .flex_col()
                 .gap(scaled(&z, 10.0))
+                .child(button(
+                    &z,
+                    move || t!("settings.run_wizard"),
+                    true,
+                    move || crate::setup::open(&wizard),
+                ))
                 .child(pix(
                     move || t!("settings.game_folder"),
                     12.0,
                     TEXT_MUTED,
                     &z,
                 ))
-                .child(setting_row(&z, "settings.detected_folder", move || {
+                .child(path_row(&z, move || {
                     game_folder_path(&folder).unwrap_or_else(|| t!("common.not_set"))
                 }))
                 .child(
@@ -313,7 +337,7 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
         ))
 }
 
-fn zoom_button(ui: &Ui, level: u8) -> Text {
+pub(crate) fn zoom_button(ui: &Ui, level: u8) -> Text {
     let z = ui.zoom;
     let label = match level {
         1 => "1x",
@@ -349,7 +373,7 @@ fn zoom_button(ui: &Ui, level: u8) -> Text {
     .on_press(move || pressed.set_ui_scale(level))
 }
 
-fn language_button(ui: &Ui, index: usize, z: &Signal<u8>) -> Text {
+pub(crate) fn language_button(ui: &Ui, index: usize, z: &Signal<u8>) -> Text {
     let (code, _) = i18n::LANGUAGES[index];
     let colored = ui.clone();
     let bordered = ui.clone();

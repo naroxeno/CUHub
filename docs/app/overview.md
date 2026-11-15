@@ -31,6 +31,7 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 | 状态行 | `notice` 变为非空 | 提示自左滑入 24pt + 淡入 | 300ms，一次性 |
 | 开发者控制台 | 打开浮层 | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
 | 删除确认弹窗 | 打开（`when` 重新挂载） | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
+| 设置向导 | 打开 / 切步 | 遮罩淡入 + 卡片滑入；步骤内容淡入 | 450ms / 200ms |
 | PENDING UPDATE 面板 | 待定计划出现（本地模组页与远程模组页共用） | 滑入 | 450ms |
 | Check 进行中 | `can_check` 为假且已知仓库 | 4 个 3px 方块脉冲追逐 | 640ms 循环，20 Hz 上限 |
 | 可更新行的 State 徽标 | `row.can_update()` | WARN 色呼吸 | 1800ms 循环，10 Hz 上限 |
@@ -66,6 +67,14 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 - 确认后仍在后台执行（`Hub::delete_mod` / `Hub::delete_all_mods`）：成功关闭弹窗、重新扫描并刷新行与空状态，状态行写删除的文件数；失败同样关闭弹窗，并把带路径的错误文案完整写进状态行（scope 可能已过期，重试前重新打开确认）。`Cancel` 不做删除。
 - 忙态：取范围与执行删除期间，所有 `Delete` / `Delete all` / 行内 Toggle / 两个批量按钮 / `Refresh` 一起置灰；`Cancel` 在删除执行期间同样置灰，避免中途隐藏进度。游戏运行时 core 在删除时才返回 `HubError::GameRunning`，因此这条错误在确认之后出现。
 - 弹窗挂在根视图尾部（`pages::delete_overlay`），绝对定位盖住整页内容；排在开发者浮层之前，dev 浮层仍可盖住它。
+
+## 设置向导
+
+- 表面：`setup::wizard` 在根视图 `delete_overlay` 之前，是一层 `when(open)` 挂载的全窗绝对定位子层（`inset 0` + 不透明 `BG`），盖住并阻断 shell；不用 `overlay()`（见 `nsh-notes.md`）。
+- 触发：`Ui::new` 里 `Settings::setup_due()`（未完成向导且 gamePath 为空）为真时自动打开，并跳过 A8 的空路径自动检测；设置页顶部的 Run setup again 按钮随时重开，重开时回到第 1 步并重置草稿与内联错误。
+- 结构：六步——欢迎、游戏目录、BepInEx（只读）、下载目录、外观、完成；顶部 Step n/6，底部 Back / Next / Skip，完成页为 Finish。步骤内容用 `dynamic` 跟随 `step` 重建，切步 200ms 淡入；遮罩与卡片沿用 FadeIn / FadeInUp。
+- 行为：每步 Next 即时保存（游戏目录走 `Hub::set_game_folder`，下载目录只接受已存在的绝对目录，空串表示跟随系统下载目录）；保存失败把错误原文内联在向导里，不前进也不改内存。BepInEx 步只展示状态，不安装、不改文件；外观步复用设置页的缩放与语言按钮。
+- 关闭：Esc 与 Skip / Finish 都写 `setupCompleted=true` 后关闭，不二次确认；写入失败则停在本步并内联报错。
 
 ## 帧预算
 

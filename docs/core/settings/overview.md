@@ -6,8 +6,9 @@ Settings.json 的模型、默认值、容错加载与原子保存。UI 只读写
 
 ## 输入输出
 
-- Settings：docs/FEATURES.md P6 列出的 15 个字段，JSON 键为 camelCase，缩进输出；language 存界面语言（"system" 跟随设备，或 BCP 47 标签），缺省 "system"。
+- Settings：docs/FEATURES.md P6 列出的 16 个字段，JSON 键为 camelCase，缩进输出；language 存界面语言（"system" 跟随设备，或 BCP 47 标签），缺省 "system"；setupCompleted 记录向导是否完成或跳过（旧 JSON 缺键按 false）。
 - SettingsStore::new(app_data) 绑定 app_data/Settings.json；load() 返回 LoadedSettings { settings, created, warning }；save(&Settings) 写盘。
+- `Settings::setup_due()`：`!setupCompleted && gamePath.trim().is_empty()`；只有为真时 app 首启打开设置向导，向导逻辑不在 core。
 
 ## 边界与失败模式
 

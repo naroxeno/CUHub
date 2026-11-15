@@ -32,6 +32,7 @@ pub struct Settings {
     pub dashboard_list_view: bool,
     pub dashboard_show_adult_mods: bool,
     pub ignored_dependency_names: Vec<String>,
+    pub setup_completed: bool,
 }
 
 impl Default for Settings {
@@ -54,6 +55,7 @@ impl Default for Settings {
             dashboard_list_view: false,
             dashboard_show_adult_mods: false,
             ignored_dependency_names: Vec::new(),
+            setup_completed: false,
         }
     }
 }
@@ -144,6 +146,10 @@ impl Settings {
         self.ui_scale = requested.clamp(MIN_UI_SCALE, MAX_UI_SCALE);
         (self.ui_scale != requested).then_some(requested)
     }
+
+    pub fn setup_due(&self) -> bool {
+        !self.setup_completed && self.game_path.trim().is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -185,6 +191,7 @@ mod tests {
             ui_scale: 3,
             language: "zh-CN".to_owned(),
             ignored_dependency_names: vec!["SomeDep".to_owned()],
+            setup_completed: true,
             ..Settings::default()
         };
         store.save(&settings).unwrap();
@@ -192,6 +199,7 @@ mod tests {
         assert!(raw.contains("gamePath"));
         assert!(raw.contains("ignoredDependencyNames"));
         assert!(raw.contains("\"language\": \"zh-CN\""));
+        assert!(raw.contains("\"setupCompleted\": true"));
         assert!(!raw.contains("game_path"));
         assert!(raw.ends_with('\n'));
         let loaded = store.load();
@@ -223,6 +231,28 @@ mod tests {
         let loaded = store.load();
         assert_eq!(loaded.settings.ui_scale, MAX_UI_SCALE);
         assert!(loaded.warning.is_some());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn setup_is_due_without_a_game_folder_or_completion() {
+        let mut settings = Settings::default();
+        assert!(settings.setup_due());
+        settings.game_path = "/games/Casualties Unknown".to_owned();
+        assert!(!settings.setup_due());
+        settings.game_path.clear();
+        settings.setup_completed = true;
+        assert!(!settings.setup_due());
+    }
+
+    #[test]
+    fn legacy_json_without_setup_completed_starts_setup() {
+        let dir = temp_dir("settings-setup-legacy");
+        let store = SettingsStore::new(&dir);
+        fs::write(store.path(), r#"{"gamePath":""}"#).unwrap();
+        let loaded = store.load();
+        assert!(!loaded.settings.setup_completed);
+        assert!(loaded.settings.setup_due());
         let _ = fs::remove_dir_all(dir);
     }
 }

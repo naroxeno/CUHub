@@ -73,8 +73,9 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **A5 (P2)** 彩蛋：需在设置中开启 Easter Eggs 才生效（默认关，首次启动写一次 Initialized 标记，避免“默认开”误判）；含一段固定外链跳转与吉祥物点击计数。
 - **A6 (P1)** 窗口：Linux 用客户端装饰 + 图标；像素壳（纯黑底、1px 白描边双框、方角导航条、无圆角无阴影），规格见 O。
 - **A7 (P0)** 全局缩放：1x/2x/3x（默认 2x）整数倍，作用到整个窗口（继承），启动时应用、改设置即时应用；不提供任意字号。
-- **A8 (P1)** 启动流程：读设置 → 应用界面缩放（1x/2x/3x）→ 装载缓存公告并渲染 → 公告过期则后台刷新 → 启动下载监视器 → 游戏路径为空则自动检测（≤20s，失败弹检测对话框可跳设置）。
+- **A8 (P1)** 启动流程：读设置 → 应用界面缩放（1x/2x/3x）→ 装载缓存公告并渲染 → 公告过期则后台刷新 → 启动下载监视器 → 游戏路径为空则自动检测（≤20s，失败弹检测对话框可跳设置）；首次启动由设置向导承接（A10），向导打开时跳过本次自动检测；向导跳过或完成后仍为空则不再自动检测，可在设置页手动检测。
 - **A9 (P1)** 单实例行为：当前实现无单实例锁（不实现也可），但下载监视器必须只跑一份。
+- **A10 (P1)** 设置向导：首次启动（`setupCompleted` 为 false 且游戏路径为空）打开六步向导——欢迎 → 游戏目录 → BepInEx（只读）→ 下载目录 → 外观 → 完成；顶部显示 Step n/6，底部 Back / Next / Skip，完成页按钮为 Finish。每步 Next 即时保存，`setupCompleted` 只在 Finish / Skip 时写入；Esc 等同 Skip，不二次确认。设置页可随时重新打开（P9）。
 
 ### B. 游戏目录识别
 
@@ -284,9 +285,10 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **P3 (P1) Nexus Mods**：key 输入 + Save / Clear + 说明“Premium 才能直连下载，可选”。
 - **P4 (P1) Extras**：Enable easter eggs（“下次启动生效”）。
 - **P5 (P1) Diagnostics**：说明文字、Copy report、Open logs folder。
-- **P6 (P0)** 设置模型字段（全部要落盘）：gamePath、downloadPath、backupPath("Backups")、disableAutoDeleteImportedParentFiles、uiScale(2)、language("system"，跟随设备或 BCP 47 语言标签)、highContrastMode(false)、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、dashboardShowAdultMods、ignoredDependencyNames[]。旧字段（textSize、四个颜色、activeUiPreset、animatedRgbEnabled、customUiPresets、themeColoursInitialized、rebrandThemeInitialized、缓存兼容性字段）读取时忽略、保存时丢弃。
+- **P6 (P0)** 设置模型字段（16 个，全部要落盘）：gamePath、downloadPath、backupPath("Backups")、disableAutoDeleteImportedParentFiles、uiScale(2)、language("system"，跟随设备或 BCP 47 语言标签)、highContrastMode(false)、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、dashboardShowAdultMods、ignoredDependencyNames[]、setupCompleted(false，向导完成或跳过时置 true)。旧字段（textSize、四个颜色、activeUiPreset、animatedRgbEnabled、customUiPresets、themeColoursInitialized、rebrandThemeInitialized、缓存兼容性字段）读取时忽略、保存时丢弃。
 - **P7 (P0)** 容错：JSON 解析失败不覆盖原文件，本次用默认值；数值越界夹紧（界面缩放 1–3、缩放档位非法则回落 2x）。
 - **P8 (P1)** 写入用缩进 JSON，便于用户手改。
+- **P9 (P1)** 设置页顶部固定「重新运行设置向导 / Run setup again / セットアップを再実行」按钮，始终可见；点击重开向导，不弹确认、不清已保存的设置，向导内每步仍即时保存。
 
 ### Q. 日志 / 诊断 / 崩溃报告
 
@@ -296,7 +298,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **Q4 (P0)** 崩溃报告内容：Hub 版本、OS、运行时版本、配置与活动模组快照、本会话日志、未处理异常全文。
 - **Q5 (P1)** 诊断日志内容：最近 10 分钟活动 + 环境 + 游戏/插件快照。
 - **Q6 (P1)** CLI `--diagnostics`（无窗口）：打印版本/OS/用户名（root 标注）、数据目录（非绝对路径要报错）、日志目录、应用目录；检查三个内嵌资源存在与否；Steam 段列出库、app id、真实大小写、DLL 数量与非小写扩展名计数；输出 RESULT 行并以退出码表示成败。
-- **Q7 (P1)** CLI `--selftest`（无显示器）：构建全部页面与对话框各一次，报告 OK/FAILED；有皮肤时额外合成一次正面与镜像预览并校验件数（可落 PNG）。等价于 CI 冒烟。
+- **Q7 (P1)** CLI `--selftest`（无显示器）：构建全部页面、设置向导与对话框各一次，报告 OK/FAILED；有皮肤时额外合成一次正面与镜像预览并校验件数（可落 PNG）。等价于 CI 冒烟。
 - **Q8 (P2)** 开发者控制台页（隐藏入口）：与 Debug 页共用数据源。
 
 ### R. Multiplayer（预览，P2）

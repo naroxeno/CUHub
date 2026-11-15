@@ -10,7 +10,7 @@
 
 边界：
 - 仓库标识只接受 owner/name，字符集 A-Za-z0-9._-，拒绝 ".."、".git" 结尾、首尾点划。这些值会拼进 api.github.com 路径，所以宁可直接拒绝。
-- dll 字段存文件名；比较时去掉 .dll 后缀，并按 alphanumeric+小写归一化。
+- dll 字段存文件名；比较时先按大小写不敏感去掉尾部 .disabled、再去掉 .dll，然后按 alphanumeric+小写归一化。这套规范化只用于 dll，不影响 guid/name。
 - 未知字段拒绝（deny_unknown_fields），避免字段拼错后静默失效。
 
 清单 v1（2026-11-15 已拍板）：

@@ -119,7 +119,7 @@ impl Matcher {
         let dll_hit = local
             .dll_stems
             .iter()
-            .any(|stem| self.dll.iter().any(|name| same_key(name, stem)));
+            .any(|stem| self.dll.iter().any(|name| same_dll(name, stem)));
         if dll_hit {
             return Some(MatchKind::Dll);
         }
@@ -151,6 +151,27 @@ pub(crate) fn normalize_guid(value: &str) -> String {
 fn same_key(left: &str, right: &str) -> bool {
     let left = normalize_key(left);
     !left.is_empty() && left == normalize_key(right)
+}
+
+fn same_dll(left: &str, right: &str) -> bool {
+    let left = dll_key(left);
+    !left.is_empty() && left == dll_key(right)
+}
+
+fn dll_key(value: &str) -> String {
+    let value = strip_suffix_ignore_ascii_case(value, ".disabled").unwrap_or(value);
+    let value = strip_suffix_ignore_ascii_case(value, ".dll").unwrap_or(value);
+    normalize_key(value)
+}
+
+fn strip_suffix_ignore_ascii_case<'a>(value: &'a str, suffix: &str) -> Option<&'a str> {
+    let index = value.len().checked_sub(suffix.len())?;
+    let tail = value.get(index..)?;
+    if tail.eq_ignore_ascii_case(suffix) {
+        Some(&value[..index])
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -745,6 +766,55 @@ mod tests {
             Some(MatchKind::Dll)
         );
         assert_eq!(matcher.matches(&local("Other", None, &["Console"])), None);
+    }
+
+    #[test]
+    fn dll_match_strips_disabled_and_dll_suffixes() {
+        let matcher = Matcher {
+            dll: vec!["Foo".to_owned()],
+            ..Matcher::default()
+        };
+        assert_eq!(
+            matcher.matches(&local("Other", None, &["Foo.dll"])),
+            Some(MatchKind::Dll)
+        );
+        assert_eq!(
+            matcher.matches(&local("Other", None, &["FOO.DLL.DISABLED"])),
+            Some(MatchKind::Dll)
+        );
+
+        let matcher = Matcher {
+            dll: vec!["Foo.dll".to_owned()],
+            ..Matcher::default()
+        };
+        assert_eq!(
+            matcher.matches(&local("Other", None, &["Foo"])),
+            Some(MatchKind::Dll)
+        );
+    }
+
+    #[test]
+    fn dll_match_does_not_over_strip_suffixes() {
+        let matcher = Matcher {
+            dll: vec!["Foo".to_owned()],
+            ..Matcher::default()
+        };
+        for stem in ["Foo.dll.dll", "Foo.dll.disabled.dll", "Foodll"] {
+            assert_eq!(
+                matcher.matches(&local("Other", None, &[stem])),
+                None,
+                "{stem} should not match Foo"
+            );
+        }
+    }
+
+    #[test]
+    fn name_key_does_not_strip_dll_suffix() {
+        let matcher = Matcher {
+            name: vec!["Foo.dll".to_owned()],
+            ..Matcher::default()
+        };
+        assert_eq!(matcher.matches(&local("Foo", None, &[])), None);
     }
 
     #[test]

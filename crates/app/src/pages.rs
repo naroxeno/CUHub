@@ -16,3 +16,4 @@ pub use misc::{hub_home, multiplayer, skins_backups};
 pub use nexus::nexus;
 pub use remote::remote_mods;
 pub use settings::settings;
+pub(crate) use settings::{language_button, zoom_button};

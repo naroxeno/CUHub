@@ -2,6 +2,7 @@
 
 pub mod bridge;
 pub mod catalogs;
+pub mod easytier;
 pub mod github;
 pub mod hub;
 pub mod hubconfig;

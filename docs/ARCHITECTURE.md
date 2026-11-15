@@ -87,12 +87,14 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 | `steam` | 库扫描、VDF 解析、appid 反查 |
 | `launch` | 经 `steam://` 启动游戏与 `steam -applaunch` 回退；不直接跑 exe |
 | `bridge` | 回环桥：监听、握手、帧协议、命令白名单与权限、rendezvous 文件 |
+| `easytier` | 联机内核：版本 pin、下载校验缓存、安装探测、进程控制、房间码 |
 | `logs` / `diagnostics` | 会话日志、崩溃报告、`--diagnostics` 自检 |
 
 ## 7. app 模块
 
 - `shell`：侧栏、顶栏、状态栏、开发者控制台、内容滚动容器。
 - `pages`：dashboard、local_mods、multiplayer、skins_backups、hub_home、settings。
+- `setup`：首启设置向导（六步全窗层），只读写 Hub 设置；BepInEx 步只读。
 - `ui`：字体、像素文字、面板（1px 双框 + 标题断口）、按钮与缩放 helper；组件多了再拆 `components`。
 - `palette`：像素调色板 token 与图标着色（固定常量，不做运行时派生）。
 - `assets`：内嵌像素字体、16×16 图标集。
@@ -115,7 +117,7 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 4. 网络：全部在 `core::network`（`reqwest`），由 core 的 worker 调用；`app` 不联网，不使用 nsh `fetch`，也不加载远程图片。ETag、超时、UA 与下载落盘由 core 控制，app 只读本地缓存。
 5. 字体用 `asset!("fonts/…")` + `registry.assets(assets!())` 打进 bundle，family 取字体 name table（Fusion Pixel 是 `Fusion Pixel 12px Prop zh_hans`）。1x/2x/3x 下 1px 双框与字距已逐档核对，未发虚。
 6. 缩放：nsh 没有 app 级 UI 缩放（`set_zoom` 只管滚动视图，`font_scale` 只放大文字，rem 固定 16pt）；所有尺寸在 app 侧按 1x/2x/3x 乘整数，切换即时生效。
-7. 全窗遮罩：`overlay()` 内放 `absolute().inset(0)` 会塌成内容大小；改用根视图末尾的普通 `absolute` 子层（开发者控制台已验证），需要原生 Escape/backdrop 时用 `nsh_base::dialog() -> Modal`。
+7. 全窗遮罩：`overlay()` 内放 `absolute().inset(0)` 会塌成内容大小；改用根视图末尾的普通 `absolute` 子层（开发者控制台已验证），需要原生 Escape/backdrop 时用 `nsh_base::dialog() -> Modal`。设置向导与删除确认用同一挂载方式。
 8. 内容区包一层 `scroll()`，3x 在矮窗口下可滚；`virtual_list` 自带滚动，页面改用列表后不要再外套 `scroll`。
 
 剩余未决：

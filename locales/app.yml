@@ -1155,3 +1155,163 @@ notice.bepinex_cancelled:
   en: "Cancelled."
   zh-CN: "已取消。"
   ja: "中止しました。"
+wizard.title:
+  en: "Setup"
+  zh-CN: "设置向导"
+  ja: "セットアップ"
+wizard.step_label:
+  en: "Step %{step}/%{total}"
+  zh-CN: "第 %{step}/%{total} 步"
+  ja: "ステップ %{step}/%{total}"
+wizard.back:
+  en: "Back"
+  zh-CN: "上一步"
+  ja: "戻る"
+wizard.next:
+  en: "Next"
+  zh-CN: "下一步"
+  ja: "次へ"
+wizard.skip:
+  en: "Skip"
+  zh-CN: "跳过"
+  ja: "スキップ"
+wizard.finish:
+  en: "Finish"
+  zh-CN: "完成"
+  ja: "完了"
+wizard.welcome.title:
+  en: "Welcome to CuHub"
+  zh-CN: "欢迎使用 CuHub"
+  ja: "CuHub へようこそ"
+wizard.welcome.body:
+  en: "This wizard sets up the basics. You can change everything later in Settings."
+  zh-CN: "向导会完成基本设置，之后都能在设置里修改。"
+  ja: "基本設定を行います。あとから設定で変更できます。"
+wizard.game.title:
+  en: "Game folder"
+  zh-CN: "游戏目录"
+  ja: "ゲームフォルダ"
+wizard.game.hint:
+  en: "Select the folder that contains the game."
+  zh-CN: "选择包含游戏本体的文件夹。"
+  ja: "ゲーム本体のあるフォルダを選んでください。"
+wizard.game.placeholder:
+  en: "/path/to/Casualties Unknown"
+  zh-CN: "/path/to/Casualties Unknown"
+  ja: "/path/to/Casualties Unknown"
+wizard.game.detected:
+  en: "Current: %{path}"
+  zh-CN: "当前：%{path}"
+  ja: "現在: %{path}"
+wizard.game.not_set:
+  en: "Not set"
+  zh-CN: "未设置"
+  ja: "未設定"
+wizard.game.browse:
+  en: "Browse"
+  zh-CN: "浏览"
+  ja: "参照"
+wizard.game.detect:
+  en: "Detect"
+  zh-CN: "自动查找"
+  ja: "自動検出"
+wizard.game.invalid:
+  en: "That folder does not look like the game folder."
+  zh-CN: "这个文件夹看起来不是游戏目录。"
+  ja: "このフォルダはゲームフォルダではないようです。"
+wizard.game.dialog_unavailable:
+  en: "Could not open the folder picker: %{error}"
+  zh-CN: "无法打开文件夹选择器：%{error}"
+  ja: "フォルダ選択を開けませんでした: %{error}"
+wizard.game.detect_failed:
+  en: "The game folder was not found automatically."
+  zh-CN: "没有自动找到游戏目录。"
+  ja: "ゲームフォルダを自動で見つけられませんでした。"
+wizard.bepinex.title:
+  en: "BepInEx"
+  zh-CN: "BepInEx"
+  ja: "BepInEx"
+wizard.bepinex.installed:
+  en: "BepInEx is installed."
+  zh-CN: "BepInEx 已安装。"
+  ja: "BepInEx はインストール済みです。"
+wizard.bepinex.not_installed:
+  en: "BepInEx is not installed."
+  zh-CN: "BepInEx 未安装。"
+  ja: "BepInEx はインストールされていません。"
+wizard.bepinex.incomplete:
+  en: "BepInEx is incomplete."
+  zh-CN: "BepInEx 不完整。"
+  ja: "BepInEx が不完全です。"
+wizard.bepinex.il2cpp:
+  en: "This game uses IL2CPP, which this BepInEx build does not support."
+  zh-CN: "这个游戏使用 IL2CPP，当前的 BepInEx 不支持。"
+  ja: "このゲームは IL2CPP を使用しており、この BepInEx では対応できません。"
+wizard.bepinex.unavailable:
+  en: "BepInEx status is unavailable until the game folder is set."
+  zh-CN: "设置游戏目录后才能查看 BepInEx 状态。"
+  ja: "ゲームフォルダを設定するまで BepInEx の状態は確認できません。"
+wizard.bepinex.version:
+  en: "Version: %{version}"
+  zh-CN: "版本：%{version}"
+  ja: "バージョン: %{version}"
+wizard.bepinex.major:
+  en: "Major version: %{major}"
+  zh-CN: "主版本：%{major}"
+  ja: "メジャーバージョン: %{major}"
+wizard.bepinex.note:
+  en: "You can install or repair BepInEx later in Settings. Nothing is changed here."
+  zh-CN: "之后可以在设置里安装或修复 BepInEx，这里不会改动任何文件。"
+  ja: "BepInEx はあとから設定でインストールまたは修復できます。ここでは何も変更しません。"
+wizard.downloads.title:
+  en: "Download folder"
+  zh-CN: "下载目录"
+  ja: "ダウンロードフォルダ"
+wizard.downloads.hint:
+  en: "Leave empty to use your system Downloads folder. The folder must already exist."
+  zh-CN: "留空则使用系统的下载文件夹。目录必须已经存在。"
+  ja: "空欄にするとシステムのダウンロードフォルダを使います。フォルダは既に存在している必要があります。"
+wizard.downloads.placeholder:
+  en: "System Downloads folder"
+  zh-CN: "跟随系统下载文件夹"
+  ja: "システムのダウンロードフォルダ"
+wizard.downloads.invalid:
+  en: "Enter an absolute path to an existing folder."
+  zh-CN: "请输入已存在文件夹的绝对路径。"
+  ja: "存在するフォルダの絶対パスを入力してください。"
+wizard.appearance.title:
+  en: "Appearance"
+  zh-CN: "外观"
+  ja: "外観"
+wizard.done.title:
+  en: "You're all set"
+  zh-CN: "设置完成"
+  ja: "準備完了"
+wizard.done.body:
+  en: "You can change these choices later in Settings."
+  zh-CN: "之后可以在设置里修改这些选项。"
+  ja: "これらの設定はあとから変更できます。"
+wizard.done.game:
+  en: "Game folder"
+  zh-CN: "游戏目录"
+  ja: "ゲームフォルダ"
+wizard.done.downloads:
+  en: "Download folder"
+  zh-CN: "下载目录"
+  ja: "ダウンロードフォルダ"
+wizard.done.scale:
+  en: "Interface scale: %{scale}x"
+  zh-CN: "界面缩放：%{scale}x"
+  ja: "表示倍率: %{scale}x"
+wizard.done.language:
+  en: "Language"
+  zh-CN: "语言"
+  ja: "言語"
+settings.run_wizard:
+  en: "Run setup again"
+  zh-CN: "重新运行设置向导"
+  ja: "セットアップを再実行"
+notice.setup_finished:
+  en: "Setup finished."
+  zh-CN: "设置向导已完成。"
+  ja: "セットアップが完了しました。"

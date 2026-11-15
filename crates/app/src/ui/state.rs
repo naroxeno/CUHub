@@ -11,6 +11,7 @@ use super::rows::build_nexus_rows;
 use super::rows::nexus_page_count;
 use super::rows::page_slice;
 use crate::i18n;
+use crate::setup::Setup;
 use cuhub_core::hub::{BepInExInstall, Hub};
 use cuhub_core::install::{Flavor, Status as BepInExStatus};
 use cuhub_core::metadata::MetadataMod;
@@ -20,6 +21,7 @@ use nsh_core::RevealOptions;
 use nsh_core::prelude::*;
 use std::collections::BTreeMap;
 use std::future::Future;
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
@@ -75,13 +77,15 @@ pub struct Ui {
     pub github_token_draft: Signal<String>,
     pub github_token_check: Signal<String>,
     pub app_data: String,
+    pub setup: Setup,
     owner: Owner,
 }
 
 impl Ui {
     pub fn new() -> Self {
         let mut hub = Hub::open();
-        if hub.settings().game_path.trim().is_empty() {
+        let setup_due = hub.settings().setup_due();
+        if !setup_due && hub.settings().game_path.trim().is_empty() {
             hub.detect_game_folder();
         }
         let settings = hub.settings().clone();
@@ -114,6 +118,7 @@ impl Ui {
         let app_data = hub.app_data().display().to_string();
         let bepinex = hub.bepinex_status().ok();
         let owner = Owner::current();
+        let setup = Setup::new(&settings, setup_due);
         let notice = if settings.game_path.trim().is_empty() {
             t!("notice.no_game_folder")
         } else {
@@ -170,6 +175,7 @@ impl Ui {
             github_token_draft: signal(String::new()),
             github_token_check: signal(github_token_check),
             app_data,
+            setup,
             owner,
         }
     }
@@ -178,11 +184,11 @@ impl Ui {
     // view out (a button replaced by its disabled twin) cancels the task and
     // leaves its busy signal set. Workers live with the app instead.
 
-    pub(super) fn spawn_worker(&self, future: impl Future<Output = ()> + 'static) {
+    pub(crate) fn spawn_worker(&self, future: impl Future<Output = ()> + 'static) {
         self.owner.run(|| spawn(future));
     }
 
-    pub(super) fn hub(&self) -> MutexGuard<'_, Hub> {
+    pub(crate) fn hub(&self) -> MutexGuard<'_, Hub> {
         self.hub
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -234,6 +240,80 @@ impl Ui {
         if previous != page {
             self.nexus_list
                 .reveal(RevealOptions::default().animated(false));
+        }
+    }
+
+    pub(crate) fn save_setup_game(&self, draft: &str) -> Result<(), String> {
+        if draft.trim().is_empty() {
+            return Ok(());
+        }
+        let saved = {
+            let mut hub = self.hub();
+            hub.set_game_folder(Path::new(draft.trim()))
+                .map(|_| hub.settings().clone())
+                .map_err(|error| error.to_string())
+        };
+        match saved {
+            Ok(settings) => {
+                self.settings.set(settings);
+                self.refresh_mods();
+                self.refresh_bepinex();
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    pub(crate) fn detect_setup_game(&self) -> Option<String> {
+        self.hub().detect_game_folder()?;
+        let settings = self.hub().settings().clone();
+        let path = settings.game_path.clone();
+        self.settings.set(settings);
+        self.refresh_mods();
+        self.refresh_bepinex();
+        Some(path)
+    }
+
+    pub(crate) fn save_setup_download(&self, draft: &str) -> Result<(), String> {
+        let trimmed = draft.trim();
+        if !trimmed.is_empty() {
+            let path = Path::new(trimmed);
+            if !path.is_absolute() || !path.is_dir() {
+                return Err(t!("wizard.downloads.invalid"));
+            }
+        }
+        let saved = {
+            let mut hub = self.hub();
+            let mut settings = hub.settings().clone();
+            settings.download_path = trimmed.to_owned();
+            hub.save_settings(&settings)
+                .map(|()| hub.settings().clone())
+                .map_err(|error| error.to_string())
+        };
+        match saved {
+            Ok(settings) => {
+                self.settings.set(settings);
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    pub(crate) fn mark_setup_completed(&self) -> Result<(), String> {
+        let saved = {
+            let mut hub = self.hub();
+            let mut settings = hub.settings().clone();
+            settings.setup_completed = true;
+            hub.save_settings(&settings)
+                .map(|()| hub.settings().clone())
+                .map_err(|error| error.to_string())
+        };
+        match saved {
+            Ok(settings) => {
+                self.settings.set(settings);
+                Ok(())
+            }
+            Err(error) => Err(error),
         }
     }
 

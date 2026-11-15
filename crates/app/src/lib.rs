@@ -3,6 +3,7 @@
 mod i18n;
 mod pages;
 mod palette;
+mod setup;
 mod shell;
 mod ui;
 
@@ -37,4 +38,5 @@ pub fn App() -> impl IntoElement {
         .child(pages::delete_overlay(&ui))
         .child(pages::bepinex_overlay(&ui))
         .child(shell::dev_overlay(&ui))
+        .child(setup::wizard(&ui))
 }
