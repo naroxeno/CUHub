@@ -71,7 +71,7 @@ HubEvent::Status            // 外壳状态栏文案
 | `network` | 唯一联网层：HTTPS 校验、条件请求（ETag / If-Modified-Since）、重定向/超时/UA、响应上限、下载落盘 |
 | `metadata` | 社区目录缓存、按 DLL 名匹配模组（经 `network` 拉取） |
 | `hubconfig` | 公告频道、缓存、https 过滤（经 `network` 拉取） |
-| `nexus_auth` | key 的保存/读取/清除（AES-GCM + 0600；Windows DPAPI 待接） |
+| `nexus_auth` | Nexus key 与 GitHub token 的保存/读取/清除（AES-GCM + 0600；Windows DPAPI 待接） |
 | `nexus` | 直连下载：files.json 选文件、download_link（经 `network`） |
 | `install` | 压缩包 staging、安装计划、归属检查、备份/替换/回滚 |
 | `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除 |

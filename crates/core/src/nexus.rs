@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::network::{Fetch, Network, NetworkError};
-use crate::nexus_auth::{NexusKeyError, NexusKeyStore};
+use crate::nexus_auth::{KeyStoreError, NexusKeyStore};
 
 const API_BASE: &str = "https://api.nexusmods.com/v1/games/scavprototype";
 const VALIDATE_URL: &str = "https://api.nexusmods.com/v1/users/validate.json";
@@ -20,7 +20,7 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 #[derive(Debug)]
 pub enum NexusError {
     MissingKey,
-    Key(NexusKeyError),
+    Key(KeyStoreError),
     InvalidModId(String),
     HttpStatus { url: String, status: u16 },
     Network(NetworkError),

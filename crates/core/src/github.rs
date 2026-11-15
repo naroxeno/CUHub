@@ -87,6 +87,31 @@ pub fn parse_release(text: &str) -> Result<ReleaseInfo, ReleaseError> {
     release_info(payload)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RateLimit {
+    pub limit: u64,
+    pub remaining: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RateLimitPayload {
+    rate: RateLimitCounts,
+}
+
+#[derive(Debug, Deserialize)]
+struct RateLimitCounts {
+    limit: u64,
+    remaining: u64,
+}
+
+pub fn parse_rate_limit(text: &str) -> Result<RateLimit, serde_json::Error> {
+    let payload: RateLimitPayload = serde_json::from_str(text)?;
+    Ok(RateLimit {
+        limit: payload.rate.limit,
+        remaining: payload.rate.remaining,
+    })
+}
+
 pub fn parse_release_list(text: &str) -> Result<ReleaseInfo, ReleaseError> {
     let payloads: Vec<ReleasePayload> = serde_json::from_str(text).map_err(ReleaseError::Json)?;
     let payload = payloads
@@ -285,6 +310,16 @@ mod tests {
             CheckFailure::from_status(500, None),
             CheckFailure::Status { status: 500 }
         );
+    }
+
+    #[test]
+    fn rate_limits_are_read_from_the_rate_endpoint() {
+        let text = r#"{"resources":{},"rate":{"limit":5000,"remaining":4999,"reset":1700000000}}"#;
+        let limit = parse_rate_limit(text).unwrap();
+        assert_eq!(limit.limit, 5000);
+        assert_eq!(limit.remaining, 4999);
+        assert!(parse_rate_limit(r#"{"rate":{}}"#).is_err());
+        assert!(parse_rate_limit("nope").is_err());
     }
 
     #[test]

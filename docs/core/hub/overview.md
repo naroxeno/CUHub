@@ -10,6 +10,7 @@
 - `set_game_folder` 校验游戏目录后写入 `Settings.json`；`detect_game_folder` 先用 Steam 清单发现安装。
 - `plugins_dir` 把游戏根解析到 `BepInEx/Plugins`；`scan_mods` 调用 `mods::scan` 并写一条活动日志。
 - `set_mod_enabled` / `set_all_mods_enabled` 走 `mods` 的改名；`delete_scope` / `delete_all_scope` 只返回将删的一级条目与文件数，`delete_mod` / `delete_all_mods` 先确认游戏未运行再执行删除，并写活动日志。
+- `save_github_token` / `clear_github_token` 走 `nexus_auth::GithubTokenStore`；`validate_github_token` 请求 `GET https://api.github.com/rate_limit` 并返回剩余额度，401 映射成 `HubError::GithubTokenRejected`。`check_release` 在有 token 时给 release 请求加 Bearer 头，没有 token 时行为不变。
 - `launch_game` 调用 `launch::launch_game`，返回 app id 并记录一条活动日志；找不到游戏目录或 app id 时返回错误。
 - `metadata_needs_refresh` 在内存列表为空或缓存超过 6 小时时返回 true，调用方据此决定是否后台刷新。
 - `refresh_metadata(force)` 通过 `network` 做条件请求，更新缓存与内存列表；`force` 为 true 时忽略 ETag/Last-Modified，供手动刷新使用。

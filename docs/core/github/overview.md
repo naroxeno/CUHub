@@ -10,6 +10,6 @@
 
 取数约定（已拍板）：**不缓存 release 结果**，每次点 Check 都请求；但同一行的 check 在飞行中时，连点只算一次（去重放在 UI 的 check 状态里，不在本模块）。
 
-接线（2026-11-15）：`Hub::check_release` 走 `network::Network::get_with_headers`，带 `Accept: application/vnd.github+json` 与 `X-GitHub-Api-Version: 2022-11-28`，响应上限 1 MB。先 GET `releases/latest`；404 时回退 GET `releases?per_page=1`，取第一个（可能是 prerelease）；仍无 release 记为 Missing。其余 HTTP 失败都包装成 `CheckOutcome::Failure` 返回，不向 UI 抛错。
+接线（2026-11-15）：`Hub::check_release` 走 `network::Network::get_with_headers`，带 `Accept: application/vnd.github+json` 与 `X-GitHub-Api-Version: 2022-11-28`，响应上限 1 MB。保存了 GitHub token 时额外带 `Authorization: Bearer …`（只发给 api.github.com）；token 由 `nexus_auth::GithubTokenStore` 加密保存，Settings 的 Test token 走 `Hub::validate_github_token` 请求 `GET /rate_limit`。先 GET `releases/latest`；404 时回退 GET `releases?per_page=1`，取第一个（可能是 prerelease）；仍无 release 记为 Missing。其余 HTTP 失败都包装成 `CheckOutcome::Failure` 返回，不向 UI 抛错。
 
 未决：GitHub 限流的 reset 时间仍拿不到——`Fetch` 不带响应头，限流只能显示「稍后再试」；要不要扩 `Fetch` 待拍板。

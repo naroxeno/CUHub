@@ -9,7 +9,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 
 use crate::catalogs::Catalogs;
-use crate::github::{self, CheckFailure, ReleaseAsset, ReleaseInfo};
+use crate::github::{self, CheckFailure, RateLimit, ReleaseAsset, ReleaseInfo};
 use crate::install::{self, UpgradePlan};
 use crate::launch::{self, LaunchError};
 use crate::logs::Logs;
@@ -17,6 +17,7 @@ use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
 use crate::mods::{self, InstalledMod, ModsError};
 use crate::network::{self, Fetch, Network, NetworkError};
 use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
+use crate::nexus_auth::{GithubTokenStore, KeyStoreError};
 use crate::paths::{self, PathError};
 use crate::platform;
 use crate::settings::{Settings, SettingsStore};
@@ -37,6 +38,10 @@ pub enum HubError {
     Network(NetworkError),
     Cache(metadata::MetadataCacheError),
     Nexus(NexusError),
+    Credentials(KeyStoreError),
+    MissingGithubToken,
+    GithubTokenRejected,
+    GithubResponse(String),
     Json(serde_json::Error),
     UnexpectedContent,
     NetworkUnavailable,
@@ -73,6 +78,19 @@ impl std::fmt::Display for HubError {
             Self::Network(error) => error.fmt(formatter),
             Self::Cache(error) => error.fmt(formatter),
             Self::Nexus(error) => error.fmt(formatter),
+            Self::Credentials(error) => error.fmt(formatter),
+            Self::MissingGithubToken => formatter.write_str(
+                "No GitHub token is saved. Add one in Settings to raise the GitHub API rate limit.",
+            ),
+            Self::GithubTokenRejected => {
+                formatter.write_str("GitHub rejected the token. Save a valid one in Settings.")
+            }
+            Self::GithubResponse(message) => {
+                write!(
+                    formatter,
+                    "GitHub returned an unexpected response: {message}"
+                )
+            }
             Self::Json(error) => write!(
                 formatter,
                 "The community catalogue is not valid JSON: {error}"
@@ -116,6 +134,7 @@ impl std::error::Error for HubError {
             Self::Network(error) => Some(error),
             Self::Cache(error) => Some(error),
             Self::Nexus(error) => Some(error),
+            Self::Credentials(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::Io(error) => Some(error),
             Self::Install(_)
@@ -123,7 +142,10 @@ impl std::error::Error for HubError {
             | Self::Apply(_)
             | Self::GameRunning
             | Self::Github(_)
-            | Self::Update(_) => None,
+            | Self::Update(_)
+            | Self::MissingGithubToken
+            | Self::GithubTokenRejected
+            | Self::GithubResponse(_) => None,
         }
     }
 }
@@ -149,6 +171,12 @@ impl From<LaunchError> for HubError {
 impl From<NetworkError> for HubError {
     fn from(error: NetworkError) -> Self {
         Self::Network(error)
+    }
+}
+
+impl From<KeyStoreError> for HubError {
+    fn from(error: KeyStoreError) -> Self {
+        Self::Credentials(error)
     }
 }
 
@@ -211,6 +239,7 @@ pub struct Hub {
     metadata: Vec<MetadataMod>,
     network: Option<Network>,
     nexus: Option<Nexus>,
+    github_tokens: GithubTokenStore,
     sources: Option<SourceManifest>,
     source_choices: SourceChoices,
 }
@@ -268,6 +297,8 @@ impl Hub {
             }
         };
 
+        let github_tokens = GithubTokenStore::new(app_data.clone());
+
         Self {
             app_data,
             settings_store,
@@ -278,6 +309,7 @@ impl Hub {
             metadata,
             network,
             nexus,
+            github_tokens,
             sources,
             source_choices,
         }
@@ -369,6 +401,65 @@ impl Hub {
 
     pub fn validate_nexus_key(&self) -> Result<NexusAccount, HubError> {
         Ok(self.nexus()?.validate_key()?)
+    }
+
+    pub fn github_token_saved(&self) -> bool {
+        self.github_tokens.is_configured()
+    }
+
+    pub fn save_github_token(&mut self, token: &str) -> Result<(), HubError> {
+        self.github_tokens.save(token)?;
+        self.logs.activity("GitHub", "Personal GitHub token saved.");
+        Ok(())
+    }
+
+    pub fn clear_github_token(&mut self) -> Result<(), HubError> {
+        self.github_tokens.clear()?;
+        self.logs
+            .activity("GitHub", "Personal GitHub token cleared.");
+        Ok(())
+    }
+
+    pub fn validate_github_token(&self) -> Result<RateLimit, HubError> {
+        let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
+        let token = self
+            .github_tokens
+            .load()
+            .ok_or(HubError::MissingGithubToken)?;
+        let authorization = format!("Bearer {token}");
+        let headers = [
+            ("Accept", "application/vnd.github+json"),
+            ("X-GitHub-Api-Version", "2022-11-28"),
+            ("Authorization", authorization.as_str()),
+        ];
+        let body = match network.get_with_headers(
+            "https://api.github.com/rate_limit",
+            &headers,
+            CHECK_MAX_BODY_BYTES,
+        ) {
+            Ok(Fetch::Fetched { body, .. }) => body,
+            Ok(Fetch::NotModified) => {
+                return Err(HubError::GithubResponse(String::from(
+                    "the rate endpoint answered 304",
+                )));
+            }
+            Err(NetworkError::HttpStatus { status: 401, .. }) => {
+                return Err(HubError::GithubTokenRejected);
+            }
+            Err(error) => return Err(HubError::Network(error)),
+        };
+        let text =
+            String::from_utf8(body).map_err(|error| HubError::GithubResponse(error.to_string()))?;
+        let limit = github::parse_rate_limit(&text)
+            .map_err(|error| HubError::GithubResponse(error.to_string()))?;
+        self.logs.activity(
+            "GitHub",
+            &format!(
+                "Token accepted; {} of {} requests left.",
+                limit.remaining, limit.limit
+            ),
+        );
+        Ok(limit)
     }
 
     pub fn download_nexus_latest(&self, mod_id: &str) -> Result<NexusDownload, HubError> {
@@ -599,7 +690,9 @@ impl Hub {
             repo.owner(),
             repo.name()
         );
-        match fetch_release(network, &latest) {
+        let token = self.github_tokens.load();
+        let token = token.as_deref();
+        match fetch_release(network, token, &latest) {
             Ok(release) => Ok(CheckOutcome::Release(release)),
             Err(CheckFailure::Missing) => {
                 let list = format!(
@@ -607,7 +700,7 @@ impl Hub {
                     repo.owner(),
                     repo.name()
                 );
-                match fetch_release_list(network, &list) {
+                match fetch_release_list(network, token, &list) {
                     Ok(release) => Ok(CheckOutcome::Release(release)),
                     Err(failure) => Ok(CheckOutcome::Failure(failure)),
                 }
@@ -824,15 +917,23 @@ fn unique_destination(directory: &Path, name: &str) -> PathBuf {
     directory.join(format!("{stem}-{}.archive", std::process::id()))
 }
 
-fn fetch_release(network: &Network, url: &str) -> Result<ReleaseInfo, CheckFailure> {
-    let body = fetch_json(network, url)?;
+fn fetch_release(
+    network: &Network,
+    token: Option<&str>,
+    url: &str,
+) -> Result<ReleaseInfo, CheckFailure> {
+    let body = fetch_json(network, token, url)?;
     github::parse_release(&body).map_err(|error| CheckFailure::Unreadable {
         detail: error.to_string(),
     })
 }
 
-fn fetch_release_list(network: &Network, url: &str) -> Result<ReleaseInfo, CheckFailure> {
-    let body = fetch_json(network, url)?;
+fn fetch_release_list(
+    network: &Network,
+    token: Option<&str>,
+    url: &str,
+) -> Result<ReleaseInfo, CheckFailure> {
+    let body = fetch_json(network, token, url)?;
     match github::parse_release_list(&body) {
         Ok(release) => Ok(release),
         Err(github::ReleaseError::NoReleases) => Err(CheckFailure::Missing),
@@ -842,8 +943,13 @@ fn fetch_release_list(network: &Network, url: &str) -> Result<ReleaseInfo, Check
     }
 }
 
-fn fetch_json(network: &Network, url: &str) -> Result<String, CheckFailure> {
-    match network.get_with_headers(url, &GITHUB_HEADERS, CHECK_MAX_BODY_BYTES) {
+fn fetch_json(network: &Network, token: Option<&str>, url: &str) -> Result<String, CheckFailure> {
+    let authorization = token.map(|token| format!("Bearer {token}"));
+    let mut headers = GITHUB_HEADERS.to_vec();
+    if let Some(value) = authorization.as_deref() {
+        headers.push(("Authorization", value));
+    }
+    match network.get_with_headers(url, &headers, CHECK_MAX_BODY_BYTES) {
         Ok(Fetch::Fetched { body, .. }) => {
             String::from_utf8(body).map_err(|error| CheckFailure::Unreadable {
                 detail: error.to_string(),
