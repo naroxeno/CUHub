@@ -8,7 +8,7 @@
 
 - `stage_archive(archive, staging_root)`：压缩包路径与一个尚不存在的 staging 目录；返回 `StagedArchive { staging_root, files }`。
 - `stage_dll(dll, staging_root)`：release 只发裸 DLL 时使用；校验 `.dll` 扩展与 PE 头（`MZ`）后复制成只有一个文件的 `StagedArchive`。
-- `plan_payload(staged, PlanTarget)`：可安装文件只有一个 DLL 时按裸 DLL 规则规划，否则交给 `plan_upgrade`。
+- `plan_payload(staged, PlanTarget)`：可安装文件只有一个 DLL 时按裸 DLL 规则规划（名字优先；该模组只有一个已装 DLL 时，release 改名也替换它），否则交给 `plan_upgrade`。
 - `plan_upgrade(staged, PlanTarget)`：根据归档布局、目标根与当前模组的归属范围生成 `UpgradePlan`；计划里同时列出冲突与警告。
 - `apply_upgrade(plan, backup_root)`：只有 `can_apply()` 为真才执行；返回备份目录、替换列表与新增列表。
 
@@ -16,7 +16,7 @@
 
 - 归档含 `BepInEx/plugins/...` 时走 BepInEx 布局，只安装 `plugins/` 之后的部分；BepInEx 本体、`core`、`config` 等路径不写。
 - 归档只含 DLL/资源、或含 `plugins/...` 时走 Mod 布局；`plugins/` 前缀映射到游戏的 Plugins 根，其余映射到当前模组目录。
-- 裸 DLL 不套布局：文件名与当前模组已装 DLL 不区分大小写完全一致才允许替换；同名多个或找不到都直接失败，不会新建第二个 DLL。
+- 裸 DLL 不套布局：优先按文件名（不区分大小写）匹配当前模组已装 DLL；找不到但该模组只有一个已装 DLL 时，直接替换它（覆盖 release 把空格改成点这类改名），并在计划里给出 warning。有多个已装 DLL 时仍要求名字唯一匹配，同名多个或找不到都直接失败，不会新建第二个 DLL。
 - 去掉所有文件共有的单层 wrapper；`README.txt`、`.DS_Store`、`Thumbs.db`、`desktop.ini`、`__MACOSX` 忽略。
 
 ## 归属
@@ -32,7 +32,7 @@
 ## 失败模式
 
 - `ArchiveError`：不支持的格式、路径越界、条目过大、加密/多卷/重定向条目、staging 写入失败、裸 DLL 缺 PE 头。
-- `PlanError`：没有可安装文件、路径越界、重复路径、裸 DLL 不是单文件/不叫 DLL/匹配不到或有多个同名已装 DLL。
+- `PlanError`：没有可安装文件、路径越界、重复路径、裸 DLL 不是单文件/不叫 DLL/匹配不到或有多个同名已装 DLL。只有一个已装 DLL 时名字不匹配不算失败，走替换并给 warning。
 - `ApplyError`：冲突未解决、目标在排队期间变化、备份或替换失败、回滚失败。回滚失败会同时带上原始错误与问题列表。
 
 ## 接线

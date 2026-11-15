@@ -247,13 +247,21 @@ fn plan_bare_dll(files: &[&StagedFile], target: PlanTarget<'_>) -> Result<Upgrad
             .and_then(|value| value.to_str())
             .is_some_and(|owned| owned.eq_ignore_ascii_case(name))
     });
-    let owned = match (matches.next(), matches.next()) {
-        (Some(owned), None) => owned.clone(),
-        (None, _) => return Err(PlanError::NoMatchingDll(name.to_string())),
+    let (owned, renamed) = match (matches.next(), matches.next()) {
+        (Some(owned), None) => (owned.clone(), false),
+        (None, _) if target.owned_files.len() == 1 => (target.owned_files[0].clone(), true),
         (Some(_), Some(_)) => return Err(PlanError::AmbiguousDll(name.to_string())),
+        (None, _) => return Err(PlanError::NoMatchingDll(name.to_string())),
     };
     if !paths::is_inside(&owned, target.root) {
         return Err(PlanError::Outside(owned));
+    }
+    let mut warnings = Vec::new();
+    if renamed {
+        warnings.push(format!(
+            "release DLL {name} differs from the installed {}; replacing it because the mod has a single DLL.",
+            owned.display()
+        ));
     }
     let mut conflicts = Vec::new();
     let action = match fs::symlink_metadata(&owned) {
@@ -286,7 +294,7 @@ fn plan_bare_dll(files: &[&StagedFile], target: PlanTarget<'_>) -> Result<Upgrad
             size: file.size,
         }],
         conflicts,
-        warnings: Vec::new(),
+        warnings,
     })
 }
 
@@ -567,14 +575,41 @@ mod tests {
     }
 
     #[test]
-    fn bare_dll_requires_a_matching_owned_file() {
+    fn bare_dll_replaces_the_only_owned_file_when_the_name_differs() {
+        let dir = temp_dir("plan-dll-renamed");
+        let staging = staged(&dir, &["QoL.Unknown.dll"]);
+        let plugins = dir.join("plugins");
+        let root = plugins.join("Mod");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("QoL Unknown.dll"), b"old").unwrap();
+        let owned = vec![root.join("QoL Unknown.dll")];
+        let plan = plan_payload(
+            &staging,
+            PlanTarget {
+                root: &root,
+                plugins: &plugins,
+                owned_root: &root,
+                owned_files: &owned,
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.files[0].target, root.join("QoL Unknown.dll"));
+        assert_eq!(plan.files[0].action, FileAction::Replace);
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("single DLL"));
+        assert!(plan.can_apply());
+    }
+
+    #[test]
+    fn bare_dll_with_a_new_name_still_fails_when_several_dlls_are_owned() {
         let dir = temp_dir("plan-dll-mismatch");
         let staging = staged(&dir, &["Other.dll"]);
         let plugins = dir.join("plugins");
         let root = plugins.join("Mod");
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("Mod.dll"), b"old").unwrap();
-        let owned = vec![root.join("Mod.dll")];
+        fs::write(root.join("Extra.dll"), b"old").unwrap();
+        let owned = vec![root.join("Mod.dll"), root.join("Extra.dll")];
         let error = plan_payload(
             &staging,
             PlanTarget {
@@ -586,6 +621,30 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(error, PlanError::NoMatchingDll(_)));
+    }
+
+    #[test]
+    fn bare_dll_prefers_a_matching_name_among_several_owned_files() {
+        let dir = temp_dir("plan-dll-pick");
+        let staging = staged(&dir, &["Extra.dll"]);
+        let plugins = dir.join("plugins");
+        let root = plugins.join("Mod");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("Mod.dll"), b"old").unwrap();
+        fs::write(root.join("Extra.dll"), b"old").unwrap();
+        let owned = vec![root.join("Mod.dll"), root.join("Extra.dll")];
+        let plan = plan_payload(
+            &staging,
+            PlanTarget {
+                root: &root,
+                plugins: &plugins,
+                owned_root: &root,
+                owned_files: &owned,
+            },
+        )
+        .unwrap();
+        assert_eq!(plan.files[0].target, root.join("Extra.dll"));
+        assert!(plan.warnings.is_empty());
     }
 
     #[test]
