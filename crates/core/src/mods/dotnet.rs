@@ -11,7 +11,13 @@ pub(crate) struct DllEvidence {
     pub(crate) plugin_version: Option<String>,
 }
 
+const MAX_DLL_BYTES: u64 = 64 * 1024 * 1024;
+
 pub(crate) fn read_dll(path: &Path) -> Option<DllEvidence> {
+    let metadata = std::fs::metadata(path).ok()?;
+    if metadata.len() > MAX_DLL_BYTES {
+        return None;
+    }
     let bytes = std::fs::read(path).ok()?;
     read_bytes(&bytes)
 }

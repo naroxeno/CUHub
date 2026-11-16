@@ -843,6 +843,10 @@ notice.waiting_for_game:
   en: "Waiting for Casualties Unknown to close…"
   zh-CN: "正在等待 Casualties Unknown 关闭…"
   ja: "Casualties Unknown の終了を待機中…"
+notice.game_still_running:
+  en: "Casualties Unknown is still running, so the update was not applied. Close the game and try again."
+  zh-CN: "Casualties Unknown 仍在运行，更新没有应用。请关闭游戏后重试。"
+  ja: "Casualties Unknown が実行中のため、アップデートは適用されませんでした。ゲームを終了して再試行してください。"
 notice.applying:
   en: "Applying the update…"
   zh-CN: "正在应用更新…"

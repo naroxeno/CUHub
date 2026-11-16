@@ -63,7 +63,7 @@
 
 - `ArchiveError`：不支持的格式、路径越界、条目过大、加密/多卷/重定向条目、staging 写入失败、裸 DLL 缺 PE 头。
 - `PlanError`：没有可安装文件、路径越界、重复路径、首次安装的目标已存在、裸 DLL 不是单文件/不叫 DLL/匹配不到或有多个同名已装 DLL。只有一个已装 DLL 时名字不匹配不算失败，走替换并给 warning。
-- `ApplyError`：冲突未解决、目标在排队期间变化、备份或替换失败、回滚失败。回滚失败会同时带上原始错误与问题列表。
+- `ApplyError`：冲突未解决、目标在排队期间变化、备份或替换失败、回滚失败。回滚失败会同时带上原始错误与问题列表。备份路径必须解析在目标根内，越界时报 `Outside`，不会把绝对路径当备份名。
 - 本体安装：`PlanError::Unsupported` 表示游戏是 IL2CPP；sha256 不符或下载失败在解包前终止；白名单过滤后没有文件则 `NoPayload`。
 
 ## 接线
@@ -72,7 +72,7 @@
 
 来源选择在 UI 层：pin 优先；未 pin 时有 Nexus Premium 走 Nexus，否则 GitHub；Nexus 下载失败且未 pin 时回退 GitHub，并在面板注明。GitHub 资产按清单 `asset` 精确名选择，未填时取 release 里第一个 zip/7z/rar 或裸 DLL；裸 DLL 下载后同样走 `stage_dll` 与 `plan_payload`。
 
-`apply_install` 先查游戏进程：运行中返回 `GameRunning`，UI 每 3 秒重试，直到退出或用户取消。取消只在下一次重试前生效，已经开始的写入会完成；不会留下半套文件。写入前把所有 Replace 备份到 `<AppData>/Backups/<UTC 时间戳>`，逐文件临时文件 + rename，失败按逆序回滚。备份目录保留供手工恢复；本版没有恢复界面。
+`apply_install` 先查游戏进程：运行中返回 `GameRunning`，UI 每 3 秒重试，最多 60 次（约 3 分钟）；超时后停止重试并提示游戏仍在运行。取消只在下一次重试前生效，已经开始的写入会完成；不会留下半套文件。写入前把所有 Replace 备份到 `<AppData>/Backups/<UTC 时间戳>`，逐文件临时文件 + rename，失败按逆序回滚。备份目录保留供手工恢复；本版没有恢复界面。
 
 BepInEx 本体复用同一条链路：`Hub::prepare_bepinex` 下载到 `<AppData>/Downloads`、按 pin 的 sha256 校验、解包到 staging 再生成计划；用户确认后 `apply_install`，最后 `finish_bepinex` 建 `BepInEx/plugins`。取消删除 staging，备份同样落在 `<AppData>/Backups`。
 

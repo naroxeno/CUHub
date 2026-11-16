@@ -14,6 +14,9 @@ pub const PAGE_KEYS: [&str; 7] = [
     "nav.settings",
 ];
 
+pub const NEXUS_PAGE: usize = 0;
+pub const REMOTE_PAGE: usize = 1;
+pub const LOCAL_PAGE: usize = 2;
 pub const MODS_PAGE_COUNT: usize = 3;
 
 pub fn page_label(index: usize) -> String {

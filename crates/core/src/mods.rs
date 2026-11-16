@@ -229,6 +229,10 @@ pub fn plugins_dir(game_root: &Path) -> Result<PathBuf, ModsError> {
     Ok(plugins)
 }
 
+pub fn find_plugins_dir(game_root: &Path) -> Option<PathBuf> {
+    plugins_dir(game_root).ok()
+}
+
 pub fn scan(
     plugins: &Path,
     metadata: &[MetadataMod],
@@ -857,6 +861,17 @@ mod tests {
             compare_update(Some("0.0.0.0"), Some("1.0"), None, None),
             ModStatus::Unknown
         );
+    }
+
+    #[test]
+    fn missing_plugins_is_not_an_error_for_discovery() {
+        let dir = temp_dir("mods-find-plugins");
+        let game = dir.join("Game");
+        fs::create_dir_all(&game).unwrap();
+        assert!(find_plugins_dir(&game).is_none());
+        fs::create_dir_all(game.join("BepInEx").join("Plugins")).unwrap();
+        assert!(find_plugins_dir(&game).is_some());
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

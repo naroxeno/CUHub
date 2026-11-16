@@ -320,12 +320,12 @@ impl MetadataCache {
     }
 
     pub fn load_cached(&self) -> Option<Vec<MetadataMod>> {
-        let text = fs::read_to_string(&self.cache_path).ok()?;
+        let text = read_limited(&self.cache_path)?;
         parse_mods(&text).ok()
     }
 
     pub fn load_state(&self) -> HttpState {
-        let Ok(text) = fs::read_to_string(&self.state_path) else {
+        let Some(text) = read_limited(&self.state_path) else {
             return HttpState::default();
         };
         serde_json::from_str(&text).unwrap_or_default()
@@ -341,13 +341,17 @@ impl MetadataCache {
                 path: self.state_path.clone(),
                 source,
             })?;
-        write_atomic(&self.cache_path, raw).map_err(|source| MetadataCacheError::Io {
-            path: self.cache_path.clone(),
-            source,
+        crate::atomic::replace(&self.cache_path, raw.as_bytes()).map_err(|source| {
+            MetadataCacheError::Io {
+                path: self.cache_path.clone(),
+                source,
+            }
         })?;
-        write_atomic(&self.state_path, &state_text).map_err(|source| MetadataCacheError::Io {
-            path: self.state_path.clone(),
-            source,
+        crate::atomic::replace(&self.state_path, state_text.as_bytes()).map_err(|source| {
+            MetadataCacheError::Io {
+                path: self.state_path.clone(),
+                source,
+            }
         })
     }
 }
@@ -467,13 +471,12 @@ fn format_size(bytes: i64) -> String {
     format!("{text} {}", units[unit])
 }
 
-pub(crate) fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+fn read_limited(path: &Path) -> Option<String> {
+    let metadata = fs::metadata(path).ok()?;
+    if metadata.len() > crate::network::DEFAULT_MAX_BODY_BYTES {
+        return None;
     }
-    let temporary = path.with_extension("json.tmp");
-    fs::write(&temporary, text)?;
-    fs::rename(&temporary, path)
+    fs::read_to_string(path).ok()
 }
 
 #[cfg(test)]

@@ -51,7 +51,8 @@ pub fn resolve_child(parent: &Path, name: &str) -> PathBuf {
 }
 
 pub fn is_inside(candidate: &Path, container: &Path) -> bool {
-    let (Some(candidate), Some(container)) = (normalize(candidate), normalize(container)) else {
+    let (Some(candidate), Some(container)) = (resolve_leaf(candidate), canonical_path(container))
+    else {
         return false;
     };
     let candidate: Vec<Component<'_>> = candidate.components().collect();
@@ -88,14 +89,33 @@ pub fn game_paths(selected: &Path) -> Result<PathBuf, PathError> {
             .to_path_buf(),
         _ => selected,
     };
-    let bep = find_child(&game_root, "BepInEx")
-        .ok_or_else(|| PathError::Missing(game_root.join("BepInEx")))?;
-    let plugins =
-        find_child(&bep, "Plugins").ok_or_else(|| PathError::Missing(bep.join("Plugins")))?;
-    if !plugins.is_dir() {
-        return Err(PathError::Missing(plugins));
-    }
     Ok(game_root)
+}
+
+fn resolve_leaf(path: &Path) -> Option<PathBuf> {
+    let absolute = std::path::absolute(path).ok()?;
+    let name = absolute.file_name()?.to_os_string();
+    let mut resolved = canonical_path(absolute.parent()?)?;
+    resolved.push(name);
+    normalize(&resolved)
+}
+
+fn canonical_path(path: &Path) -> Option<PathBuf> {
+    let absolute = std::path::absolute(path).ok()?;
+    let mut existing = absolute.as_path();
+    let mut missing: Vec<std::ffi::OsString> = Vec::new();
+    let canonical = loop {
+        if let Ok(canonical) = fs::canonicalize(existing) {
+            break canonical;
+        }
+        missing.push(existing.file_name()?.to_os_string());
+        existing = existing.parent()?;
+    };
+    let mut resolved = canonical;
+    for name in missing.iter().rev() {
+        resolved.push(name);
+    }
+    normalize(&resolved)
 }
 
 fn normalize(path: &Path) -> Option<PathBuf> {
@@ -172,6 +192,36 @@ mod tests {
         assert_eq!(game_paths(&bep).unwrap(), root);
         assert_eq!(game_paths(&plugins).unwrap(), root);
         assert!(game_paths(&dir.join("missing")).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn game_paths_accepts_a_root_without_bepinex() {
+        let dir = temp_dir("paths-game-vanilla");
+        let root = dir.join("Casualties Unknown");
+        fs::create_dir_all(&root).unwrap();
+        assert_eq!(game_paths(&root).unwrap(), root);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn containment_follows_directory_symlinks_but_keeps_a_symlinked_leaf() {
+        use std::os::unix::fs::symlink;
+
+        let dir = temp_dir("paths-symlink");
+        let container = dir.join("Plugins");
+        let outside = dir.join("outside");
+        fs::create_dir_all(&container).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("Real.dll"), b"x").unwrap();
+        symlink(&outside, container.join("link")).unwrap();
+        assert!(!is_inside(
+            &container.join("link").join("Real.dll"),
+            &container
+        ));
+        symlink(outside.join("Real.dll"), container.join("Leaf.dll")).unwrap();
+        assert!(is_inside(&container.join("Leaf.dll"), &container));
         let _ = fs::remove_dir_all(dir);
     }
 }

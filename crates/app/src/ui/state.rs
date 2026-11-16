@@ -51,6 +51,7 @@ pub struct Ui {
     pub remote_total: Signal<usize>,
     pub remote_query: Signal<String>,
     pub remote_filter: Signal<RemoteFilter>,
+    pub sources_ready: Signal<bool>,
     pub remote_busy: Signal<Option<String>>,
     pub pending_install: Signal<Option<PendingInstall>>,
     pub update_busy: Signal<Option<String>>,
@@ -115,6 +116,7 @@ impl Ui {
         } else {
             t!("notice.no_token_saved")
         };
+        let has_sources = hub.sources().is_some();
         let app_data = hub.app_data().display().to_string();
         let bepinex = hub.bepinex_status().ok();
         let owner = Owner::current();
@@ -149,6 +151,7 @@ impl Ui {
             remote_total: signal(remote_total),
             remote_query: signal(String::new()),
             remote_filter: signal(RemoteFilter::All),
+            sources_ready: signal(has_sources),
             remote_busy: signal(None::<String>),
             pending_install: signal(None::<PendingInstall>),
             update_busy: signal(None::<String>),

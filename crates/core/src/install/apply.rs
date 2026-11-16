@@ -131,13 +131,12 @@ pub fn apply_upgrade(plan: &UpgradePlan, backup_root: &Path) -> Result<ApplyRepo
         }
         applied.push(Applied {
             target: file.target.clone(),
-            backup: backup.as_ref().and_then(|directory| {
-                if file.action == FileAction::Replace {
-                    Some(backup_path(directory, &file.target, &plan.target_root))
-                } else {
-                    None
+            backup: match (&backup, &file.action) {
+                (Some(directory), FileAction::Replace) => {
+                    Some(backup_path(directory, &file.target, &plan.target_root)?)
                 }
-            }),
+                _ => None,
+            },
         });
     }
     Ok(ApplyReport {
@@ -198,7 +197,7 @@ fn create_backup(backup_root: &Path) -> Result<PathBuf, ApplyError> {
 }
 
 fn backup_one(file: &PlannedFile, directory: &Path, target_root: &Path) -> Result<(), ApplyError> {
-    let destination = backup_path(directory, &file.target, target_root);
+    let destination = backup_path(directory, &file.target, target_root)?;
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|source| ApplyError::Io {
             path: parent.to_path_buf(),
@@ -212,9 +211,11 @@ fn backup_one(file: &PlannedFile, directory: &Path, target_root: &Path) -> Resul
     Ok(())
 }
 
-fn backup_path(directory: &Path, target: &Path, target_root: &Path) -> PathBuf {
-    let relative = target.strip_prefix(target_root).unwrap_or(target);
-    directory.join(relative)
+fn backup_path(directory: &Path, target: &Path, target_root: &Path) -> Result<PathBuf, ApplyError> {
+    let relative = target
+        .strip_prefix(target_root)
+        .map_err(|_| ApplyError::Outside(target.to_path_buf()))?;
+    Ok(directory.join(relative))
 }
 
 fn copy_atomic(source: &Path, target: &Path) -> Result<(), ApplyError> {
@@ -359,6 +360,15 @@ mod tests {
         assert_eq!(fs::read(backup.join("Old.dll")).unwrap(), b"old");
         assert_eq!(report.replaced, vec![game.join("Old.dll")]);
         assert_eq!(report.created, vec![game.join("New.dll")]);
+    }
+
+    #[test]
+    fn backup_path_rejects_targets_outside_the_root() {
+        let dir = temp_dir("apply-backup-outside");
+        let root = dir.join("root");
+        let error = backup_path(&dir.join("Backups"), &dir.join("Other.dll"), &root).unwrap_err();
+        assert!(matches!(error, ApplyError::Outside(_)));
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

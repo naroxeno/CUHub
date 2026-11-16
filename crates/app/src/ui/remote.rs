@@ -108,10 +108,6 @@ impl Ui {
         self.refresh_remote_view();
     }
 
-    pub fn sources_present(&self) -> bool {
-        self.hub().sources().is_some()
-    }
-
     pub fn sources_path(&self) -> String {
         std::path::Path::new(&self.app_data)
             .join("Sources")

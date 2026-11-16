@@ -116,6 +116,7 @@ impl Ui {
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
+            let mut game_wait_attempts = 0u32;
             loop {
                 if ui.apply_cancel.get() {
                     let staging = pending.staging.clone();
@@ -171,6 +172,12 @@ impl Ui {
                         break;
                     }
                     Ok(Err(HubError::GameRunning)) => {
+                        game_wait_attempts += 1;
+                        if game_wait_attempts >= 60 {
+                            ui.apply_status.set(String::new());
+                            ui.notice.set(t!("notice.game_still_running"));
+                            break;
+                        }
                         ui.apply_status.set(t!("notice.waiting_for_game"));
                         let _ = blocking(|| std::thread::sleep(Duration::from_secs(3))).await;
                     }

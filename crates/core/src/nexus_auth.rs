@@ -1,7 +1,7 @@
 //! Encrypted local storage for the API credentials used by Cuhub.
 
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use aes_gcm::aead::{AeadCore, AeadInPlace, KeyInit, OsRng};
@@ -15,7 +15,8 @@ const MAGIC: &[u8; 4] = b"CHK1";
 const NONCE_LEN: usize = 12;
 const TAG_LEN: usize = 16;
 const KEY_LEN: usize = 32;
-const PROTECTION_NOTE: &str = "Encrypted on disk and readable only by your user account. Anything running as you can still read it.";
+const PROTECTION_NOTE: &str =
+    "Stored with a local key file. Anything running as you can still read it.";
 
 #[derive(Debug)]
 pub enum KeyStoreError {
@@ -210,20 +211,7 @@ fn create_private_dir(path: &Path) -> io::Result<()> {
 }
 
 fn write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut permissions = file.metadata()?.permissions();
-        permissions.set_mode(0o600);
-        file.set_permissions(permissions)?;
-    }
-    file.write_all(contents)?;
-    file.sync_all()
+    crate::atomic::replace_private(path, contents)
 }
 
 #[cfg(test)]

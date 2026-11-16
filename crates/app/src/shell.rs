@@ -26,7 +26,7 @@ pub fn top_bar(ui: &Ui) -> impl IntoElement {
                 .items_center()
                 .gap(scaled(&z, 8.0))
                 .child(pix("CUHUB", 14.0, TEXT, &z))
-                .child(pix("0.1.0", 10.0, TEXT_DIM, &z)),
+                .child(pix(env!("CARGO_PKG_VERSION"), 10.0, TEXT_DIM, &z)),
         )
         .child(
             view()
@@ -255,7 +255,12 @@ fn version_row(ui: &Ui) -> impl IntoElement {
         .border_t(scaled(&z, 1.0))
         .border_t_color(rgb(BORDER_DIM))
         .on_press(move || tap_version(&tap))
-        .child(pix("v0.1.0", 10.0, TEXT_DIM, &z))
+        .child(pix(
+            format!("v{}", env!("CARGO_PKG_VERSION")),
+            10.0,
+            TEXT_DIM,
+            &z,
+        ))
 }
 
 fn tap_version(ui: &Ui) {

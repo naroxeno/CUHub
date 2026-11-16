@@ -501,7 +501,11 @@ impl Hub {
     }
 
     pub fn scan_mods(&self) -> Result<Vec<InstalledMod>, HubError> {
-        let plugins = self.plugins_dir()?;
+        let game = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        let root = paths::game_paths(&game)?;
+        let Some(plugins) = mods::find_plugins_dir(&root) else {
+            return Ok(Vec::new());
+        };
         let mods = mods::scan(
             &plugins,
             &self.metadata,

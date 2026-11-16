@@ -23,7 +23,7 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
     let total = ui.remote_total;
     let empty_z = z;
     let empty_ui = ui.clone();
-    let has_manifest = ui.sources_present();
+    let has_manifest = ui.sources_ready.get();
     let manifest_path = ui.sources_path();
     let mut body = view().flex_col().gap(scaled(&z, 8.0));
     if has_manifest {
@@ -85,7 +85,7 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
         .flex_col()
         .flex_1()
         .bind_motion(&rise_in())
-        .child(panel(&z, move || i18n::page_label(1), body))
+        .child(panel(&z, move || i18n::page_label(i18n::REMOTE_PAGE), body))
 }
 
 fn remote_filters(z: &Signal<u8>, ui: &Ui) -> View {

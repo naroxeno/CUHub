@@ -1,7 +1,7 @@
 //! Discovery file the host writes so the game process can find the bridge.
 
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -63,23 +63,8 @@ impl BridgeFile {
 
     pub fn write(&self, program_data: &Path) -> io::Result<PathBuf> {
         let path = Self::path_in(program_data);
-        if let Some(dir) = path.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        let temp = path.with_extension("json.tmp");
-        let mut options = OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
         let body = serde_json::to_vec_pretty(self).map_err(io::Error::other)?;
-        let mut file = options.open(&temp)?;
-        file.write_all(&body)?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&temp, &path)?;
+        crate::atomic::replace_private(&path, &body)?;
         Ok(path)
     }
 

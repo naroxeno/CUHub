@@ -36,7 +36,7 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     view().flex_col().flex_1().bind_motion(&rise_in()).child(
         panel(
             &z,
-            move || i18n::page_label(2),
+            move || i18n::page_label(i18n::LOCAL_PAGE),
             view()
                 .flex_col()
                 .gap(scaled(&z, 8.0))

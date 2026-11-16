@@ -11,6 +11,7 @@
 - app（2026-11-15）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。GitHub 源在 Local Mods 每行第三行显示仓库、匹配依据、check 结果与生效源，可手动 Check；OutOfDate 或 GitHub release 版本更高的行可 Update（未列入清单的模组同样适用），下载归档后先展示计划再 Apply，游戏运行中排队。Multiplayer、Skins & Backups 仍是占位。界面文案已接 i18n：`locales/app.yml` 在仓库根（与 `nsh.json` 同级），`_version: 2` 采用 key 在外、语言在内的写法；nsh 在 run/dev/test/package 时写成 `.nsh/rust/translations.json` 并注入入口，普通 cargo 构建不注入。Settings 页 Language 可选 System / English / 日本語 / 简体中文，`Settings.language` 持久化；切换语言会 `set_locale` 并重建 local / nexus 行。core 错误文案仍为英文。
 - 2026-11-15 晚：BepInEx 自动安装（默认 5 LTS 5.4.23.6、设置页可选 6 Mono，sha256 校验、修复只覆盖白名单文件、IL2CPP 与游戏运行中拒绝）、模组导航改为树形（Nexus / 远程 / 本地），新增远程模组页（只读 `<AppData>/Sources/manifest.json`，安装走两段式确认）；`ui.rs` 与 `pages.rs` 拆成模块目录（根文件留 `mod` + `pub use`）；三处输入框补像素字体；`dist/{linux,windows,macos}` 为打包输出（已 gitignore），Windows 包含 Inno 安装器与测试清单。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
+- 2026-11-17：按 `docs/core/audit-checklist.md` 完成全面自查修复：`atomic` 统一原子写（含 fsync）、`is_inside` 解析目录链符号链接、`game_paths` 不再要求 BepInEx、DLL 与缓存读取加大小上限、app 去掉渲染期取 Hub 锁与无上限重试；`cargo test -p cuhub-core --lib` 219 通过，`cargo check --workspace --all-targets` 通过。命名类问题（D 组）按 §2.2 只记建议、未动代码。
 
 ## 2. 已有文档
 
@@ -83,7 +84,7 @@
 6. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队；裸 DLL 文件名不一致且模组只有一个 DLL 时按该 DLL 替换并写 warning。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
 7. **BepInEx 自动安装与远程模组页（2026-11-15 晚完成）**：core 的 `install::bepinex`（Release 常量、detect、plan_install{Mode::Fresh,Repair}、ensure_plugins、sha256）、Hub 的 prepare/finish、设置页与本地模组空态入口、远程模组页与树形导航、两段式确认与游戏运行中拒绝；Windows 包已出 `dist/windows`（未真机验证）。
 8. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
-9. **修完本轮自查问题后：写踩坑总结**（落 `docs/core/pitfalls.md`，或并进 §6）。每条写「现象 / 根因 / 下次怎么避免」，至少覆盖：门禁与诊断层错位（`paths::game_paths` 把 BepInEx 当硬前提，而 `install::bepinex::detect` 本就能表达「没装」）；路径包含靠每个调用点自己补 symlink；core 里长出展示层导致与 app 的 i18n 两套并存；四处 `write_atomic` 各写一遍且多数没有 fsync；模块名与实际职责不符（`platform/linux.rs` 是非 Windows 实现、`install` 里塞了解包与进程检测）。先修再写，写完随修复一起提交。
+9. **踩坑总结（2026-11-17 已完成）**：落 `docs/core/pitfalls.md`，覆盖门禁与诊断层错位、路径包含只靠词法、core 展示层与 app i18n 两套、`write_atomic` 各写一遍且没有 fsync、模块名与实职不符，另记读取不设上限、渲染期取 Hub 锁、无上限重试、失败时退化成看似可用的路径。
 
 ## 6. 接手须知
 
@@ -95,10 +96,6 @@
 
 ## 7. 工具链与 cargo（2026-11-14）
 
-- 本机两套 cargo 并存，版本不同：
-  - `~/.cargo/bin/cargo`：`1.101.0 (e611c7a87 2026-11-04)`，自报 `huacnlee/cargo 0.102.0-9`（<https://huacnlee.github.io/cargo/>）。Naro 的交互 shell 默认用这个。
-  - `/usr/sbin/cargo`、`/usr/bin/cargo`：rustup shim，落到 `1.102.0-nightly (ede6cefea 2026-11-11)`；rustc 是 `1.102.0-nightly (8b778d04 2026-11-12)`。
-- 两条都能编译 nsh 0.5.1 的 spike（edition 2024）；差别只在工具链版本，不在项目配置。
-- 工具 shell 的 `PATH` 里 `/usr/sbin` 排在 `~/.cargo/bin` 前面，会抓到 nightly；Naro 的交互 shell 抓到 fork。**报告构建结果时注明用的哪一个**（`cargo -Vv` 第一行可区分）。
-- 同一份代码两边结果不一致时，先查这里，再怀疑代码。
-- 2026-11-15 起 `~/.config/nushell/config.nu` 把 `~/.cargo/bin` 前置；DSH 的 `bash -c` 继承启动终端 PATH，子 agent 直接跑 `cargo` 前要自己 export（`AGENTS.md` §6 已写死），`just` 配方已在前置 PATH。
+- 一律用 `~/.cargo/bin/cargo`（`1.102.0`，自报 `huacnlee/cargo 0.103.0-1`）。不要用 `/usr/bin`、`/usr/sbin` 下的 rustup shim；`PATH` 里通常已解析到 `~/.cargo/bin`，报告构建结果时仍注明 `cargo -Vv` 第一行。
+- 这个 fork 让所有仓库共享一份 target：仓库内 `target/` 几乎为空是正常现象，不要据此判断「没编译过」。
+- 首次整 workspace 冷编译约 26 分钟（wgpu/gtk4 等依赖），本机磁盘紧张，构建前先看剩余空间。

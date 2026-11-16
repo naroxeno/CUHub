@@ -192,3 +192,25 @@
 ## 建议顺序
 
 A → B → C 是「真会伤数据/内存」，可小步分别提交；D 组是改名与搬代码，单独一轮，一次一个模块。E 组先写进文档再决定动不动。
+
+## 修复状态（2026-11-17）
+
+已修（含回归测试）：
+- A1：`is_inside` 解析目录链的真实路径，叶子保留（链接叶子仍按「非普通文件」拒绝）。
+- A4：`write_private` 改走 `atomic::replace_private`（临时文件 + fsync + rename，0600）；保护说明与模块文档不再承诺「加密保护」。
+- B1、B2、B3：所有落盘统一到 `core::atomic::replace` / `replace_private`，含 fsync 与父目录 sync；四处重复的 `write_atomic` 删除。
+- B4：`backup_path` 返回 `Result`，越界报 `Outside`，不再退化成绝对路径。
+- B7：`game_paths` 只校验路径本身；`scan_mods` 遇缺 Plugins 返回空表；vanilla 游戏根可选，Plugins 由安装流程创建。
+- C1、C4：DLL 读取上限 64 MiB（`MAX_DLL_BYTES`），缓存读取走 `read_limited`（8 MiB，与网络一致）。
+
+核对后保持原判：
+- A2、A3、A5、A6、A7、A8 过。A5 逐条核过 `logs` 调用：无机密值，无带查询串的 URL。
+- B5 过。B6 保留两份缓存：HTTP state 只影响下次检查时机，不同步不伤数据。
+- C2 接受：扫描必须读元数据，单文件上限已限住峰值。
+- C3 接受：`log_entries` 无 UI 调用点，500 条上限固定。
+
+未动，等拍板：
+- D1–D7 命名与边界（拆 `install`、改四个「来源」、`Hub` 门面、展示层下沉、`Settings` 拆 UI 字段、`HubVersion` 改名、`linux.rs`→`unix.rs`）属架构变更，按 AGENTS §2.2 只留建议。
+- D8 已在 `docs/bridge/protocol.md` 加歧义说明。
+- E1 进程检测、E2 启动线程：行为未改，待议；E3 macOS 缺口已在 FEATURES §6 记录。
+- F 组：`fmt`、`check --workspace --all-targets`、`clippy -p cuhub-core --all-targets -D warnings`、`test -p cuhub-core --lib` 全绿；core 0 处 `#[allow]`、生产路径零 `unwrap`；app 仅 `ui.rs:15,17` 两处 `#[allow(unused_imports)]`，无 `unwrap`/`expect`。

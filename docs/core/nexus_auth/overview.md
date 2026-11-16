@@ -2,7 +2,7 @@
 
 ## 职责
 
-保存、读取和清除用户自己的 API 凭据：Nexus Mods API key 与 GitHub token。两者都只留本机，不进日志、诊断、远端请求或仓库。模块只负责加密落盘，不验证凭据有效性。
+保存、读取和清除用户自己的 API 凭据：Nexus Mods API key 与 GitHub token。两者都只留本机，不进日志、诊断、远端请求或仓库。模块只负责把凭据封装落盘，不验证凭据有效性；同目录的 key 文件意味着本机用户权限内的进程都能解开。
 
 ## 文件与格式
 
@@ -30,7 +30,7 @@
 - GitHub token 只在访问 `api.github.com` 的 API 请求里以 `Authorization: Bearer …` 发送（release 检查、rate limit 校验）；release 资产走 `browser_download_url`，不带 token。没有 token 时请求行为与之前一致，只是限流更低。
 - 不记录凭据，也不把凭据放进错误信息。`KeyStoreError::Io` 只带路径与底层错误。
 - 当前没有旧格式（裸 DPAPI blob）迁移；Windows DPAPI 支持留待后续，迁移前旧文件会按损坏处理并提示重输。
-- 文件写入不是原子替换；key 文件与数据文件分开写，失败时可能留下一个不完整状态，下一次保存会覆盖。
+- 写入走原子替换（同目录临时文件 + fsync + rename），崩溃不会留下半截文件。key 与数据仍是两次独立写入，失败时可能留下互不配套的一对；读取时 GCM 校验失败按「没有可用凭据」处理，下一次保存会成对覆盖。
 
 ## 常量出处
 

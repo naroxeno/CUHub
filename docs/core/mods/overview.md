@@ -7,7 +7,7 @@
 ## 输入输出
 
 - 输入：Plugins 绝对路径、`MetadataMod` 列表、`Catalogs`、忽略依赖名。
-- 输出：按名称排序的 `Vec<InstalledMod>`；失败只来自 Plugins 顶层不可读或 BepInEx/Plugins 缺失。`InstalledMod` 额外带 `assembly_version`、`bepinex_version` 与插件 `guid`，供界面显示证据与后续来源解析。
+- 输出：按名称排序的 `Vec<InstalledMod>`；失败只来自 Plugins 顶层不可读；BepInEx/Plugins 缺失不算错误，此时返回空表（vanilla 游戏根）。`InstalledMod` 额外带 `assembly_version`、`bepinex_version` 与插件 `guid`，供界面显示证据与后续来源解析。
 - 扫描器递归查找目录型模组中的 DLL，跳过符号链接，深度上限 16；单个子目录不可读时跳过而不是让整页失败。
 - `set_enabled(plugins, item, enabled)` 按 `item.dll_paths` 逐个改名；`set_all_enabled(plugins, enabled)` 递归收集 Plugins 下全部 DLL 后走同一条改名路径。进入前校验每个 DLL 都在 Plugins 内、是普通文件（不跟随符号链接）、目标不存在，然后才依次 `fs::rename`。失败逆序回滚已改名的文件，返回实际改名的文件数。
 - `delete_scope(plugins, item)` / `delete_all_scope(plugins)` 只统计：返回待删的一级条目绝对路径与递归文件数，供界面确认弹窗展示，不落盘。
@@ -18,7 +18,7 @@
 - 只看 Plugins 顶层条目，嵌套目录不单独成为模组。
 - 目录里一个 DLL 都没有时该条目不出现。
 - 没有元数据匹配的模组仍显示：名称取第一个未禁用 DLL 的茎名，状态为 `Unlisted`。
-- 对每个模组中的 DLL 读 .NET 元数据（`dotnetdll`）：取 Assembly 版本、`BepInPlugin` 构造参数里的 GUID 与插件版本。优先用未禁用 DLL；单个 DLL 解析失败只跳过该 DLL，不让整次扫描失败，也不把依赖 DLL 当成插件。
+- 对每个模组中的 DLL 读 .NET 元数据（`dotnetdll`）：取 Assembly 版本、`BepInPlugin` 构造参数里的 GUID 与插件版本。优先用未禁用 DLL；单个 DLL 解析失败只跳过该 DLL，不让整次扫描失败，也不把依赖 DLL 当成插件。读取前先看文件大小，超过 64 MiB 的 DLL 直接跳过（`MAX_DLL_BYTES`）。
 - `installed_version` 优先 `BepInPlugin` 版本，其次 Assembly 版本；`guid` 优先插件 GUID，其次目录里的 `PluginGuid`。
 - 版本比较把 1–4 段点分十进制补齐后逐段比较；全 0（如 0.0.0.0）视为占位，不参与比较。两端都可解析时，安装版本更小才是 `OutOfDate`，否则 `UpToDate`；不可解析或只有占位版本时退回文件修改时间：修改时间不早于目录时间才 `UpToDate`，否则 `Unknown`。不再因为依赖 DLL 或没有版本证据而误报更新。
 - `.dll.disabled` 只按文件名后缀判断，大小写不敏感。

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::metadata::write_atomic;
+use crate::atomic;
 use crate::sources::{SourceKind, normalize_guid};
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -110,7 +110,7 @@ impl SourceChoices {
                 path: self.path.clone(),
                 source,
             })?;
-        write_atomic(&self.path, &text).map_err(|source| ChoiceError::Io {
+        atomic::replace(&self.path, text.as_bytes()).map_err(|source| ChoiceError::Io {
             path: self.path.clone(),
             source,
         })

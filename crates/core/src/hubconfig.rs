@@ -333,26 +333,9 @@ fn validate_link(value: &str) -> String {
 }
 
 fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), HubConfigError> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|source| HubConfigError::Io {
-            path: parent.to_path_buf(),
-            source,
-        })?;
-    }
-    let temporary = path.with_extension("json.tmp");
-    if let Err(source) = fs::write(&temporary, contents) {
-        let _ = fs::remove_file(&temporary);
-        return Err(HubConfigError::Io {
-            path: temporary,
-            source,
-        });
-    }
-    fs::rename(&temporary, path).map_err(|source| {
-        let _ = fs::remove_file(&temporary);
-        HubConfigError::Io {
-            path: path.to_path_buf(),
-            source,
-        }
+    crate::atomic::replace(path, contents).map_err(|source| HubConfigError::Io {
+        path: path.to_path_buf(),
+        source,
     })
 }
 

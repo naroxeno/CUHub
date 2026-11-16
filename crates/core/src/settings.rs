@@ -69,15 +69,13 @@ pub struct LoadedSettings {
 
 #[derive(Debug, Clone)]
 pub struct SettingsStore {
-    app_data: PathBuf,
     file: PathBuf,
 }
 
 impl SettingsStore {
     pub fn new(app_data: impl Into<PathBuf>) -> Self {
-        let app_data = app_data.into();
-        let file = app_data.join(SETTINGS_FILE);
-        Self { app_data, file }
+        let file = app_data.into().join(SETTINGS_FILE);
+        Self { file }
     }
 
     pub fn path(&self) -> &Path {
@@ -133,10 +131,7 @@ impl SettingsStore {
         let mut settings = settings.clone();
         settings.clamp_ui_scale();
         let json = serde_json::to_string_pretty(&settings).map_err(io::Error::other)?;
-        fs::create_dir_all(&self.app_data)?;
-        let tmp = self.file.with_extension("json.tmp");
-        fs::write(&tmp, format!("{json}\n"))?;
-        fs::rename(&tmp, &self.file)
+        crate::atomic::replace(&self.file, format!("{json}\n").as_bytes())
     }
 }
 

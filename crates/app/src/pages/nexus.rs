@@ -39,7 +39,7 @@ pub fn nexus(ui: &Ui) -> impl IntoElement {
         .gap(scaled(&z, 12.0))
         .child(panel(
             &z,
-            move || i18n::page_label(0),
+            move || i18n::page_label(i18n::NEXUS_PAGE),
             view()
                 .flex_col()
                 .gap(scaled(&z, 10.0))

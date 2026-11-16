@@ -116,9 +116,11 @@ impl ModlistStore {
             path: self.pending_path.clone(),
             source: io::Error::other(source),
         })?;
-        write_atomic(&self.pending_path, &text).map_err(|source| ModlistError::Io {
-            path: self.pending_path.clone(),
-            source,
+        crate::atomic::replace(&self.pending_path, text.as_bytes()).map_err(|source| {
+            ModlistError::Io {
+                path: self.pending_path.clone(),
+                source,
+            }
         })?;
         Ok(share.mods)
     }
@@ -146,9 +148,11 @@ impl ModlistStore {
             path: self.pending_path.clone(),
             source: io::Error::other(source),
         })?;
-        write_atomic(&self.pending_path, &text).map_err(|source| ModlistError::Io {
-            path: self.pending_path.clone(),
-            source,
+        crate::atomic::replace(&self.pending_path, text.as_bytes()).map_err(|source| {
+            ModlistError::Io {
+                path: self.pending_path.clone(),
+                source,
+            }
         })
     }
 }
@@ -258,15 +262,6 @@ fn hex(byte: u8) -> Option<u8> {
         b'A'..=b'F' => Some(byte - b'A' + 10),
         _ => None,
     }
-}
-
-fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let temporary = path.with_extension("json.tmp");
-    fs::write(&temporary, text)?;
-    fs::rename(&temporary, path)
 }
 
 #[cfg(test)]

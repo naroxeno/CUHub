@@ -1,5 +1,7 @@
 //! Cuhub domain logic. No UI, no window state, no nsh dependency.
 
+mod atomic;
+
 pub mod bridge;
 pub mod catalogs;
 pub mod easytier;
