@@ -1,4 +1,4 @@
-//! Non-Windows defaults: XDG data root and the user download directory.
+//! Linux defaults: XDG data root and the user download directory.
 
 use std::io;
 use std::path::PathBuf;
@@ -43,11 +43,7 @@ pub fn downloads_dir() -> PathBuf {
 }
 
 pub fn open_url(url: &str) -> io::Result<Child> {
-    #[cfg(target_os = "macos")]
-    let program = "open";
-    #[cfg(not(target_os = "macos"))]
-    let program = "xdg-open";
-    Command::new(program)
+    Command::new("xdg-open")
         .arg(url)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
