@@ -1,8 +1,8 @@
 //! Nexus browse page: cards, pager and stats.
 
 use super::local::status_color;
-use crate::i18n;
 use crate::palette::*;
+use crate::shell::nav;
 use crate::ui::{NexusModRow, Ui, button, nexus_page_count, panel, pix, rise_in, scaled, spinner};
 use cuhub_core::mods::ModStatus;
 use nsh_core::prelude::*;
@@ -39,7 +39,7 @@ pub fn nexus(ui: &Ui) -> impl IntoElement {
         .gap(scaled(&z, 12.0))
         .child(panel(
             &z,
-            move || i18n::page_label(i18n::NEXUS_PAGE),
+            move || nav::title(nav::NEXUS),
             view()
                 .flex_col()
                 .gap(scaled(&z, 10.0))

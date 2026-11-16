@@ -1,8 +1,8 @@
 //! Remote (Nexus) list page: filters, rows, pager and empty state.
 
 use super::shared::pending_panel;
-use crate::i18n;
 use crate::palette::*;
+use crate::shell::nav;
 use crate::ui::{
     RemoteFilter, RemoteRow, Ui, button, nexus_page_count, panel, pix, pix_c, rise_in, scaled,
 };
@@ -85,7 +85,7 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
         .flex_col()
         .flex_1()
         .bind_motion(&rise_in())
-        .child(panel(&z, move || i18n::page_label(i18n::REMOTE_PAGE), body))
+        .child(panel(&z, move || nav::title(nav::REMOTE), body))
 }
 
 fn remote_filters(z: &Signal<u8>, ui: &Ui) -> View {

@@ -4,6 +4,7 @@ use super::bepinex::{bepinex_missing, bepinex_pending_block, bepinex_progress, s
 use super::shared::pending_panel;
 use crate::i18n;
 use crate::palette::*;
+use crate::shell::nav;
 use crate::ui::{LocalModRow, Ui, button, danger_button, panel, pix, rise_in, scaled, spinner};
 use cuhub_core::mods::ModStatus;
 use nsh_core::prelude::*;
@@ -36,7 +37,7 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     view().flex_col().flex_1().bind_motion(&rise_in()).child(
         panel(
             &z,
-            move || i18n::page_label(i18n::LOCAL_PAGE),
+            move || nav::title(nav::LOCAL),
             view()
                 .flex_col()
                 .gap(scaled(&z, 8.0))

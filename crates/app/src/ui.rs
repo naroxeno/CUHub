@@ -11,7 +11,6 @@ mod rows;
 mod state;
 mod widgets;
 
-pub use crate::i18n::PAGE_KEYS as PAGES;
 #[allow(unused_imports)]
 pub use delete::*;
 #[allow(unused_imports)]

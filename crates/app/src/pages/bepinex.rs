@@ -1,6 +1,7 @@
 //! BepInEx install and status overlay with its actions.
 
 use crate::palette::*;
+use crate::shell::nav;
 use crate::ui::{Ui, button, fade_in, panel, pix, pix_c, rise_in, scaled, spinner};
 use cuhub_core::install::{Flavor, Mode};
 use nsh_core::prelude::*;
@@ -326,7 +327,7 @@ fn bepinex_pending_actions(z: &Signal<u8>, ui: &Ui, blocked: bool, replace: bool
 pub(super) fn start_bepinex(ui: &Ui) {
     if !bepinex_has_folder(ui) {
         ui.notice.set(t!("notice.bepinex_no_game_folder"));
-        ui.page.set(6);
+        ui.page.set(nav::SETTINGS);
         return;
     }
     if bepinex_installed(ui) {

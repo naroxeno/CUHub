@@ -1,95 +1,34 @@
-# 侧栏与 shell 重构方案（提案，未实施）
+# 侧栏与 shell 重构（已实施 2026-11-17）
 
-## 现状
+## 结果
 
-页面身份散在六处：`i18n.rs` 的 `PAGE_KEYS`、`MODS_PAGE_COUNT`、`page_label` 的条件，`shell.rs` 的 `skip/take`、`content()` 手写的七个 `page_region`、`page_for` 的 match。加一页要同时改六处，漏一处就是静默错误（页头显示成别的页）。
+页面身份不再散落：侧栏与内容区都读 `shell/nav.rs` 的 `NAV` 表，加一页只需在表里加一行、在 `pages` 里加函数、补 locale key。
 
-侧栏的数据源是「页面列表」，因此表达不了动作、分组开关、搜索这类条目；`nav_item` 与 `nav_child` 各写了一遍 55 行，`mods_header` 把唯一的分组写死。
+- `shell.rs` 模块根：`mod dev/nav/sidebar/statusline/top_bar` + `pub use`；`content()` 遍历 `NAV` 的 `NavKind::Page` 条目生成 `when` 区域。
+- `shell/nav.rs`：`NAV`（8 条）、`GROUPS`（模组组）、`NavEntry`、`NavKind { Page(fn(&Ui) -> AnyElement), Action(fn(&Ui)) }`、`title(id)`、`in_group`。
+- `shell/sidebar.rs`：宽 176px（组头 28、子项 26、缩进 16+竖线+8）与窄 44px（图标行、组边界 1px BORDER）两态，页脚启动键 + 版本行（仅宽）；窄模式不分组建，图标取自 `NavEntry::icon`。
+- `Ui.page: Signal<&'static str>`（默认 `nav::NEXUS`），新增 `nav_collapsed`、`nav_closed_group`（空串 = 都展开），删除 `mods_menu_open`；两者都在内存，不落盘。
+- `i18n.rs` 删掉 `PAGE_KEYS`、`NEXUS_PAGE`/`REMOTE_PAGE`/`LOCAL_PAGE`、`MODS_PAGE_COUNT`、`page_label`；页头、状态行、开发者浮层统一用 `nav::title(id)`，组内条目自动拼「模组 / 子页」。
+- 搜索入口是 `Action`，当前只写状态行 `notice.search_soon`；搜索本体仍留第二期，需要给 `Ui` 加 `focus` 通道才能跳到具体条目。
 
-## 目标
+## 加一个页面
 
-1. 侧栏数据 = 一张 `NAV` 表，条目分「页面」与「动作」两种。
-2. 页面身份用稳定 id（`&'static str`），不用索引。
-3. `shell.rs` 拆成目录，一个文件一件事。
-4. 侧栏支持折叠（图标模式）、搜索入口、底部启动键。
+1. `shell/nav.rs` 加 id 常量与 `NAV` 条目（`Page` 或 `Action`，可选 `group`）。
+2. `pages` 加渲染函数，并在 `nav.rs` 的转发函数里包一层 `into_element()`。
+3. `locales/app.yml` 补 `nav.<id>` 三语；`NavKind::Page` 会自动进内容区，不需要改 `shell.rs`。
 
-## 结构
+## 未做
 
-```
-crates/app/src/shell.rs          模块根：mod 声明 + pub use
-crates/app/src/shell/nav.rs      NAV、GROUPS、NavEntry、NavKind、title(id)
-crates/app/src/shell/sidebar.rs  宽 / 窄两种渲染
-crates/app/src/shell/top_bar.rs
-crates/app/src/shell/statusline.rs
-crates/app/src/shell/dev.rs      开发者浮层
-crates/app/src/shell/search.rs   第二期
-```
+- 窄模式没有悬停名称（nsh 的 tooltip 原语未确认）；没有折叠状态持久化。
+- 搜索、启动键复用顶栏同一个 `Ui::launch_game`，两处入口并存。
 
-## 模型
+## 审计发现（app 其余部分，2026-11-17 状态）
 
-```rust
-pub enum NavKind {
-    Page,
-    Action(fn(&Ui)),
-}
-
-pub struct NavEntry {
-    pub id: &'static str,            // "nexus"、"launch"
-    pub key: &'static str,           // "nav.nexus_dashboard"
-    pub icon: &'static str,          // 窄模式字形
-    pub group: Option<&'static str>, // Some("mods")
-    pub kind: NavKind,
-}
-
-pub struct NavGroup {
-    pub id: &'static str,
-    pub key: &'static str,
-    pub icon: &'static str,
-}
-```
-
-- `Ui.page: Signal<usize>` 改成 `Signal<&'static str>`，存 id。
-- `i18n::page_label(index)` 改成 `nav::title(id)`；页面文件不再写 `page_label(0/1/2)`，改用自己那行的 id 常量。
-- 组头来自 `GROUPS`，点击只翻转该组的开关，不改 `page`。
-
-## 渲染规则
-
-- 宽：组头 + 子项缩进；组头可折叠，折叠状态按组 id 存在 `Ui`。
-- 窄：不渲染组头，图标一行一个，组与组之间画一条 `BORDER` 亮一档的分隔线；点图标直接跳转。
-- 页脚：启动键（`Action`）与版本行。
-- 窄模式没有文字，悬停名称需要单独的浮层，列为后续项。
-
-## 迁移（三个原子提交）
-
-1. 引入 `nav.rs` 与 `NAV` 表，删掉 `PAGE_KEYS`、`MODS_PAGE_COUNT`、`page_for`、手写 `page_region`，页面 id 化。行为不变，先拿到同构。
-2. `shell` 拆目录，`nav_item`/`nav_child` 合并成一个按层级渲染的函数。
-3. 侧栏新功能：折叠、图标、组分隔、底部启动键、版本行改用 `CARGO_PKG_VERSION`；搜索入口留空壳。
-
-搜索本体（跨页面、模组、目录）放第二期，需要先给 `Ui` 加一个 `focus` 通道，用来从搜索结果跳到具体条目。
-
-## 风险
-
-- `page` 的类型变化会波及 `pages/*.rs` 里所有 `panel(...)` 标题与 `dev` 浮层，属于机械替换，但面广。
-- 折叠状态不持久化，重启回到展开；进 `settings` 是后续的事。
-- 窄模式的悬停名称需要 nsh 有没有 tooltip 原语，未确认。
-
-## 验收
-
-- 行为与当前一致（新增折叠除外），页头路径随 id 正确。
-- `cargo fmt --check`、`clippy -D warnings`、`cargo test` 干净。
-- 模块文档 `docs/app/shell/overview.md` 与架构文档模块表同步。
-
-## 审计发现（app 其余部分）
-
-按严重程度排：
-
-1. **渲染期锁 Hub**：`pages/remote.rs:26` 调 `ui.sources_present()` → `hub().sources()`，在渲染路径上取互斥锁。后台下载期间锁被占着，UI 线程会一起停住。应改为刷新时算好存进 `Signal<bool>`。
-2. **索引硬编码**：`pages/remote.rs:88`、`local.rs:39`、`nexus.rs:42` 分别写死 `page_label(1/2/0)`，重排即错。与本次 id 化同批修。
-3. **重复代码**：`nav_item` 与 `nav_child` 几乎逐行重复；`mods_header` 把唯一分组写死。
-4. **版本号硬编码**：`shell.rs:29` 的 "0.1.0"、`shell.rs:258` 的 "v0.1.0"，应读 `env!("CARGO_PKG_VERSION")`。
-5. **无上限轮询**：`install.rs:173-176` 游戏运行中每 3 秒重试一次，游戏不关就永远循环，`apply_running` 一直为真。取消路径存在，但缺一个超时或提示，用户容易当成卡死。
-6. **UI 线程写盘**：`save_nexus_key`、`save_github_token`、`cycle_source_pin` 在事件处理里直接落盘；目录大时 setup 里的 `refresh_mods` 也会同步扫盘。都能移到 worker。
-7. **占位 UI 像真的**：`pages/misc.rs` 的联机页有 "CUHB-0000-0000" 房间码和两个禁用按钮，皮肤页同理。要么标 experimental，要么先隐藏。
-8. **列表 key 含状态**：`NexusModRow::row_key` 含 `status`/`version`，状态一变整表重建，滚动位置与焦点会跳。可接受但要知道。
-
-未发现的问题：app crate 里没有 `unwrap()`/`expect()`；`Mutex` 毒化用 `into_inner` 统一兜住；后台任务都走 `spawn_worker` 挂在 app owner 上。
+1. 渲染期锁 Hub：已修，`Ui.sources_ready` 在构造时算好。
+2. 页面索引硬编码：已随 id 化清除。
+3. `nav_item`/`nav_child` 重复与写死分组：已合并为 `nav_row`，组来自 `GROUPS`。
+4. 版本号硬编码：已改 `env!("CARGO_PKG_VERSION")`。
+5. 无上限轮询：已加 60 次（约 3 分钟）上限并提示 `notice.game_still_running`。
+6. UI 线程写盘（Nexus key、GitHub token、来源 pin、setup 扫盘）：未动，仍待办。
+7. 占位 UI（假房间码、禁用按钮）：未动，按 FEATURES R 的样例数据保留。
+8. `NexusModRow::row_key` 含状态导致整表重建：已知，暂不处理。

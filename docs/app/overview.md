@@ -6,9 +6,12 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 
 ## 导航树
 
-- 顶层 5 项：模组（父节点）、Multiplayer、Skins & Backups、Hub Home、Settings；「模组」展开为三个子项，默认展开。页面索引 0 Nexus / 1 远程 / 2 本地 / 3 联机 / 4 皮肤 / 5 主页 / 6 设置，`i18n::PAGE_KEYS` 与 `shell::page_for` 必须同步。
-- 父节点高度 28，只切换 `mods_menu_open`，不写 `page`；子项高度 26，缩进 16 + 1px 左竖线 + 8。折叠状态在 `Ui` 的内存 signal 里，不落盘。
-- 子页的页头与状态栏用 `i18n::page_label` 输出两段面包屑（「模组 / 远程模组」），不在页面代码里硬编码父级名称。
+- 唯一数据源是 `src/shell/nav.rs` 的 `NAV` 表：每条含 `id`、locale `key`、窄模式 `icon`、可选 `group` 与 `NavKind`（`Page` 渲染函数 / `Action` 副作用）。加页只改表、`pages` 与 locale，不动 `shell.rs`。
+- 当前 8 条：Search（动作占位）、Nexus / 远程 / 本地（`group = "mods"`）、Multiplayer、Skins & Backups、Hub Home、Settings。组头来自 `GROUPS`，只翻 `nav_closed_group`，不写 `page`。
+- `Ui.page` 是 `Signal<&'static str>`，存 id；页头、状态行与开发者浮层统一用 `nav::title(id)`，组内条目自动拼「模组 / 子页」。
+- 侧栏两态：宽 176px（组头 28、子项 26、缩进 16 + 1px 竖线 + 8）与窄 44px（只有图标，组间 1px `BORDER` 分隔）；开关在 `nav_collapsed`，与 `nav_closed_group` 一样只存内存。
+- 页脚是启动键（`NAV` 之外的 `LAUNCH_ENTRY`，走 `Ui::launch_game`）与版本行；版本行五连点开开发者浮层。
+- 搜索入口当前只写状态行提示，搜索本体与「跳转到具体条目」仍未实现。
 
 ## 视觉约束
 

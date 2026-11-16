@@ -12,6 +12,7 @@ use super::rows::nexus_page_count;
 use super::rows::page_slice;
 use crate::i18n;
 use crate::setup::Setup;
+use crate::shell::nav;
 use cuhub_core::hub::{BepInExInstall, Hub};
 use cuhub_core::install::{Flavor, Status as BepInExStatus};
 use cuhub_core::metadata::MetadataMod;
@@ -27,7 +28,9 @@ use std::time::Instant;
 
 #[derive(Clone)]
 pub struct Ui {
-    pub page: Signal<usize>,
+    pub page: Signal<&'static str>,
+    pub nav_collapsed: Signal<bool>,
+    pub nav_closed_group: Signal<&'static str>,
     pub zoom: Signal<u8>,
     pub dev: Signal<bool>,
     pub taps: Signal<u32>,
@@ -44,7 +47,6 @@ pub struct Ui {
     pub nexus_error: Signal<String>,
     pub local_rows: Signal<Vec<LocalModRow>>,
     pub checks: Signal<BTreeMap<String, CheckState>>,
-    pub mods_menu_open: Signal<bool>,
     pub remote_rows: Signal<Vec<RemoteRow>>,
     pub remote_all: Signal<Vec<RemoteRow>>,
     pub remote_page: Signal<usize>,
@@ -127,7 +129,7 @@ impl Ui {
             t!("notice.mods_found", count = mods.len())
         };
         Self {
-            page: signal(0usize),
+            page: signal(nav::NEXUS),
             zoom: signal(zoom),
             dev: signal(false),
             taps: signal(0u32),
@@ -144,7 +146,8 @@ impl Ui {
             nexus_error: signal(String::new()),
             local_rows: signal(local_rows),
             checks: signal(checks),
-            mods_menu_open: signal(true),
+            nav_collapsed: signal(false),
+            nav_closed_group: signal(""),
             remote_rows: signal(remote_rows),
             remote_all: signal(remote_all),
             remote_page: signal(0usize),

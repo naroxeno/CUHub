@@ -59,6 +59,10 @@ nav.settings:
   en: "Settings"
   zh-CN: "设置"
   ja: "設定"
+nav.search:
+  en: "Search"
+  zh-CN: "搜索"
+  ja: "検索"
 panel.nexus_dashboard:
   en: "NEXUS DASHBOARD"
   zh-CN: "Nexus 仪表盘"
@@ -895,6 +899,10 @@ notice.open_nexus_failed:
   en: "Could not open the Nexus page: %{error}"
   zh-CN: "无法打开 Nexus 页面：%{error}"
   ja: "Nexus のページを開けませんでした: %{error}"
+notice.search_soon:
+  en: "Search is not wired yet."
+  zh-CN: "搜索还没有接上。"
+  ja: "検索はまだ接続されていません。"
 notice.details_todo:
   en: "Mod details for %{name} are not implemented yet."
   zh-CN: "%{name} 的模组详情尚未实现。"

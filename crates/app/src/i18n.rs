@@ -1,32 +1,8 @@
-//! Page keys, language codes and the copy keys that do not sit next to a widget.
+//! Language codes and the copy keys that do not sit next to a widget.
 
 use cuhub_core::mods::ModStatus;
 use nsh_core::platform::Locale;
 use nsh_core::prelude::*;
-
-pub const PAGE_KEYS: [&str; 7] = [
-    "nav.nexus_dashboard",
-    "nav.remote_mods",
-    "nav.local_mods",
-    "nav.multiplayer",
-    "nav.skins_backups",
-    "nav.hub_home",
-    "nav.settings",
-];
-
-pub const NEXUS_PAGE: usize = 0;
-pub const REMOTE_PAGE: usize = 1;
-pub const LOCAL_PAGE: usize = 2;
-pub const MODS_PAGE_COUNT: usize = 3;
-
-pub fn page_label(index: usize) -> String {
-    let key = PAGE_KEYS.get(index).copied().unwrap_or("nav.settings");
-    if index < MODS_PAGE_COUNT {
-        t!("nav.breadcrumb", parent = t!("nav.mods"), child = t!(key))
-    } else {
-        t!(key)
-    }
-}
 
 pub const FOLLOW_SYSTEM: &str = "system";
 
