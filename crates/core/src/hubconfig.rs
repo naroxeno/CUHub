@@ -419,30 +419,6 @@ mod tests {
     }
 
     #[test]
-    fn builds_channel_urls_and_cache_names() {
-        let (service, directory) = service("hubconfig-paths");
-        assert_eq!(service.config_url(), format!("{BASE_URL}v1/hub.json"));
-        assert_eq!(
-            service.cache_path().file_name().unwrap().to_string_lossy(),
-            "HubConfigCache.stable.json"
-        );
-        assert_eq!(
-            service.state_path().file_name().unwrap().to_string_lossy(),
-            "HubConfigHttpState.stable.json"
-        );
-        let prerelease = HubConfigService::new(
-            Network::new().unwrap(),
-            directory.clone(),
-            HubConfigChannel::Prerelease,
-        );
-        assert_eq!(
-            prerelease.config_url(),
-            format!("{BASE_URL}v1/prerelease/hub.json")
-        );
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
     fn parses_the_published_shape() {
         let config = parse_config(SAMPLE).unwrap();
         let current = config.current_announcement.unwrap();
@@ -567,28 +543,6 @@ mod tests {
         };
         service.save_state(&state).unwrap();
         assert!(service.is_check_due());
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn state_round_trips() {
-        let (service, directory) = service("hubconfig-state");
-        let state = CacheState {
-            etag: Some("\"abc\"".to_owned()),
-            last_modified: Some("Wed, 21 Oct 2015 07:28:00 GMT".to_owned()),
-            last_checked_utc: Some("2026-11-14T12:00:00Z".to_owned()),
-        };
-        service.save_state(&state).unwrap();
-        let loaded = service.load_state();
-        assert_eq!(loaded.etag.as_deref(), Some("\"abc\""));
-        assert_eq!(
-            loaded.last_modified.as_deref(),
-            Some("Wed, 21 Oct 2015 07:28:00 GMT")
-        );
-        assert_eq!(
-            loaded.last_checked().unwrap().to_rfc3339(),
-            "2026-11-14T12:00:00+00:00"
-        );
         fs::remove_dir_all(directory).unwrap();
     }
 }

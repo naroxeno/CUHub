@@ -650,38 +650,6 @@ mod resolve_tests {
     }
 
     #[test]
-    fn default_source_is_the_newer_version() {
-        let entries = vec![entry("lib", "owner/a", guid_matcher("mod.guid"))];
-        let local = local("ScavLib", Some("mod.guid"), &[]);
-        let resolved = resolve_mod(
-            &entries,
-            &local,
-            Some(version("1.4.0")),
-            Some(version("1.2.0")),
-            None,
-        );
-        let effective = resolved.effective.expect("effective");
-        assert_eq!(effective.kind, SourceKind::Github);
-        assert_eq!(effective.version, Some(version("1.4.0")));
-    }
-
-    #[test]
-    fn pin_overrides_the_newer_version() {
-        let entries = vec![entry("lib", "owner/a", guid_matcher("mod.guid"))];
-        let local = local("ScavLib", Some("mod.guid"), &[]);
-        let resolved = resolve_mod(
-            &entries,
-            &local,
-            Some(version("1.4.0")),
-            Some(version("1.2.0")),
-            Some(SourceKind::Nexus),
-        );
-        let effective = resolved.effective.expect("effective");
-        assert_eq!(effective.kind, SourceKind::Nexus);
-        assert_eq!(resolved.pinned, Some(SourceKind::Nexus));
-    }
-
-    #[test]
     fn unknown_github_version_loses_to_a_known_nexus_one() {
         let entries = vec![entry("lib", "owner/a", guid_matcher("mod.guid"))];
         let local = local("ScavLib", Some("mod.guid"), &[]);

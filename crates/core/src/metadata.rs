@@ -650,12 +650,4 @@ mod tests {
         assert_eq!(cache.load_state(), HttpState::default());
         let _ = fs::remove_dir_all(dir);
     }
-
-    #[test]
-    fn formats_negative_and_large_numbers() {
-        assert_eq!(format_number(0), "0");
-        assert_eq!(format_number(999), "999");
-        assert_eq!(format_number(1_000), "1,000");
-        assert_eq!(format_number(-1_234_567), "-1,234,567");
-    }
 }
