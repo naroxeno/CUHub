@@ -72,11 +72,11 @@
 - `process.rs`：spawn/stop、stdout/stderr 落日志、退出清理（父进程死则子进程死）、端口冲突检测、启动超时。
 - `status.rs`：`easytier-cli -o json node` 与 `peer list`（实测支持 JSON 输出），2 秒轮询；解析失败降级为 unknown，不 panic。
 - `room.rs`：房间码编解码（见 5.2）、由码派生网络名/密钥、校验位。
-- `mod.rs`：对外 `Tunnel` 门面 + 事件（Started/Stopped/Failed/PeersChanged），与 Hub 的连接点。
+- `easytier.rs`：对外 `Tunnel` 门面 + 事件（Started/Stopped/Failed/PeersChanged），与 Hub 的连接点。
 
 ### 5.2 房间码（自定，v1）
 
-`C1/7K3M-9Q2X-4H8P-V6RD`：
+`C1-7K3M-9Q2X-4H8P-V6RW`：
 
 - 字符表 32 个（`23456789ABCDEFGHJKLMNPQRSTUVWXYZ`，去掉 0/O/1/I/L），每字符 5 bit；共 16 个字符 = 80 bit。
 - 前 8 字符是网络名（40 bit，解码为 `--network-name cuhub-XXXXXXXX`），接着 7 字符是密钥（35 bit），最后 1 字符是校验（5 bit，覆盖前 15 字符）；有效数据 75 bit。

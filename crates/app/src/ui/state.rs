@@ -2,6 +2,8 @@
 
 use super::delete::DeletePrompt;
 use super::install::{DependencyPrompt, PendingInstall};
+use super::multiplayer::MultiplayerUi;
+use super::profiles::ProfilesUi;
 use super::remote::{RemoteFilter, RemoteRow, build_remote_rows};
 use super::rows::CheckState;
 use super::rows::LocalModRow;
@@ -21,10 +23,14 @@ use cuhub_core::settings::Settings;
 use nsh_core::RevealOptions;
 use nsh_core::prelude::*;
 use std::collections::BTreeMap;
+use std::fs;
 use std::future::Future;
+use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
+
+const STORE_PROBE_FILE: &str = ".cuhub-write-check";
 
 #[derive(Clone)]
 pub struct Ui {
@@ -81,6 +87,10 @@ pub struct Ui {
     pub github_token_saved: Signal<bool>,
     pub github_token_draft: Signal<String>,
     pub github_token_check: Signal<String>,
+    pub store_draft: Signal<String>,
+    pub store_error: Signal<String>,
+    pub mp: MultiplayerUi,
+    pub profiles: ProfilesUi,
     pub app_data: String,
     pub setup: Setup,
     owner: Owner,
@@ -127,6 +137,8 @@ impl Ui {
             .current_announcement
             .map(|item| item.message);
         let app_data = hub.app_data().display().to_string();
+        let store_draft = signal(settings.store_path.clone());
+        let store_error = signal(String::new());
         let bepinex = hub.bepinex_status().ok();
         let owner = Owner::current();
         let setup = Setup::new(&settings, setup_due);
@@ -142,6 +154,8 @@ impl Ui {
             taps: signal(0u32),
             last_tap: signal(None),
             notice: signal(notice),
+            mp: MultiplayerUi::new(&hub),
+            profiles: ProfilesUi::new(),
             hub: Arc::new(Mutex::new(hub)),
             settings: signal(settings),
             mods: signal(mods),
@@ -189,6 +203,8 @@ impl Ui {
             github_token_saved: signal(github_token_saved),
             github_token_draft: signal(String::new()),
             github_token_check: signal(github_token_check),
+            store_draft,
+            store_error,
             app_data,
             setup,
             owner,
@@ -217,6 +233,7 @@ impl Ui {
         if needs_refresh {
             self.refresh_metadata(false);
         }
+        self.profiles_refresh();
     }
 
     pub fn open_link(&self, url: &str) {
@@ -319,6 +336,41 @@ impl Ui {
         match saved {
             Ok(settings) => {
                 self.settings.set(settings);
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    pub(crate) fn store_folder_path(&self) -> String {
+        self.settings
+            .get()
+            .store_dir(Path::new(&self.app_data))
+            .display()
+            .to_string()
+    }
+
+    pub(crate) fn save_store(&self, draft: &str) -> Result<(), String> {
+        let trimmed = draft.trim();
+        if !trimmed.is_empty() {
+            let path = Path::new(trimmed);
+            if !path.is_absolute() {
+                return Err(t!("settings.store_invalid"));
+            }
+            prepare_store_dir(path)?;
+        }
+        let saved = {
+            let mut hub = self.hub();
+            let mut settings = hub.settings().clone();
+            settings.store_path = trimmed.to_owned();
+            hub.save_settings(&settings)
+                .map(|()| hub.settings().clone())
+                .map_err(|error| t!("settings.store_save_failed", error = error.to_string()))
+        };
+        match saved {
+            Ok(settings) => {
+                self.settings.set(settings);
+                self.store_draft.set(trimmed.to_owned());
                 Ok(())
             }
             Err(error) => Err(error),
@@ -433,4 +485,20 @@ impl Ui {
                 .set(t!("notice.save_settings_failed", error = error)),
         }
     }
+}
+
+fn prepare_store_dir(path: &Path) -> Result<(), String> {
+    fs::create_dir_all(path).map_err(|error| store_dir_error(path, error))?;
+    let probe = path.join(STORE_PROBE_FILE);
+    let written = fs::write(&probe, b"cuhub").map_err(|error| store_dir_error(path, error));
+    let _ = fs::remove_file(&probe);
+    written
+}
+
+fn store_dir_error(path: &Path, error: io::Error) -> String {
+    t!(
+        "settings.store_unusable",
+        path = path.display().to_string(),
+        error = error.to_string()
+    )
 }

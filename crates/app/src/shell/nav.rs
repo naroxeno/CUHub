@@ -8,6 +8,7 @@ use crate::ui::Ui;
 pub const NEXUS: &str = "nexus";
 pub const REMOTE: &str = "remote";
 pub const LOCAL: &str = "local";
+pub const PROFILES: &str = "profiles";
 pub const MULTIPLAYER: &str = "multiplayer";
 pub const SKINS: &str = "skins";
 pub const HOME: &str = "home";
@@ -75,7 +76,11 @@ fn about(ui: &Ui) -> AnyElement {
     pages::about(ui).into_element()
 }
 
-pub static NAV: [NavEntry; 8] = [
+fn profiles(ui: &Ui) -> AnyElement {
+    pages::profiles(ui).into_element()
+}
+
+pub static NAV: [NavEntry; 9] = [
     NavEntry {
         id: HOME,
         key: "nav.hub_home",
@@ -103,6 +108,13 @@ pub static NAV: [NavEntry; 8] = [
         icon: "LC",
         group: Some(GROUP_MODS),
         kind: NavKind::Page(local),
+    },
+    NavEntry {
+        id: PROFILES,
+        key: "nav.profiles",
+        icon: "PF",
+        group: Some(GROUP_MODS),
+        kind: NavKind::Page(profiles),
     },
     NavEntry {
         id: MULTIPLAYER,

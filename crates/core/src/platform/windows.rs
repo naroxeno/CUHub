@@ -70,6 +70,16 @@ pub fn downloads_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("C:\\"))
 }
 
+#[link(name = "Shell32")]
+unsafe extern "system" {
+    fn IsUserAnAdmin() -> i32;
+}
+
+pub fn elevated() -> bool {
+    // SAFETY: the call takes no arguments and only reads the current token.
+    unsafe { IsUserAnAdmin() != 0 }
+}
+
 pub fn open_url(url: &str) -> io::Result<Child> {
     Command::new("cmd")
         .args(["/C", "start", "", url])

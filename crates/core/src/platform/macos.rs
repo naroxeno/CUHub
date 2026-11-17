@@ -33,6 +33,10 @@ pub fn downloads_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+pub fn elevated() -> bool {
+    true
+}
+
 pub fn open_url(url: &str) -> io::Result<Child> {
     Command::new("open")
         .arg(url)

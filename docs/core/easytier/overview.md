@@ -1,62 +1,28 @@
-# easytier
+# easytier 模块
 
-## 职责
+EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它的状态、必要时重启一次」；不碰 UI、不做房间码 UI 校验、不代理游戏流量。
 
-联机方案的 EasyTier 内核层（P1）：固定上游版本与资产、下载并校验 zip、只读探测磁盘上的安装。不负责解压、启动进程、房间码、提权与界面。
+## 文件边界
 
-## 输入与输出
-
-- `ensure_archive(network, app_data)`：确保应用内缓存有一份校验通过的 zip，返回其路径。
-- `detect_managed(app_data)`：探测应用内下载目录。
-- `detect_custom(directory)`：探测用户自装目录。
-
-`Detection { root, version, core, cli, status }`：`core` / `cli` 是解析到真实大小写的路径，缺失为 `None`；`status` 表示完整性：
-
-- `Complete`：所需文件齐全。
-- `DirectoryMissing`：目录不存在或不是目录。
-- `MissingFiles { missing }`：目录在，缺文件；`missing` 是期望路径。
-
-## 完整性规则
-
-- 必须有 `easytier-core` 与 `easytier-cli`，且在同一个目录。
-- Windows 还要求同目录有 `wintun.dll`、`Packet.dll`。
-- 文件名按大小写不敏感解析；命中后再要求是普通文件。
-- 版本：应用内目录名就是版本，`detect_managed` 在目录存在时返回 `Some(VERSION)`；用户自装目录没有可信版本来源，`detect_custom` 恒返回 `None`。版本不明不算完整性失败，由调用方按需拒绝。
-
-## 下载与缓存
-
-- 路径固定 `<app_data>/Tools/easytier/<VERSION>/<资产文件名>`，同版本只保留一份。
-- 已存在：重算 sha256，通过则复用；不通过、读失败都删除后重下；下载后再校验一次。
-- 下载走 `core::network`，上限等于资产大小，超时 300 秒；不自动触发，只在被调用时执行。
-- 错误都带路径；下载失败同时带 URL。
-- `ensure_archive` 是阻塞调用，调用方负责放到后台任务；本模块不自带线程或 UI。
-- 上游 zip 内含单层 `easytier-<os>-x86_64/` 目录。将来解压时必须去掉这层，把二进制放在 `<VERSION>/` 根下，否则 `detect_managed` 会报缺文件。
-
-## 平台
-
-- Windows、Linux 有 pin 死的资产；macOS 不 pin，返回 `UnsupportedPlatform`，不猜测文件名与哈希。
-- 资产、大小、sha256 是编译期常量，升级版本只改 `release.rs` 与 `VERSION`。
-
-## 资产来源
-
-- 上游：EasyTier GitHub Release `v2.6.4`，直链 `https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/<file>`，不重托管、不走镜像。
-- Windows：`easytier-windows-x86_64-v2.6.4.zip`，32,657,720 B，sha256 `27af91e270e554709b048bd32327fefd2dfce5062ae1e8701af7550c6f525f84`。
-- Linux：`easytier-linux-x86_64-v2.6.4.zip`，25,506,523 B，sha256 `61b659eaedba658fa66fe47d17e1426cdd77e5d02fa15fed447bb4357c09dfd6`。
-- 版本取自 `docs/multiplayer/easytier-plan.md` §5.7；文件名、大小、sha256 在实现时（2026-11-16）从 GitHub Release 下载官方资产实测核对，三者一致。
-- 许可证与源码地址的界面展示属于后续打包/关于页，不在本模块。
+- `release.rs`：版本 pin `2.6.4`、各平台资产名/大小/sha256、下载缓存 `<appdata>/Tools/easytier/<version>/`。
+- `detect.rs`：探测托管目录或用户指定目录；Windows 必需 4 个文件（`easytier-core.exe`、`easytier-cli.exe`、`wintun.dll`、`Packet.dll`），其它平台 2 个。只读磁盘、不跑进程。
+- `ports.rs`：按「本地回环 + 指定协议」申请空闲端口，用于 RPC。
+- `argument.rs`：参数拼装；房间码只在这里派生成网络名/密钥，不落日志。
+- `process.rs`：拉起 core/cli、接管 stdout/stderr、父进程退出时一起死（Windows Job / Linux PDEATHSIG）、`peers_json` 读取。
+- `status.rs`：解析 `peer list -o json` 为 `EasyTierMember`，nat 类型未知时保留 `Unknown`，字段缺失返回 `None` 而不是猜。
+- `tunnel.rs`：门面。host 加 hostname/静态 IP/端口白名单；guest 首次发现房主后带 `--port-forward` 重启一次，`forwarded` 标记防循环；找到房主后粘住，避免 peer 列表抖动导致状态回退。
+- `mod.rs`（`easytier.rs`）：只做 `mod` 与 `pub use`，对外路径保持稳定。
 
 ## 边界与失败模式
 
-- 不执行 `easytier-core` / `easytier-cli`，不读进程；探测路径不碰网络。
-- 不写设置、不解压、不改动用户自装目录。
-- 平台不支持：`ReleaseError::UnsupportedPlatform`。
-- 目录建不出来：`ReleaseError::Directory { path, source }`。
-- 旧文件删不掉：`ReleaseError::Stale { path, source }`。
-- 下载失败：`ReleaseError::Download { url, path, source }`。
-- 校验失败：`ReleaseError::Checksum { path, source }`。
-- 目录缺失、文件缺失、版本不明：见 `Detection`，不是错误类型。
+- 提权：不自提权。`Hub::start_tunnel` 先查 `platform::elevated()`（Windows 管理员令牌；Linux `CAP_NET_ADMIN`），不足直接 `HubError::Elevation`。
+- 内核缺失：先托管目录，再用户指定目录，最后按 release 下载；解压只取必需文件名，扁平写入缓存目录，缺一个即失败。
+- 用户指定目录不完整时只记日志后回退下载，不删除用户文件。
+- 隧道全程同一时刻只允许一个；重建前先停旧进程。
+- 日志里房间码只出现网络名前 4 位与省略号；密钥段不落地。
 
-## 测试
+## 常量出处
 
-- 覆盖资产表形状、缓存路径拼装、探测的缺失目录/空目录/缺 cli/完整假文件、缓存复用与校验失败。
-- 无联网测试。
+- 默认中继：`public.easytier.top:11010`、`public2.easytier.cn:54321`、`etnode.zkitefly.eu.org/node1|node2`（来自陶瓦 publics.rs，见 docs/third-party/terracotta.md）。
+- Windows 资产约 32.7 MB，Linux 约 25.5 MB；sha256 在 `release.rs` 内 pin。
+- 房主 `--hostname cuhub-host-<port>`，虚拟 IP 固定 `10.144.144.1`；端口白名单同时含 TCP 与 UDP。

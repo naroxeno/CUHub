@@ -19,6 +19,8 @@ pub struct Setup {
     pub step: Signal<usize>,
     pub game_draft: Signal<String>,
     pub download_draft: Signal<String>,
+    pub store_draft: Signal<String>,
+    pub store_error: Signal<String>,
     pub error: Signal<String>,
 }
 
@@ -29,6 +31,8 @@ impl Setup {
             step: signal(0usize),
             game_draft: signal(settings.game_path.clone()),
             download_draft: signal(settings.download_path.clone()),
+            store_draft: signal(settings.store_path.clone()),
+            store_error: signal(String::new()),
             error: signal(String::new()),
         }
     }
@@ -38,6 +42,8 @@ pub fn open(ui: &Ui) {
     let settings = ui.settings.get();
     ui.setup.game_draft.set(settings.game_path);
     ui.setup.download_draft.set(settings.download_path);
+    ui.setup.store_draft.set(settings.store_path);
+    ui.setup.store_error.set(String::new());
     ui.setup.error.set(String::new());
     ui.setup.step.set(0);
     ui.setup.open.set(true);
@@ -146,7 +152,9 @@ fn game(ui: &Ui) -> View {
         .gap(scaled(&z, 8.0))
         .child(pix(move || t!("wizard.game.title"), 14.0, ACCENT, &z))
         .child(pix(move || t!("wizard.game.hint"), 11.0, TEXT_MUTED, &z))
-        .child(folder_input(&z, draft, "wizard.game.placeholder"))
+        .child(folder_input(&z, draft, move || {
+            t!("wizard.game.placeholder")
+        }))
         .child(
             view()
                 .flex_row()
@@ -243,6 +251,14 @@ fn bepinex(ui: &Ui) -> View {
 fn downloads(ui: &Ui) -> View {
     let z = ui.zoom;
     let draft = ui.setup.download_draft;
+    let store = ui.setup.store_draft;
+    let store_error = ui.setup.store_error;
+    let store_default = {
+        let ui = ui.clone();
+        move || ui.store_folder_path()
+    };
+    let browse_ui = ui.clone();
+    let reset_ui = ui.clone();
     view()
         .flex_col()
         .gap(scaled(&z, 8.0))
@@ -253,7 +269,40 @@ fn downloads(ui: &Ui) -> View {
             TEXT_MUTED,
             &z,
         ))
-        .child(folder_input(&z, draft, "wizard.downloads.placeholder"))
+        .child(folder_input(&z, draft, move || {
+            t!("wizard.downloads.placeholder")
+        }))
+        .child(pix(
+            move || t!("settings.store_folder"),
+            12.0,
+            TEXT_MUTED,
+            &z,
+        ))
+        .child(folder_input(&z, store, store_default))
+        .child(
+            view()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(scaled(&z, 8.0))
+                .child(button(
+                    &z,
+                    move || t!("settings.store_browse"),
+                    true,
+                    move || browse_store(&browse_ui),
+                ))
+                .child(button(
+                    &z,
+                    move || t!("settings.store_reset"),
+                    true,
+                    move || reset_store(&reset_ui),
+                )),
+        )
+        .child(pix(move || t!("settings.store_hint"), 11.0, TEXT_DIM, &z))
+        .child(when(
+            move || !store_error.get().is_empty(),
+            move || pix(move || store_error.get(), 11.0, DANGER, &z),
+        ))
 }
 
 fn appearance(ui: &Ui) -> View {
@@ -347,12 +396,12 @@ fn summary_row(
 fn folder_input(
     z: &Signal<u8>,
     value: Signal<String>,
-    placeholder: &'static str,
+    placeholder: impl IntoReactive<String>,
 ) -> impl IntoElement {
     let z = *z;
     input()
         .value(value)
-        .placeholder(move || t!(placeholder))
+        .placeholder(placeholder)
         .font_family(crate::ui::PIXEL_FONT.family)
         .text_size(scaled(&z, 12.0))
         .h(scaled(&z, 26.0))
@@ -422,7 +471,13 @@ fn next(ui: &Ui) {
     let step = ui.setup.step.get();
     let saved = match step {
         1 => ui.save_setup_game(&ui.setup.game_draft.get()),
-        3 => ui.save_setup_download(&ui.setup.download_draft.get()),
+        3 => {
+            if let Err(error) = ui.save_store(&ui.setup.store_draft.get()) {
+                ui.setup.store_error.set(error);
+                return;
+            }
+            ui.save_setup_download(&ui.setup.download_draft.get())
+        }
         _ => Ok(()),
     };
     match saved {
@@ -430,7 +485,13 @@ fn next(ui: &Ui) {
             if step == 1 {
                 ui.setup.game_draft.set(ui.settings.get().game_path.clone());
             }
+            if step == 3 {
+                ui.setup
+                    .store_draft
+                    .set(ui.settings.get().store_path.clone());
+            }
             ui.setup.error.set(String::new());
+            ui.setup.store_error.set(String::new());
             ui.setup.step.set((step + 1).min(LAST_STEP));
         }
         Err(error) => ui.setup.error.set(error),
@@ -470,6 +531,31 @@ fn browse(ui: &Ui) {
                 .set(t!("wizard.game.dialog_unavailable", error = error)),
         }
     });
+}
+
+fn browse_store(ui: &Ui) {
+    let ui = ui.clone();
+    let picked = pick_paths(OpenDialog::folders());
+    ui.spawn_worker(async move {
+        match picked.await {
+            Ok(Some(paths)) => {
+                if let Some(path) = paths.into_iter().next() {
+                    ui.setup.store_draft.set(path.display().to_string());
+                    ui.setup.store_error.set(String::new());
+                }
+            }
+            Ok(None) => {}
+            Err(error) => ui
+                .setup
+                .store_error
+                .set(t!("settings.store_picker_failed", error = error)),
+        }
+    });
+}
+
+fn reset_store(ui: &Ui) {
+    ui.setup.store_draft.set(String::new());
+    ui.setup.store_error.set(String::new());
 }
 
 fn detect(ui: &Ui) {

@@ -11,6 +11,7 @@ use cuhub_core::install::Flavor;
 use cuhub_core::nexus_auth::{GithubTokenStore, NexusKeyStore};
 use nsh_base::input;
 use nsh_core::EllipsizeMode;
+use nsh_core::file_dialog::OpenDialog;
 use nsh_core::prelude::*;
 
 pub(super) fn game_folder_path(ui: &Ui) -> Option<String> {
@@ -71,6 +72,15 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
     let detect = ui.clone();
     let rescan = ui.clone();
     let path = ui.clone();
+    let store_input = ui.store_draft;
+    let store_error = ui.store_error;
+    let store_default = {
+        let ui = ui.clone();
+        move || ui.store_folder_path()
+    };
+    let browse_store_ui = ui.clone();
+    let reset_store_ui = ui.clone();
+    let save_store_ui = ui.clone();
     let key_status = ui.clone();
     let save_key = ui.clone();
     let clear_key = ui.clone();
@@ -206,6 +216,56 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
                 .child(setting_row(&z, "settings.data_folder", move || {
                     path.app_data.clone()
                 }))
+                .child(pix(
+                    move || t!("settings.store_folder"),
+                    12.0,
+                    TEXT_MUTED,
+                    &z,
+                ))
+                .child(
+                    view()
+                        .flex_row()
+                        .items_center()
+                        .gap(scaled(&z, 8.0))
+                        .child(
+                            input()
+                                .value(store_input)
+                                .placeholder(store_default)
+                                .font_family(crate::ui::PIXEL_FONT.family)
+                                .text_size(scaled(&z, 12.0))
+                                .h(scaled(&z, 24.0))
+                                .flex_1()
+                                .px(scaled(&z, 6.0))
+                                .bg(rgb(SURFACE_RAISED))
+                                .border(scaled(&z, 1.0))
+                                .border_color(rgb(BORDER))
+                                .text_color(rgb(TEXT))
+                                .on_change(move |text: &str| store_input.set(text.to_owned())),
+                        )
+                        .child(button(
+                            &z,
+                            move || t!("settings.store_browse"),
+                            true,
+                            move || browse_store(&browse_store_ui),
+                        ))
+                        .child(button(
+                            &z,
+                            move || t!("settings.store_reset"),
+                            true,
+                            move || reset_store(&reset_store_ui),
+                        ))
+                        .child(button(
+                            &z,
+                            move || t!("settings.store_save"),
+                            true,
+                            move || commit_store(&save_store_ui),
+                        )),
+                )
+                .child(pix(move || t!("settings.store_hint"), 11.0, TEXT_DIM, &z))
+                .child(when(
+                    move || !store_error.get().is_empty(),
+                    move || pix(move || store_error.get(), 11.0, DANGER, &z),
+                ))
                 .child(pix(move || t!("settings.nexus_key"), 12.0, TEXT_MUTED, &z))
                 .child(pix(
                     move || {
@@ -402,4 +462,35 @@ pub(crate) fn language_button(ui: &Ui, index: usize, z: &Signal<u8>) -> Text {
         }
     })
     .on_press(move || pressed.set_language(code))
+}
+
+fn browse_store(ui: &Ui) {
+    let ui = ui.clone();
+    let picked = pick_paths(OpenDialog::folders());
+    ui.spawn_worker(async move {
+        match picked.await {
+            Ok(Some(paths)) => {
+                if let Some(path) = paths.into_iter().next() {
+                    ui.store_draft.set(path.display().to_string());
+                    ui.store_error.set(String::new());
+                }
+            }
+            Ok(None) => {}
+            Err(error) => ui
+                .store_error
+                .set(t!("settings.store_picker_failed", error = error)),
+        }
+    });
+}
+
+fn reset_store(ui: &Ui) {
+    ui.store_draft.set(String::new());
+    ui.store_error.set(String::new());
+}
+
+fn commit_store(ui: &Ui) {
+    match ui.save_store(&ui.store_draft.get()) {
+        Ok(()) => ui.store_error.set(String::new()),
+        Err(error) => ui.store_error.set(error),
+    }
 }

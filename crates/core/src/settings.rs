@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 const SETTINGS_FILE: &str = "Settings.json";
 const DEFAULT_BACKUP_DIR: &str = "Backups";
+const DEFAULT_STORE_DIR: &str = "Store";
 const DEFAULT_PROTECTED_DIR: &str = "ProtectedFiles";
 
 pub const DEFAULT_UI_SCALE: u8 = 2;
@@ -20,6 +21,7 @@ pub struct Settings {
     pub game_path: String,
     pub download_path: String,
     pub backup_path: String,
+    pub store_path: String,
     pub protected_files_path: String,
     pub disable_auto_delete_imported_parent_files: bool,
     pub ui_scale: u8,
@@ -44,6 +46,7 @@ impl Default for Settings {
                 .to_string_lossy()
                 .into_owned(),
             backup_path: DEFAULT_BACKUP_DIR.to_owned(),
+            store_path: String::new(),
             protected_files_path: DEFAULT_PROTECTED_DIR.to_owned(),
             disable_auto_delete_imported_parent_files: false,
             ui_scale: DEFAULT_UI_SCALE,
@@ -142,6 +145,15 @@ impl Settings {
         let requested = self.ui_scale;
         self.ui_scale = requested.clamp(MIN_UI_SCALE, MAX_UI_SCALE);
         (self.ui_scale != requested).then_some(requested)
+    }
+
+    pub fn store_dir(&self, app_data: &Path) -> PathBuf {
+        let configured = self.store_path.trim();
+        if configured.is_empty() {
+            app_data.join(DEFAULT_STORE_DIR)
+        } else {
+            PathBuf::from(configured)
+        }
     }
 
     pub fn setup_due(&self) -> bool {
@@ -253,6 +265,25 @@ mod tests {
         let loaded = store.load();
         assert!(!loaded.settings.setup_completed);
         assert!(loaded.settings.setup_due());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn default_store_lives_under_app_data() {
+        let dir = temp_dir("settings-store-default");
+        let settings = Settings::default();
+        assert_eq!(settings.store_dir(&dir), dir.join("Store"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn configured_store_wins_and_blank_falls_back() {
+        let dir = temp_dir("settings-store-custom");
+        let mut settings = Settings::default();
+        settings.store_path = "  D:/Mods/Store  ".to_owned();
+        assert_eq!(settings.store_dir(&dir), PathBuf::from("D:/Mods/Store"));
+        settings.store_path = "   ".to_owned();
+        assert_eq!(settings.store_dir(&dir), dir.join("Store"));
         let _ = fs::remove_dir_all(dir);
     }
 }

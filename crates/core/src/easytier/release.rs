@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::install::{HashError, verify_sha256};
+
+use super::detect::{self, Detection};
 use crate::network::{Network, NetworkError};
 
 pub const VERSION: &str = "2.6.4";
@@ -96,6 +98,78 @@ fn archive_matches(path: &Path, asset: &Asset) -> bool {
     path.is_file() && verify_sha256(path, asset.sha256).is_ok()
 }
 
+pub fn ensure_installed(network: &Network, app_data: &Path) -> Result<Detection, ReleaseError> {
+    let archive = ensure_archive(network, app_data)?;
+    let root = cache_dir(app_data);
+    extract(&archive, &root).map_err(|source| ReleaseError::Extract {
+        path: archive.clone(),
+        source,
+    })?;
+    Ok(detect::detect_managed(app_data))
+}
+
+fn extract(archive: &Path, root: &Path) -> Result<(), io::Error> {
+    use std::io::Read;
+
+    let file = fs::File::open(archive).map_err(|source| {
+        io::Error::new(source.kind(), format!("{}: {source}", archive.display()))
+    })?;
+    let mut zip = zip::ZipArchive::new(file).map_err(io::Error::other)?;
+    let required = detect::required_files();
+    let mut found = 0;
+    for index in 0..zip.len() {
+        let mut entry = zip.by_index(index).map_err(io::Error::other)?;
+        if entry.is_dir() {
+            continue;
+        }
+        let Ok(entry_name) = entry.name() else {
+            continue;
+        };
+        let Some(name) = std::path::Path::new(entry_name.as_ref())
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_owned())
+        else {
+            continue;
+        };
+        if !required.contains(&name.as_str()) {
+            continue;
+        }
+        let target = root.join(&name);
+        let mut bytes = Vec::with_capacity(entry.size() as usize);
+        entry.read_to_end(&mut bytes)?;
+        fs::write(&target, &bytes)?;
+        set_executable(&target)?;
+        found += 1;
+    }
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|name| !root.join(name).is_file())
+        .map(|name| (*name).to_owned())
+        .collect();
+    if !missing.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "missing from archive: {} ({found} extracted)",
+                missing.join(", ")
+            ),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn set_executable(path: &Path) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+}
+
+#[cfg(not(unix))]
+fn set_executable(_path: &Path) -> io::Result<()> {
+    Ok(())
+}
+
 #[derive(Debug)]
 pub enum ReleaseError {
     UnsupportedPlatform,
@@ -115,6 +189,10 @@ pub enum ReleaseError {
     Checksum {
         path: PathBuf,
         source: HashError,
+    },
+    Extract {
+        path: PathBuf,
+        source: io::Error,
     },
 }
 
@@ -138,6 +216,9 @@ impl std::fmt::Display for ReleaseError {
             Self::Checksum { path, source } => {
                 write!(formatter, "{}: {source}", path.display())
             }
+            Self::Extract { path, source } => {
+                write!(formatter, "{}: failed to extract: {source}", path.display())
+            }
         }
     }
 }
@@ -148,6 +229,7 @@ impl std::error::Error for ReleaseError {
             Self::Directory { source, .. } | Self::Stale { source, .. } => Some(source),
             Self::Download { source, .. } => Some(source),
             Self::Checksum { source, .. } => Some(source),
+            Self::Extract { source, .. } => Some(source),
             Self::UnsupportedPlatform => None,
         }
     }
@@ -220,6 +302,57 @@ mod tests {
         let archive = directory.join(asset.file_name);
         fs::write(&archive, b"tampered").unwrap();
         assert!(!archive_matches(&archive, &asset));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    fn write_zip(path: &Path, names: &[&str]) {
+        use std::io::Write;
+        let file = fs::File::create(path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        for name in names {
+            writer
+                .start_file(format!("easytier-linux-x86_64/{name}"), options)
+                .unwrap();
+            writer.write_all(b"stub").unwrap();
+        }
+        writer.finish().unwrap();
+    }
+
+    #[test]
+    fn extracts_required_files_from_archive() {
+        let directory = temp_dir("easytier-release-extract");
+        let archive = directory.join("release.zip");
+        let required = detect::required_files();
+        write_zip(&archive, required);
+        let root = directory.join("out");
+        fs::create_dir_all(&root).unwrap();
+        extract(&archive, &root).unwrap();
+        for name in required {
+            assert!(root.join(name).is_file(), "missing {name}");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(root.join(required[0]))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o755);
+        }
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn extraction_reports_missing_required_files() {
+        let directory = temp_dir("easytier-release-extract-missing");
+        let archive = directory.join("release.zip");
+        write_zip(&archive, &[detect::required_files()[0]]);
+        let root = directory.join("out");
+        fs::create_dir_all(&root).unwrap();
+        let error = extract(&archive, &root).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
         let _ = fs::remove_dir_all(directory);
     }
 }

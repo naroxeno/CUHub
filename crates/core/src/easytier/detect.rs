@@ -33,6 +33,10 @@ pub enum Status {
     MissingFiles { missing: Vec<PathBuf> },
 }
 
+pub(crate) fn required_files() -> &'static [&'static str] {
+    &REQUIRED
+}
+
 pub fn detect_managed(app_data: &Path) -> Detection {
     let root = release::cache_dir(app_data);
     let version = if root.is_dir() {

@@ -2,29 +2,40 @@
 
 use std::fs;
 use std::io;
+use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 
+use crate::adopt::{self, AdoptError, AdoptPlan, AdoptReport};
 use crate::catalogs::{Catalogs, DependencyRequirement};
+use crate::easytier::{
+    self, DEFAULT_RELAYS, EasyTierMember, ReleaseError, Role, Tunnel, TunnelConfig, TunnelError,
+};
 use crate::github::{self, CheckFailure, RateLimit, ReleaseAsset, ReleaseInfo};
 use crate::hubconfig::{HubConfig, HubConfigChannel, HubConfigResult, HubConfigService};
 use crate::install::{self, UpgradePlan};
 use crate::launch::{self, LaunchError};
+use crate::links::LinkIndex;
 use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
 use crate::mods::{self, DependencyIssue, InstalledMod, ModsError};
+use crate::multiplayer::{MultiplayerState, RoomRole, TunnelState};
 use crate::network::{self, Fetch, Network, NetworkError};
 use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
 use crate::nexus_auth::{GithubTokenStore, KeyStoreError};
 use crate::paths::{self, PathError};
 use crate::platform;
+use crate::profiles::{self, ApplyOp, ApplyReport, ProfileError, ProfileStore};
+use crate::room::{RoomCode, RoomError};
 use crate::settings::{Settings, SettingsStore};
 use crate::source_choice::{ChoiceError, SourceChoices};
 use crate::sources::{self, Repo, SourceKind, SourceManifest};
 use crate::steam;
+use crate::store::Store;
 use crate::version::HubVersion;
 
 #[derive(Debug)]
@@ -32,6 +43,13 @@ pub enum HubError {
     NoGameFolder,
     Path(PathError),
     Mods(ModsError),
+    Profile(ProfileError),
+    ProfileNotFound(String),
+    Room(RoomError),
+    Tunnel(TunnelError),
+    Elevation,
+    EasyTier(ReleaseError),
+    Adopt(AdoptError),
     Launch(LaunchError),
     MissingMetadataLink,
     UnsafeMetadataLink,
@@ -69,6 +87,18 @@ impl std::fmt::Display for HubError {
             ),
             Self::Path(error) => error.fmt(formatter),
             Self::Mods(error) => error.fmt(formatter),
+            Self::Profile(error) => error.fmt(formatter),
+            Self::ProfileNotFound(name) => {
+                write!(formatter, "There is no profile named {name}.")
+            }
+            Self::Room(error) => error.fmt(formatter),
+            Self::Tunnel(error) => error.fmt(formatter),
+            Self::Elevation => write!(
+                formatter,
+                "Cuhub cannot create the virtual network adapter. On Windows, restart Cuhub as administrator; on Linux, grant CAP_NET_ADMIN to the EasyTier core."
+            ),
+            Self::EasyTier(error) => error.fmt(formatter),
+            Self::Adopt(error) => error.fmt(formatter),
             Self::Launch(error) => error.fmt(formatter),
             Self::MissingMetadataLink => {
                 write!(formatter, "This catalogue entry has no Nexus page link.")
@@ -152,6 +182,12 @@ impl std::error::Error for HubError {
             Self::Sources(error) => Some(error),
             Self::Path(error) => Some(error),
             Self::Mods(error) => Some(error),
+            Self::Profile(error) => Some(error),
+            Self::Adopt(error) => Some(error),
+            Self::Room(error) => Some(error),
+            Self::Tunnel(error) => Some(error),
+            Self::EasyTier(error) => Some(error),
+            Self::ProfileNotFound(_) | Self::Elevation => None,
             Self::Launch(error) => Some(error),
             Self::MissingMetadataLink | Self::UnsafeMetadataLink | Self::UnsafeLink => None,
             Self::OpenLink(error) => Some(error),
@@ -236,6 +272,24 @@ impl From<serde_json::Error> for HubError {
     }
 }
 
+impl From<RoomError> for HubError {
+    fn from(error: RoomError) -> Self {
+        Self::Room(error)
+    }
+}
+
+impl From<TunnelError> for HubError {
+    fn from(error: TunnelError) -> Self {
+        Self::Tunnel(error)
+    }
+}
+
+impl From<ReleaseError> for HubError {
+    fn from(error: ReleaseError) -> Self {
+        Self::EasyTier(error)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetadataRefresh {
     NotModified,
@@ -269,11 +323,23 @@ pub struct RemoteInstall {
     pub plan: UpgradePlan,
 }
 
+impl From<ProfileError> for HubError {
+    fn from(error: ProfileError) -> Self {
+        Self::Profile(error)
+    }
+}
+
+impl From<AdoptError> for HubError {
+    fn from(error: AdoptError) -> Self {
+        Self::Adopt(error)
+    }
+}
+
 pub struct Hub {
     app_data: PathBuf,
     settings_store: SettingsStore,
     settings: Settings,
-    logs: Logs,
+    logs: Arc<Logs>,
     catalogs: Catalogs,
     metadata_cache: MetadataCache,
     metadata: Vec<MetadataMod>,
@@ -283,6 +349,13 @@ pub struct Hub {
     github_tokens: GithubTokenStore,
     sources: Option<SourceManifest>,
     source_choices: SourceChoices,
+    store: Store,
+    links: LinkIndex,
+    profiles: ProfileStore,
+    multiplayer: MultiplayerState,
+    tunnel: Option<Tunnel>,
+    room: Option<RoomCode>,
+    tunnel_started: Option<Instant>,
 }
 
 impl Hub {
@@ -291,7 +364,7 @@ impl Hub {
         let _ = fs::create_dir_all(&app_data);
         let settings_store = SettingsStore::new(app_data.clone());
         let loaded = settings_store.load();
-        let logs = Logs::start(&app_data);
+        let logs = Arc::new(Logs::start(&app_data));
         if let Some(warning) = &loaded.warning {
             logs.error("Settings", &io::Error::other(warning.clone()));
         }
@@ -346,6 +419,10 @@ impl Hub {
         };
 
         let github_tokens = GithubTokenStore::new(app_data.clone());
+        let store = Store::new(loaded.settings.store_dir(&app_data));
+        let links = LinkIndex::load(&app_data);
+        let profiles = ProfileStore::new(app_data.clone());
+        let multiplayer = MultiplayerState::load(&app_data);
 
         Self {
             app_data,
@@ -361,6 +438,13 @@ impl Hub {
             github_tokens,
             sources,
             source_choices,
+            store,
+            links,
+            profiles,
+            multiplayer,
+            tunnel: None,
+            room: None,
+            tunnel_started: None,
         }
     }
 
@@ -381,8 +465,278 @@ impl Hub {
         normalized.clamp_ui_scale();
         self.settings_store.save(&normalized)?;
         self.settings = normalized;
+        self.store = Store::new(self.settings.store_dir(&self.app_data));
         self.logs.activity("Settings", "Settings saved.");
         Ok(())
+    }
+
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    pub fn links(&self) -> &LinkIndex {
+        &self.links
+    }
+
+    pub fn profiles(&self) -> &ProfileStore {
+        &self.profiles
+    }
+
+    pub fn set_active_profile(&mut self, name: Option<&str>) -> Result<(), HubError> {
+        self.profiles.set_active(name).map_err(HubError::Io)?;
+        Ok(())
+    }
+
+    pub fn plan_profile(&self, name: &str) -> Result<Vec<ApplyOp>, HubError> {
+        let profile = self
+            .profiles
+            .load(name)
+            .ok_or_else(|| HubError::ProfileNotFound(name.to_owned()))?;
+        let game_root = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        let plugins_root = self.plugins_dir()?;
+        profiles::plan_apply(
+            &profile,
+            &self.links,
+            &self.store,
+            &game_root,
+            &plugins_root,
+        )
+        .map_err(HubError::Profile)
+    }
+
+    pub fn apply_profile(&mut self, name: &str) -> Result<ApplyReport, HubError> {
+        self.ensure_game_closed()?;
+        let ops = self.plan_profile(name)?;
+        let game_root = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        let report = profiles::apply_plan(&mut self.links, &self.store, &game_root, &ops)?;
+        self.logs.activity(
+            "Profiles",
+            &format!(
+                "Applied profile {name}: {} operation(s).",
+                report.applied.len()
+            ),
+        );
+        Ok(report)
+    }
+
+    pub fn plan_adopt(&self) -> Result<AdoptPlan, HubError> {
+        let plugins_root = self.plugins_dir()?;
+        let mods = self.scan_mods()?;
+        Ok(adopt::plan_adopt(
+            &mods,
+            &plugins_root,
+            &self.store,
+            &self.links,
+        ))
+    }
+
+    pub fn apply_adopt(&mut self, plan: &AdoptPlan) -> Result<AdoptReport, HubError> {
+        self.ensure_game_closed()?;
+        let game_root = self.game_folder().ok_or(HubError::NoGameFolder)?;
+        let backup_root = self.backup_root();
+        let report =
+            adopt::apply_adopt(plan, &self.store, &mut self.links, &game_root, &backup_root)?;
+        self.logs.activity(
+            "Adopt",
+            &format!("Adopted {} mod(s) into the store.", report.adopted.len()),
+        );
+        Ok(report)
+    }
+
+    pub fn multiplayer_state(&self) -> &MultiplayerState {
+        &self.multiplayer
+    }
+
+    pub fn set_multiplayer_core_path(&mut self, path: Option<PathBuf>) -> Result<(), HubError> {
+        self.multiplayer.core_path = path;
+        self.multiplayer.save(&self.app_data).map_err(HubError::Io)
+    }
+
+    pub fn core_ready(&self) -> easytier::Status {
+        easytier::detect_managed(&self.app_data).status
+    }
+
+    pub fn can_create_tunnel(&self) -> bool {
+        crate::platform::elevated()
+    }
+
+    pub fn room_code(&self) -> Option<String> {
+        self.room.as_ref().map(RoomCode::encode)
+    }
+
+    pub fn tunnel_peers(&self) -> Result<Vec<EasyTierMember>, HubError> {
+        match &self.tunnel {
+            Some(tunnel) => tunnel.peers().map_err(HubError::Tunnel),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    pub fn tunnel_virtual_ip(&self) -> Option<Ipv4Addr> {
+        let tunnel = self.tunnel.as_ref()?;
+        match tunnel.role() {
+            Role::Host => Some(Ipv4Addr::new(10, 144, 144, 1)),
+            Role::Guest => tunnel.host().map(|host| host.address),
+        }
+    }
+
+    pub fn tunnel_state(&mut self) -> TunnelState {
+        if self.tunnel_started.is_none() {
+            return TunnelState::Idle;
+        }
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return TunnelState::Idle;
+        };
+        if !tunnel.is_alive() {
+            return TunnelState::Failed(
+                "The EasyTier core exited. Open the log for the reason.".to_owned(),
+            );
+        }
+        let role = tunnel.role();
+        let port = tunnel.port();
+        match tunnel.poll() {
+            Ok(Some(host)) if role == Role::Guest => TunnelState::Connected {
+                virtual_ip: host.address,
+                port,
+            },
+            Ok(Some(_)) => TunnelState::WaitingPeer,
+            Ok(None) => {
+                let host_ip = Ipv4Addr::new(10, 144, 144, 1);
+                let has_guest = tunnel.peers().map(|peers| peers.len() > 1).unwrap_or(false);
+                if role == Role::Host && has_guest {
+                    TunnelState::Connected {
+                        virtual_ip: host_ip,
+                        port,
+                    }
+                } else {
+                    TunnelState::WaitingPeer
+                }
+            }
+            Err(error) => TunnelState::Failed(error.to_string()),
+        }
+    }
+
+    pub fn start_host(&mut self, port: u16) -> Result<String, HubError> {
+        if port == 0 {
+            return Err(HubError::Install(
+                "Choose a port between 1 and 65535.".to_owned(),
+            ));
+        }
+        self.stop_multiplayer();
+        let room = RoomCode::generate();
+        let code = room.encode();
+        let tunnel = self.start_tunnel(room, Role::Host, port)?;
+        self.tunnel = Some(tunnel);
+        self.room = Some(room);
+        self.tunnel_started = Some(Instant::now());
+        self.remember_room(RoomRole::Host, &code);
+        self.logs.activity(
+            "Multiplayer",
+            &format!("Hosting room {code} on port {port}."),
+        );
+        Ok(code)
+    }
+
+    pub fn join_room(&mut self, input: &str, port: u16) -> Result<String, HubError> {
+        if port == 0 {
+            return Err(HubError::Install(
+                "Choose a port between 1 and 65535.".to_owned(),
+            ));
+        }
+        self.stop_multiplayer();
+        let room = RoomCode::parse(input)?;
+        let code = room.encode();
+        let tunnel = self.start_tunnel(room, Role::Guest, port)?;
+        self.tunnel = Some(tunnel);
+        self.room = Some(room);
+        self.tunnel_started = Some(Instant::now());
+        self.remember_room(RoomRole::Guest, &code);
+        self.logs.activity(
+            "Multiplayer",
+            &format!("Joining room {code} on port {port}."),
+        );
+        Ok(code)
+    }
+
+    pub fn leave_multiplayer(&mut self) {
+        self.stop_multiplayer();
+        self.logs.activity("Multiplayer", "Left the room.");
+    }
+
+    fn start_tunnel(&self, room: RoomCode, role: Role, port: u16) -> Result<Tunnel, HubError> {
+        if !crate::platform::elevated() {
+            return Err(HubError::Elevation);
+        }
+        let mut detection = easytier::detect_managed(&self.app_data);
+        if detection.status != easytier::Status::Complete {
+            if let Some(path) = self.multiplayer.core_path.clone() {
+                let custom = easytier::detect_custom(&path);
+                if custom.status == easytier::Status::Complete {
+                    detection = custom;
+                } else {
+                    self.logs.error(
+                        "Multiplayer",
+                        &io::Error::other(format!(
+                            "The custom EasyTier folder {} is incomplete.",
+                            path.display()
+                        )),
+                    );
+                }
+            }
+        }
+        if detection.status != easytier::Status::Complete {
+            let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
+            detection =
+                easytier::ensure_installed(network, &self.app_data).map_err(HubError::EasyTier)?;
+        }
+        if detection.status != easytier::Status::Complete {
+            return Err(HubError::Install(
+                "EasyTier files are missing after extraction.".to_owned(),
+            ));
+        }
+        let core = detection.core.ok_or_else(|| {
+            HubError::Install("The EasyTier core executable was not found.".into())
+        })?;
+        let cli = detection.cli.ok_or_else(|| {
+            HubError::Install("The EasyTier CLI executable was not found.".into())
+        })?;
+        let relays = self
+            .multiplayer
+            .relay_override
+            .clone()
+            .filter(|relays| !relays.is_empty())
+            .unwrap_or_else(|| {
+                DEFAULT_RELAYS
+                    .iter()
+                    .map(|relay| (*relay).to_owned())
+                    .collect()
+            });
+        Tunnel::start(
+            TunnelConfig {
+                core,
+                cli,
+                room,
+                role,
+                port,
+                relays,
+            },
+            Arc::clone(&self.logs),
+        )
+        .map_err(HubError::Tunnel)
+    }
+
+    fn remember_room(&mut self, role: RoomRole, code: &str) {
+        self.multiplayer.set_last_room(role, code);
+        if let Err(error) = self.multiplayer.save(&self.app_data) {
+            self.logs.error("Multiplayer", &error);
+        }
+    }
+
+    fn stop_multiplayer(&mut self) {
+        if let Some(mut tunnel) = self.tunnel.take() {
+            tunnel.stop();
+        }
+        self.room = None;
+        self.tunnel_started = None;
     }
 
     pub fn hub_config_cached(&self) -> HubConfigResult {

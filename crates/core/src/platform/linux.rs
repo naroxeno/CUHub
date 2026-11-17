@@ -42,6 +42,19 @@ pub fn downloads_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+pub fn elevated() -> bool {
+    const CAP_NET_ADMIN: u32 = 12;
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|line| line.strip_prefix("CapEff:").map(str::trim))
+                .and_then(|value| u64::from_str_radix(value, 16).ok())
+        })
+        .is_some_and(|caps| caps & (1 << CAP_NET_ADMIN) != 0)
+}
+
 pub fn open_url(url: &str) -> io::Result<Child> {
     Command::new("xdg-open")
         .arg(url)

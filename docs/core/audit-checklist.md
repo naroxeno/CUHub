@@ -179,7 +179,7 @@
 初判：待议。
 
 **E3 macOS 缺口**
-位置：`platform/mod.rs`（无 macos 分支）、桥的 bottle 手填。
+位置：`platform.rs`（无 macos 分支）、桥的 bottle 手填。
 要看：macOS 是否只承诺「配置器 + 宿主」。
 初判：待议（要写进文档）。
 

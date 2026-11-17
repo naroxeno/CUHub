@@ -59,6 +59,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | W 游戏内联动（Bridge） | 桥发现与握手、连接状态、联机/存档/皮肤三个 mod 的只读状态与受限命令 | P0/P1 |
 | X BepInEx 自动安装 | 5 LTS / 6 Mono 选择、sha256 校验、两段式安装、修复重装、IL2CPP 与运行中拒绝 | P0 |
 | Y 远程模组页 | 本机 GitHub 清单的只读浏览、搜索/过滤/分页、首次安装与按清单更新 | P1 |
+| Z 内容库与档案 | 配置档案的列表/新建/应用/删除，内容库迁移的扫描与执行 | P1 |
 
 ---
 
@@ -303,18 +304,22 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **Q5 (P1)** 诊断日志内容：最近 10 分钟活动 + 环境 + 游戏/插件快照。
 - **Q6 (P1)** CLI `--diagnostics`（无窗口）：打印版本/OS/用户名（root 标注）、数据目录（非绝对路径要报错）、日志目录、应用目录；检查三个内嵌资源存在与否；Steam 段列出库、app id、真实大小写、DLL 数量与非小写扩展名计数；输出 RESULT 行并以退出码表示成败。
 - **Q7 (P1)** CLI `--selftest`（无显示器）：构建全部页面、设置向导与对话框各一次，报告 OK/FAILED；有皮肤时额外合成一次正面与镜像预览并校验件数（可落 PNG）。等价于 CI 冒烟。
-- **Q8 (P2)** 开发者控制台页（隐藏入口）：与 Debug 页共用数据源。
+### R. Multiplayer（虚拟局域网，P1）
 
-### R. Multiplayer（预览，P2）
+> 实现状态（2026-11-17）：R2–R10 已落地并有单测；R1 按实现收窄；R11 条件未触发；双机联调与 Windows 实机未做。
 
-- **R1 (P2)** 明确“布局预览”声明：服务器是虚构的、不联网、Join 无效。
-- **R2 (P2)** 控件：Hide locked、Refresh、按名称过滤、区域下拉（nae/naw/euw/eue/sa/as/oce）、Ping 阈值（Any/50/100/150）、按 Ping 升序。
-- **R3 (P2)** 行：名称、Mood（Casual/Hardcore/Roleplay）、Layer 1-3、Locked、人口 P/C、Ping、模组数、Join。
-- **R4 (P2)** 空态 “No sample servers match those filters.”，Refresh 提示 “Sample data reloaded. There is no multiplayer service to query yet.”。
-
-### S. 打包与发布
-
-- **S0 (P0)** 分发走 **GitHub Releases**：tag 触发构建，产物为 Windows exe + Linux tar.gz（附 SHA-256 校验和），发布说明与内嵌 `Version {version}.txt` 同源；不做应用内自更新，升级由用户重新下载。
+- **R1 (P1)** 联机页只做虚拟局域网；Steam 联机仍走游戏内方式，不提供模式切换；切页不丢已填房间码。
+- **R2 (P0)** 状态卡：Idle / WaitingPeer / Connected（虚拟 IP · 端口）/ Failed，另加两条前置提示——EasyTier 未就绪（下载说明 + 指定目录卡）、TUN 权限不足（常显「需要管理员权限」）。Starting / Stopping 由按钮 busy 文案表达。
+- **R3 (P0)** 首次使用下载 EasyTier 2.6.4（约 33 MB，sha256 校验），解压只取 core / cli / wintun.dll / Packet.dll；失败可再点一次重试（无断点续传）；可指定已装目录并持久化。
+- **R4 (P0)** 开房：生成 C1 房间码，大号字显示、可复制；端口默认 25565 可改；离开前二次确认。
+- **R5 (P0)** 加入：粘贴房间码（大小写、`-`、空格不敏感，前缀可省，room.rs 20 个单测覆盖）；发现轮询 1.5 s，约 60 s 仍无房主时提示「还没找到房主」；「手动填 IP:端口」退路未做（P2）。
+- **R6 (P0)** 已连接：显示虚拟 IP、角色、对端表（主机名 / 虚拟 IP / 本机标记）；延迟与直连/中继列需扩 `EasyTierMember`，P2；拿到地址不自动替玩家进游戏。
+- **R7 (P0)** 错误文案：房间码错、权限不足、下载/网络、核心目录无效、启动失败、找不到房主、其它；不出现「内核」「RPC」「网络密钥」。`PortInUse` 与 `TunUnavailable` 未细分（P2）。
+- **R8 (P0)** `multiplayer.json`（0600，原子写）只存 `lastRoom{role,code}`、`corePath`、`relayOverride`；密钥只从房间码在内存派生，不落盘、不进日志。
+- **R9 (P0)** 同一时刻只允许一个隧道；重复开房或加入先停旧进程再起新的。
+- **R10 (P0)** 提权：不自提权。`platform::elevated()`（Windows `Shell32!IsUserAnAdmin`、Linux `CapEff` 第 12 位 `CAP_NET_ADMIN`、macOS 恒真）不足时状态卡常显提示「以管理员身份重新打开 Cuhub」，点击开房/加入直接报权限错，不弹 UAC、不循环重试。
+- **R11 (P1)** 桥（W1–W6 条件触发）：`mp.state` 扩展 `transport` / `virtual_ip` / `lan_port` / `room_code`，`mp.join` 接受这些字段；联机 mod 作者确认前保留复制粘贴兜底。
+- **R12 (P1)** 单测：房间码往返/校验/多命中、CLI JSON、参数生成、release 解压；本机双实例、双机同/异 NAT、杀内核清理仍待实测。
 - **S1 (P0)** 单文件自包含可执行（Windows exe + Linux）；内嵌：依赖目录、不兼容目录、发布说明（`Version {version}.txt`）、离线公告副本。
 - **S2 (P0)** `Data/` 目录（可执行文件旁）优先于内嵌资源，允许用户手改目录数据；改动按文件时间戳重载。
 - **S3 (P0)** 版本号来自二进制自述（编译期注入），并与发布说明文件名对应；启动时读它决定公告频道（预发布 / 正式）。
@@ -322,6 +327,18 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **S5 (P1)** Linux 包：tar.gz + `README-linux.txt`（chmod 说明、可选 desktop entry）；desktop entry 在含空格路径下也能启动。
 - **S6 (P1)** Windows：单 exe；DPAPI 可用；注册表探 Steam。
 - **S7 (P2)** 发布流水线检查（GitHub Actions）：仅 main 能打 tag、版本可读、内嵌说明存在、tag 不重复、版本类型（预发布/正式）与 tag 一致、产物自报版本与 tag 一致。
+
+- **S8 (P2, 暂不做)** 体积优化备选。实测现状（2026-11-17）：Linux 57.8 MB、Windows 56.7 MB、`Cuhub.zip` 23.0 MB、`Cuhub-setup.exe` 17.6 MB；打包 profile 已是 `opt-level=3` + thin LTO + `codegen-units=1` + `strip="debuginfo"`（见 justfile 顶部导出）。以下各项均未实施，按预估收益排序：
+
+| 项 | 现状 | 做法 | 预估 | 代价 / 风险 | 决定 |
+|---|---|---|---|---|---|
+| nsh feature 裁剪 | 平台依赖开着 editor / emoji-picker / highlight / math / plot / rich-editor / term / shader 八项，而 `crates/app` 只 import `nsh_core::prelude` 与 `nsh_base::input` | 三个平台的 `features` 收成 `[]`（`nsh check` 已于 2026-11-17 临时验证通过并还原） | 57 → 约 35–40 MB | 需重跑 `just package-linux` 实测；生成的 `.nsh/rust/rust-*` 自带 `nsh-base` 的 `highlight`，未必能全砍 | 暂不做 |
+| strip 符号表 | `strip = "debuginfo"`，保留符号 | 改 `strip = "symbols"` | -3~6 MB | 崩溃栈只剩地址，须另存 `.dbg` 才能回溯 | 暂不做 |
+| 依赖降 opt | 全量 `opt-level = 3` | `[profile.release.package."*"] opt-level = "s"` | 约 -5% | 渲染与解码略慢，需先有渲染基准 | 暂不做 |
+| panic = abort | 保持 `unwind`：nsh 靠它 catch 组件 panic 并显示错误界面 | 改 `abort` | -1~3 MB | 组件 panic 直接终止进程，nsh 错误界面失效 | 不做 |
+| UPX 加壳 | 无 | 打包后加壳 | 约 20 MB | 杀软误报、启动解压开销，发行版尤其不合适 | 不做 |
+
+> 量测注意：`just release` 只构建、不在 `.nsh/rust/target` 留产物（release 目录为空），精确 A/B 必须走 `just package-linux`（约 5 分钟）。
 
 ### T. 明确不复刻
 
@@ -406,6 +423,23 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 实现状态（2026-11-15）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker，`pages::remote_mods` 负责视图；pending 面板与 `apply_pending` 复用 Local Mods 的同一套。未做：清单重载（core 无 reload 接口，改清单需重启）、远端 release 版本预检（按钮不判断是否有新版）、清单下发（清单目前需手工放到 `<AppData>/Sources/manifest.json`）。
 
 边界：只读清单，不在应用内编辑或抓取；不重托管模组、不伪造下载 URL；游戏进程检查、路径越界与目标已存在由 core 拒绝，界面只展示错误。
+
+### Z. 内容库与档案（P1）
+
+DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据根：`Store` 保存每个版本的不可变载荷，`Links.json` 是部署归属的唯一权威，`Profiles/<name>/profile.json` 只记录「想要哪些版本」。Z 是这套模型的第一块界面入口：左栏「模组」组里、本地模组之后的「模组档案」页，分「配置档案」与「内容库迁移」两块。
+
+- **Z1 (P0)** 档案列表：读 `ProfileStore::list()` 与 `active()`，逐行显示名称、当前标记和 `load(name).entries.len()`；启动时（`Ui::new` 之后）在 worker 里读一次，操作成功后自动刷新，另有「刷新」兜底，不做轮询。没有档案时显示说明与新建入口。
+- **Z2 (P0)** 新建：名称输入 + 「从当前部署创建」与「新建空白」。前者把 `Links.json` 的条目映射成 `ProfileEntry{modId,version,enabled:true,source:None,link:kind}`，同一 `modId` 有多个部署时取第一条；后者 `entries` 为空。名称字符集与 core 一致（`[A-Za-z0-9._-]`，不允许 `.`/`..`），core 拒绝时界面显示原因；同名覆盖前二次确认，覆盖时保留原 active 标记。
+- **Z3 (P0)** 应用：先 `plan_profile(name)` 取 `ApplyOp` 条数，内联确认写明「会改动 Plugins、游戏必须关闭」；确认后在 worker 里 `apply_profile(name)`。只有 apply 成功才 `set_active_profile(Some(name))`，失败不改 active。失败按 `error_key` 映射成可读文案（未设游戏目录、档案不存在、计划构建失败、游戏运行中、IO、通用）。
+- **Z4 (P0)** 删除：二次确认；删除当前档案先 `set_active_profile(None)` 再 `profiles().remove(name)`。删除只删档案文件，不回滚已部署文件，确认文案写明这一点。
+- **Z5 (P0)** 扫描迁移：`plan_adopt()` 后显示可迁移数、跳过数与按 `AdoptSkip` 变体的原因计数（已禁用、已在管理、Plugins 之外、名称不合法、缺版本、内容库已有该版本、重名）；扫描中与失败各有状态。扫描只读，不改文件。
+- **Z6 (P0)** 执行迁移：确认框写「将移动 N 个模组到内容库并备份原文件到 Backups/Adopt-…」，并注明会改动游戏目录；确认后在同一个 worker 里重新 `plan_adopt()` 再 `apply_adopt(&plan)`（计划不跨线程），成功后显示 adopted 数与备份目录；`AdoptError::Adopt` 的部分完成保留已完成项并提示剩余。迁移永不默认执行。
+- **Z7 (P1)** 语言与实现词：新增文案全部走 `nav.profiles` / `profiles.*`（en / zh-CN / ja），界面不出现 plan、staging、manifest 等实现词；破坏性操作的范围写在确认框里。
+- **Z8 (P1)** 线程与一致性：所有 Hub 调用在 worker（`spawn_worker` + `blocking`）里执行，UI 线程只读信号；切换档案不改 `Links.json` 之外的配置，`configOverrides` 仍只持久化、不执行；BepInEx 与 `config` 的部署不受档案应用影响。
+
+实现状态（2026-11-17）：Z1–Z7 的界面部分已落地——`crates/app/src/ui/profiles.rs` 负责行模型、worker 与错误映射，`crates/app/src/pages/profiles.rs` 负责视图与内联确认；core 侧 `plan_profile` / `apply_profile` / `plan_adopt` / `apply_adopt` 均为既有实现，本次未改 core。未做：DESIGN-v2 §3 的 M4 整合包（pack manifest 导入/导出、CUPK1 打包）未开始；档案区还没有 `configOverrides` 编辑、条目级启用/禁用与条目复制（字段已存在，无 UI 入口）；迁移撤销（undo adopt）与内容库删除/清空的两段式入口未做。
+
+边界：迁移只处理 Plugins 下的散装条目，被跳过的条目原样保留；删除档案不回滚已部署文件；档案应用只按 `Links.json` 重建 Plugins 根层部署，不触碰 `BepInEx/config`；路径越界、游戏运行中与目标冲突由 core 拒绝，界面只展示错误。
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## 职责
 
-收口平台差异：应用数据根、默认下载目录、打开 URL 与 Steam 启动回退。三种实现：`windows.rs`、`linux.rs`、`macos.rs`，由 `mod.rs` 按 `cfg` 选择。
+收口平台差异：应用数据根、默认下载目录、打开 URL 与 Steam 启动回退。三种实现：`windows.rs`、`linux.rs`、`macos.rs`，由 `platform.rs` 按 `cfg` 选择。
 
 ## 输入输出
 

@@ -7,7 +7,7 @@
 - jj 仓库（colocated，`main` 分支）；基础规则、app 原型与 core 分模块提交都在 `main`，`@` 是新的空 change。
 - 骨架：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
 - core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`nexus_auth`、`nexus`、`hub`、`github`、`sources`、`source_choice`、`install`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
-- 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-only`；与上游一致。
+- 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-or-later`（2026-11-17 由 `-only` 改为 `-or-later`，便于与陶瓦等 or-later 代码合流）。
 - app（2026-11-15）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。GitHub 源在 Local Mods 每行第三行显示仓库、匹配依据、check 结果与生效源，可手动 Check；OutOfDate 或 GitHub release 版本更高的行可 Update（未列入清单的模组同样适用），下载归档后先展示计划再 Apply，游戏运行中排队。Multiplayer、Skins & Backups 仍是占位。界面文案已接 i18n：`locales/app.yml` 在仓库根（与 `nsh.json` 同级），`_version: 2` 采用 key 在外、语言在内的写法；nsh 在 run/dev/test/package 时写成 `.nsh/rust/translations.json` 并注入入口，普通 cargo 构建不注入。Settings 页 Language 可选 System / English / 日本語 / 简体中文，`Settings.language` 持久化；切换语言会 `set_locale` 并重建 local / nexus 行。core 错误文案仍为英文。
 - 2026-11-15 晚：BepInEx 自动安装（默认 5 LTS 5.4.23.6、设置页可选 6 Mono，sha256 校验、修复只覆盖白名单文件、IL2CPP 与游戏运行中拒绝）、模组导航改为树形（Nexus / 远程 / 本地），新增远程模组页（只读 `<AppData>/Sources/manifest.json`，安装走两段式确认）；`ui.rs` 与 `pages.rs` 拆成模块目录（根文件留 `mod` + `pub use`）；三处输入框补像素字体；`dist/{linux,windows,macos}` 为打包输出（已 gitignore），Windows 包含 Inno 安装器与测试清单。
 - 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
@@ -29,7 +29,7 @@
 |---|---|
 | 结构 | 两个 crate：`core`（无 UI）+ `app`（nsh），依赖单向 |
 | 交互形态 | 方案 C：`Hub` 门面 + 最多 5 个事件变体，不用事件总线 |
-| 许可 | 仓库与两个 crate 使用 AGPL-3.0-only（`LICENSE` 为 AGPL-3.0 全文） |
+| 许可 | 仓库与两个 crate 使用 AGPL-3.0-or-later（`LICENSE` 为 AGPL-3.0 全文） |
 | 下载 | 模组文件下载也归 `core::network`；`app` 不联网 |
 | 启动 | `core::launch` 经 `steam://rungameid/{appid}` 启动，失败回退 `steam -applaunch`；不直接跑 exe |
 | 平台差异 | `core/src/platform/{windows,linux}.rs`，同名函数导出 |

@@ -43,6 +43,10 @@ nav.local_mods:
   en: "Local Mods"
   zh-CN: "本地模组"
   ja: "ローカルMOD"
+nav.profiles:
+  en: "Mod Profiles"
+  zh-CN: "模组档案"
+  ja: "MODプロファイル"
 nav.multiplayer:
   en: "Multiplayer"
   zh-CN: "多人游戏"
@@ -567,26 +571,238 @@ delete.deleting:
   en: "Deleting…"
   zh-CN: "正在删除…"
   ja: "削除中…"
-multiplayer.intro:
-  en: "Session list and share codes land here at runtime."
-  zh-CN: "对局列表与分享码会在运行时出现在这里。"
-  ja: "セッション一覧と共有コードは実行時にここへ表示されます。"
-multiplayer.share_code:
-  en: "Share code"
-  zh-CN: "分享码"
-  ja: "共有コード"
+multiplayer.status:
+  en: "CONNECTION"
+  zh-CN: "连接状态"
+  ja: "接続状態"
+multiplayer.state_idle:
+  en: "Not connected"
+  zh-CN: "未连接"
+  ja: "未接続"
+multiplayer.state_idle_hint:
+  en: "Host or join a room to play over your local network."
+  zh-CN: "开房或加入房间，就能和朋友在局域网里联机。"
+  ja: "ルームを立てるか参加すると、LAN で一緒に遊べます。"
+multiplayer.state_waiting:
+  en: "Waiting for players"
+  zh-CN: "等待玩家加入"
+  ja: "プレイヤーを待っています"
+multiplayer.state_waiting_hint:
+  en: "Send the room code to a friend. They connect as soon as they join."
+  zh-CN: "把房间码发给朋友，对方一加入就会连上。"
+  ja: "ルームコードを友だちに送ると、参加した時点でつながります。"
+multiplayer.state_connected:
+  en: "Connected"
+  zh-CN: "已连接"
+  ja: "接続しました"
+multiplayer.state_connected_hint:
+  en: "Open the game's LAN menu to play together."
+  zh-CN: "在游戏里打开局域网菜单，就能一起玩了。"
+  ja: "ゲームの LAN メニューから一緒に遊べます。"
+multiplayer.state_failed:
+  en: "Connection lost"
+  zh-CN: "连接已断开"
+  ja: "接続が切れました"
+multiplayer.state_failed_hint:
+  en: "Check your network and administrator rights, then host or join again."
+  zh-CN: "请检查网络和管理员权限，然后重新开房或加入。"
+  ja: "ネットワークと管理者権限を確認して、もう一度ルームを立てるか参加してください。"
+multiplayer.state_elevation:
+  en: "Administrator rights needed"
+  zh-CN: "需要管理员权限"
+  ja: "管理者権限が必要です"
+multiplayer.state_elevation_hint:
+  en: "Restart Cuhub as administrator (on Linux, grant CAP_NET_ADMIN) so it can create the virtual network adapter."
+  zh-CN: "请以管理员身份重新打开 Cuhub（Linux 需授予 CAP_NET_ADMIN），它才能创建虚拟网卡。"
+  ja: "仮想ネットワークアダプターを作るため、Cuhub を管理者として開き直してください（Linux は CAP_NET_ADMIN を付与）。"
+multiplayer.connected_detail:
+  en: "LAN address %{ip} · port %{port}"
+  zh-CN: "局域网地址 %{ip} · 端口 %{port}"
+  ja: "LAN アドレス %{ip} · ポート %{port}"
+multiplayer.busy_host:
+  en: "Starting the room…"
+  zh-CN: "正在开房…"
+  ja: "ルームを立てています…"
+multiplayer.busy_join:
+  en: "Joining…"
+  zh-CN: "正在加入…"
+  ja: "参加しています…"
+multiplayer.busy_leave:
+  en: "Leaving…"
+  zh-CN: "正在离开…"
+  ja: "退出しています…"
+multiplayer.busy_core:
+  en: "Saving…"
+  zh-CN: "正在保存…"
+  ja: "保存しています…"
+multiplayer.host_panel:
+  en: "HOST A ROOM"
+  zh-CN: "开房"
+  ja: "ルームを立てる"
+multiplayer.host_hint:
+  en: "Create a room code and wait for a friend."
+  zh-CN: "生成一个房间码，等朋友加入。"
+  ja: "ルームコードを作って、友だちの参加を待ちます。"
 multiplayer.host:
-  en: "Host session"
-  zh-CN: "创建对局"
-  ja: "セッションをホスト"
+  en: "Host a room"
+  zh-CN: "开房"
+  ja: "ルームを立てる"
+multiplayer.join_panel:
+  en: "JOIN A ROOM"
+  zh-CN: "加入房间"
+  ja: "ルームに参加"
+multiplayer.join_hint:
+  en: "Paste the room code a friend sent you."
+  zh-CN: "填入朋友发来的房间码。"
+  ja: "友だちから届いたルームコードを入力します。"
 multiplayer.join:
-  en: "Join session"
-  zh-CN: "加入对局"
-  ja: "セッションに参加"
-multiplayer.not_wired:
-  en: "Not wired in the prototype."
-  zh-CN: "原型中尚未接入。"
-  ja: "プロトタイプでは未接続です。"
+  en: "Join a room"
+  zh-CN: "加入"
+  ja: "参加する"
+multiplayer.port:
+  en: "Port"
+  zh-CN: "端口"
+  ja: "ポート"
+multiplayer.port_hint:
+  en: "Keep 25565 unless the game says otherwise."
+  zh-CN: "默认 25565，和游戏里的端口保持一致。"
+  ja: "ゲーム側に指定がなければ 25565 のままで。"
+multiplayer.code:
+  en: "Room code"
+  zh-CN: "房间码"
+  ja: "ルームコード"
+multiplayer.code_placeholder:
+  en: "C1-XXXX-XXXX-XXXX-XXXX"
+  zh-CN: "C1-XXXX-XXXX-XXXX-XXXX"
+  ja: "C1-XXXX-XXXX-XXXX-XXXX"
+multiplayer.code_hint:
+  en: "C1- can be left out. Case, spaces and dashes don't matter."
+  zh-CN: "可省略 C1-，大小写、空格和 - 都不影响。"
+  ja: "C1- は省略できます。大文字小文字・空白・- は区別しません。"
+multiplayer.room_panel:
+  en: "ROOM"
+  zh-CN: "房间"
+  ja: "ルーム"
+multiplayer.role:
+  en: "Role"
+  zh-CN: "角色"
+  ja: "役割"
+multiplayer.role_host:
+  en: "Host"
+  zh-CN: "房主"
+  ja: "ホスト"
+multiplayer.role_guest:
+  en: "Guest"
+  zh-CN: "成员"
+  ja: "ゲスト"
+multiplayer.copy:
+  en: "Copy"
+  zh-CN: "复制"
+  ja: "コピー"
+multiplayer.copied:
+  en: "Room code copied."
+  zh-CN: "房间码已复制。"
+  ja: "ルームコードをコピーしました。"
+multiplayer.peers:
+  en: "PLAYERS"
+  zh-CN: "玩家"
+  ja: "プレイヤー"
+multiplayer.peer_empty:
+  en: "No one else has joined yet."
+  zh-CN: "还没有其他玩家加入。"
+  ja: "まだ他のプレイヤーはいません。"
+multiplayer.peer_local:
+  en: "you"
+  zh-CN: "本机"
+  ja: "あなた"
+multiplayer.leave:
+  en: "Leave"
+  zh-CN: "离开房间"
+  ja: "退出"
+multiplayer.leave_warning:
+  en: "Leaving ends the connection and the LAN room disappears from the game."
+  zh-CN: "离开后连接会断开，游戏里的局域网房间也会消失。"
+  ja: "退出すると接続が切れ、ゲーム内の LAN ルームも消えます。"
+multiplayer.leave_confirm:
+  en: "Leave room"
+  zh-CN: "确认离开"
+  ja: "退出する"
+multiplayer.setup_panel:
+  en: "BEFORE YOU START"
+  zh-CN: "开始之前"
+  ja: "はじめに"
+multiplayer.setup_note:
+  en: "The first room downloads EasyTier (about 33 MB) automatically, then carries on."
+  zh-CN: "首次开房会自动下载 EasyTier（约 33 MB），下完会继续。"
+  ja: "初回は EasyTier（約 33 MB）を自動でダウンロードしてから続行します。"
+multiplayer.setup_av:
+  en: "If your antivirus flags it, allow EasyTier to run."
+  zh-CN: "如果杀毒软件报警，请允许 EasyTier 运行。"
+  ja: "ウイルス対策ソフトが警告した場合は、EasyTier の実行を許可してください。"
+multiplayer.core_path:
+  en: "Installed EasyTier folder"
+  zh-CN: "已安装的 EasyTier 目录"
+  ja: "インストール済みの EasyTier フォルダー"
+multiplayer.core_path_placeholder:
+  en: "Type the EasyTier folder"
+  zh-CN: "输入 EasyTier 目录"
+  ja: "EasyTier フォルダーを入力"
+multiplayer.core_path_hint:
+  en: "The folder must contain easytier-core and easytier-cli. Leave it empty to download automatically."
+  zh-CN: "目录里要有 easytier-core 和 easytier-cli；留空则自动下载。"
+  ja: "easytier-core と easytier-cli があるフォルダーを指定します。空欄なら自動でダウンロードします。"
+multiplayer.core_save:
+  en: "Save"
+  zh-CN: "保存"
+  ja: "保存"
+multiplayer.core_clear:
+  en: "Clear"
+  zh-CN: "清除"
+  ja: "クリア"
+multiplayer.core_saved:
+  en: "EasyTier folder saved."
+  zh-CN: "已保存 EasyTier 目录。"
+  ja: "EasyTier フォルダーを保存しました。"
+multiplayer.core_cleared:
+  en: "EasyTier folder cleared."
+  zh-CN: "已清除 EasyTier 目录。"
+  ja: "EasyTier フォルダーの設定を消しました。"
+multiplayer.core_missing:
+  en: "That folder has no usable EasyTier. Hosting downloads it instead."
+  zh-CN: "这个目录里没有可用的 EasyTier，开房时会自动下载。"
+  ja: "このフォルダーに使える EasyTier がありません。ルーム作成時に自動ダウンロードします。"
+multiplayer.error_elevation:
+  en: "Hosting and joining need administrator rights. Reopen Cuhub as administrator."
+  zh-CN: "开房和加入需要管理员权限，请以管理员身份重新打开 Cuhub。"
+  ja: "ルームの作成・参加には管理者権限が必要です。管理者として Cuhub を開き直してください。"
+multiplayer.error_not_found:
+  en: "No host found yet. Check that the room code matches and the host is online."
+  zh-CN: "还没找到房主。请确认房间码一致、对方已开房并在线。"
+  ja: "ホストが見つかりません。ルームコードと相手の状態を確認してください。"
+multiplayer.error_port:
+  en: "Choose a port between 1 and 65535."
+  zh-CN: "端口要在 1 到 65535 之间。"
+  ja: "ポートは 1〜65535 の範囲で指定してください。"
+multiplayer.error_code:
+  en: "That room code isn't valid. Check it and try again."
+  zh-CN: "房间码无效，检查一下再试。"
+  ja: "ルームコードが正しくありません。確認してもう一度お試しください。"
+multiplayer.error_download:
+  en: "EasyTier couldn't be downloaded. Check the network, or point to an installed folder."
+  zh-CN: "EasyTier 下载失败，检查网络后再试，或指定已安装的目录。"
+  ja: "EasyTier をダウンロードできませんでした。ネットワークを確認するか、インストール済みのフォルダーを指定してください。"
+multiplayer.error_start:
+  en: "The room couldn't start. Try again."
+  zh-CN: "启动失败，请重试。"
+  ja: "ルームを開始できませんでした。もう一度お試しください。"
+multiplayer.error_core_path:
+  en: "Couldn't save that folder. Check the path."
+  zh-CN: "保存目录失败，检查一下路径。"
+  ja: "フォルダーを保存できませんでした。パスを確認してください。"
+multiplayer.error_generic:
+  en: "That didn't work. Try again."
+  zh-CN: "没有完成，请重试。"
+  ja: "うまくいきませんでした。もう一度お試しください。"
 skins.intro:
   en: "Character skin previews and merge output."
   zh-CN: "角色皮肤预览与合并输出。"
@@ -723,6 +939,42 @@ settings.data_folder:
   en: "Data folder"
   zh-CN: "数据文件夹"
   ja: "データフォルダ"
+settings.store_folder:
+  en: "Store folder"
+  zh-CN: "内容库位置"
+  ja: "コンテンツライブラリの場所"
+settings.store_browse:
+  en: "Choose folder…"
+  zh-CN: "选择文件夹…"
+  ja: "フォルダを選択…"
+settings.store_reset:
+  en: "Restore default"
+  zh-CN: "恢复默认"
+  ja: "既定に戻す"
+settings.store_save:
+  en: "Save"
+  zh-CN: "保存"
+  ja: "保存"
+settings.store_hint:
+  en: "Leave empty to use the default location. The folder is created if it is missing."
+  zh-CN: "留空则使用数据文件夹下的默认位置；目录不存在时会自动创建。"
+  ja: "空欄にするとデータフォルダ内の既定の場所を使用します。ない場合は作成します。"
+settings.store_invalid:
+  en: "Enter an absolute path for the store folder."
+  zh-CN: "请输入内容库的绝对路径。"
+  ja: "コンテンツライブラリには絶対パスを入力してください。"
+settings.store_unusable:
+  en: "The store folder cannot be created or written: %{path} (%{error})"
+  zh-CN: "内容库位置无法创建或写入：%{path}（%{error}）"
+  ja: "コンテンツライブラリを作成または書き込みできません: %{path}（%{error}）"
+settings.store_save_failed:
+  en: "Could not save the store folder: %{error}"
+  zh-CN: "无法保存内容库位置：%{error}"
+  ja: "コンテンツライブラリを保存できません: %{error}"
+settings.store_picker_failed:
+  en: "Could not open the folder picker: %{error}"
+  zh-CN: "无法打开文件夹选择器：%{error}"
+  ja: "フォルダ選択を開けませんでした: %{error}"
 settings.language:
   en: "Language"
   zh-CN: "语言"
@@ -1471,3 +1723,164 @@ notice.setup_finished:
   en: "Setup finished."
   zh-CN: "设置向导已完成。"
   ja: "セットアップが完了しました。"
+
+profiles.count:
+  en: "%{count} profile(s)"
+  zh-CN: "共 %{count} 个档案"
+  ja: "プロファイル %{count} 件"
+profiles.empty:
+  en: "No profiles yet. Create one from the current deployment or an empty one below."
+  zh-CN: "还没有档案。可在下方从当前部署创建，或新建空白档案。"
+  ja: "プロファイルがありません。下で現在の配置から作成するか、空のプロファイルを作成してください。"
+profiles.active:
+  en: "ACTIVE"
+  zh-CN: "当前"
+  ja: "使用中"
+profiles.entries:
+  en: "%{count} entries"
+  zh-CN: "%{count} 个条目"
+  ja: "%{count} エントリ"
+profiles.name_placeholder:
+  en: "Profile name (A-Z a-z 0-9 . _ -)"
+  zh-CN: "档案名称（A-Z a-z 0-9 . _ -）"
+  ja: "プロファイル名 (A-Z a-z 0-9 . _ -)"
+profiles.create_snapshot:
+  en: "Create from current deployment"
+  zh-CN: "从当前部署创建"
+  ja: "現在の配置から作成"
+profiles.create_blank:
+  en: "Create empty"
+  zh-CN: "新建空白"
+  ja: "空で新規作成"
+profiles.overwrite_warning:
+  en: "Profile “%{name}” already exists. Overwrite it?"
+  zh-CN: "档案「%{name}」已存在。要覆盖吗？"
+  ja: "プロファイル「%{name}」は既に存在します。上書きしますか？"
+profiles.overwrite:
+  en: "Overwrite"
+  zh-CN: "覆盖"
+  ja: "上書き"
+profiles.apply:
+  en: "Apply"
+  zh-CN: "应用"
+  ja: "適用"
+profiles.apply_warning:
+  en: "Apply profile “%{name}” (%{count} operations)? Plugins will change; close the game first."
+  zh-CN: "要应用档案「%{name}」吗（%{count} 项操作）？会改动 Plugins 目录，请先关闭游戏。"
+  ja: "プロファイル「%{name}」を適用しますか（%{count} 操作）？Plugins が変更されます。先にゲームを終了してください。"
+profiles.applied:
+  en: "Applied profile (%{count} operations)."
+  zh-CN: "档案已应用（%{count} 项操作）。"
+  ja: "プロファイルを適用しました（%{count} 操作）。"
+profiles.remove_warning:
+  en: "Delete profile “%{name}”? Files already deployed stay in Plugins; deleting a profile does not roll them back."
+  zh-CN: "要删除档案「%{name}」吗？已部署的文件会留在 Plugins 里，删除档案不会回滚它们。"
+  ja: "プロファイル「%{name}」を削除しますか？配置済みのファイルは Plugins に残り、削除しても元に戻りません。"
+profiles.adopt_title:
+  en: "Content library migration"
+  zh-CN: "内容库迁移"
+  ja: "コンテンツライブラリへの移行"
+profiles.adopt_hint:
+  en: "Scan Plugins for loose mods, move them into the content library and deploy them as links. Original files are backed up first."
+  zh-CN: "扫描 Plugins 里的散装模组，移入内容库并以链接方式部署；原文件会先备份。"
+  ja: "Plugins 内の未管理 MOD を走査し、コンテンツライブラリへ移動してリンクとして配置します。元ファイルは先にバックアップされます。"
+profiles.adopt_scan:
+  en: "Scan existing mods"
+  zh-CN: "扫描现有模组"
+  ja: "既存 MOD をスキャン"
+profiles.adopt_scanning:
+  en: "Scanning..."
+  zh-CN: "正在扫描…"
+  ja: "スキャン中…"
+profiles.adopt_adoptable:
+  en: "%{count} mods can be migrated."
+  zh-CN: "可迁移 %{count} 个模组。"
+  ja: "%{count} 件の MOD を移行できます。"
+profiles.adopt_skipped:
+  en: "%{count} skipped."
+  zh-CN: "跳过 %{count} 个。"
+  ja: "%{count} 件をスキップ。"
+profiles.adopt_reason:
+  en: "- %{reason}: %{count}"
+  zh-CN: "· %{reason}：%{count}"
+  ja: "· %{reason}: %{count}"
+profiles.adopt_skip_disabled:
+  en: "disabled mod"
+  zh-CN: "已禁用的模组"
+  ja: "無効化された MOD"
+profiles.adopt_skip_managed:
+  en: "already managed"
+  zh-CN: "已在管理中"
+  ja: "管理済み"
+profiles.adopt_skip_outside:
+  en: "outside Plugins"
+  zh-CN: "位于 Plugins 之外"
+  ja: "Plugins 外"
+profiles.adopt_skip_invalid:
+  en: "invalid name"
+  zh-CN: "名称不合法"
+  ja: "無効な名前"
+profiles.adopt_skip_missing:
+  en: "missing version"
+  zh-CN: "缺少版本"
+  ja: "バージョン不明"
+profiles.adopt_skip_store:
+  en: "version already in library"
+  zh-CN: "内容库已有该版本"
+  ja: "ライブラリに同一バージョンあり"
+profiles.adopt_skip_duplicate:
+  en: "duplicate name"
+  zh-CN: "名称重复"
+  ja: "名前の重複"
+profiles.adopt_warning:
+  en: "Move %{count} mods into the content library and back up the originals to Backups/Adopt-…? This changes files inside the game folder."
+  zh-CN: "要把 %{count} 个模组移入内容库，并将原文件备份到 Backups/Adopt-… 吗？这会改动游戏目录里的文件。"
+  ja: "%{count} 件の MOD をコンテンツライブラリへ移動し、元ファイルを Backups/Adopt-… にバックアップしますか？ゲームフォルダ内のファイルが変更されます。"
+profiles.adopt_confirm:
+  en: "Migrate"
+  zh-CN: "开始迁移"
+  ja: "移行する"
+profiles.adopt_done:
+  en: "Migrated %{count} mods. Backups: %{dir}"
+  zh-CN: "已迁移 %{count} 个模组。备份目录：%{dir}"
+  ja: "%{count} 件の MOD を移行しました。バックアップ: %{dir}"
+profiles.adopt_none:
+  en: "Nothing to migrate."
+  zh-CN: "没有可迁移的模组。"
+  ja: "移行対象はありません。"
+profiles.adopt_partial:
+  en: "Migration stopped partway; completed items were kept. See Plugins for what remains."
+  zh-CN: "迁移中途停止，已完成的部分已保留；剩余项见 Plugins。"
+  ja: "移行が途中で停止しました。完了分は保持されています。残りは Plugins を確認してください。"
+profiles.error_empty_name:
+  en: "Enter a profile name."
+  zh-CN: "请输入档案名称。"
+  ja: "プロファイル名を入力してください。"
+profiles.error_invalid_name:
+  en: "Invalid name. Use only letters, digits, dot, underscore and hyphen."
+  zh-CN: "名称不合法：只能使用字母、数字、点、下划线和连字符。"
+  ja: "名前が不正です。英数字・ドット・アンダースコア・ハイフンのみ使用できます。"
+profiles.error_not_found:
+  en: "Profile not found."
+  zh-CN: "找不到该档案。"
+  ja: "プロファイルが見つかりません。"
+profiles.error_profile:
+  en: "Could not build the apply plan; the profile may reference a version missing from the library."
+  zh-CN: "无法生成应用计划；档案可能引用了内容库里不存在的版本。"
+  ja: "適用計画を作成できません。ライブラリに無いバージョンを参照している可能性があります。"
+profiles.error_game_running:
+  en: "Close the game first."
+  zh-CN: "请先关闭游戏。"
+  ja: "先にゲームを終了してください。"
+profiles.error_no_game:
+  en: "Game folder is not set."
+  zh-CN: "尚未设置游戏目录。"
+  ja: "ゲームフォルダが設定されていません。"
+profiles.error_io:
+  en: "Could not read or write the profile files."
+  zh-CN: "档案文件读写失败。"
+  ja: "プロファイルファイルの読み書きに失敗しました。"
+profiles.error_generic:
+  en: "The operation failed. Check the game folder and the profile files."
+  zh-CN: "操作失败，请检查游戏目录与档案文件。"
+  ja: "操作に失敗しました。ゲームフォルダとプロファイルを確認してください。"

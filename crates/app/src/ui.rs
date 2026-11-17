@@ -5,7 +5,9 @@ mod delete;
 mod github;
 mod install;
 mod mods;
+mod multiplayer;
 mod nexus;
+mod profiles;
 mod remote;
 mod rows;
 mod state;
@@ -15,6 +17,9 @@ mod widgets;
 pub use delete::*;
 #[allow(unused_imports)]
 pub use install::*;
+#[allow(unused_imports)]
+pub use multiplayer::*;
+pub use profiles::*;
 pub use remote::*;
 pub use rows::*;
 pub use state::*;
