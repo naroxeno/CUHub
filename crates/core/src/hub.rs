@@ -10,6 +10,7 @@ use chrono::{DateTime, Utc};
 
 use crate::catalogs::Catalogs;
 use crate::github::{self, CheckFailure, RateLimit, ReleaseAsset, ReleaseInfo};
+use crate::hubconfig::{HubConfig, HubConfigChannel, HubConfigResult, HubConfigService};
 use crate::install::{self, UpgradePlan};
 use crate::launch::{self, LaunchError};
 use crate::logs::Logs;
@@ -24,6 +25,7 @@ use crate::settings::{Settings, SettingsStore};
 use crate::source_choice::{ChoiceError, SourceChoices};
 use crate::sources::{self, Repo, SourceKind, SourceManifest};
 use crate::steam;
+use crate::version::HubVersion;
 
 #[derive(Debug)]
 pub enum HubError {
@@ -252,6 +254,7 @@ pub struct Hub {
     metadata_cache: MetadataCache,
     metadata: Vec<MetadataMod>,
     network: Option<Network>,
+    hub_config: Option<HubConfigService>,
     nexus: Option<Nexus>,
     github_tokens: GithubTokenStore,
     sources: Option<SourceManifest>,
@@ -296,6 +299,13 @@ impl Hub {
             .as_ref()
             .map(|network| Nexus::new(network.clone(), app_data.clone()));
 
+        let hub_config = network.as_ref().map(|network| {
+            let channel = HubVersion::parse(env!("CARGO_PKG_VERSION"))
+                .map(|version| HubConfigChannel::for_version(&version))
+                .unwrap_or(HubConfigChannel::Stable);
+            HubConfigService::new(network.clone(), app_data.clone(), channel)
+        });
+
         let sources = match sources::load_manifest_optional(&sources::manifest_path(&app_data)) {
             Ok(manifest) => manifest,
             Err(error) => {
@@ -322,6 +332,7 @@ impl Hub {
             metadata_cache,
             metadata,
             network,
+            hub_config,
             nexus,
             github_tokens,
             sources,
@@ -348,6 +359,19 @@ impl Hub {
         self.settings = normalized;
         self.logs.activity("Settings", "Settings saved.");
         Ok(())
+    }
+
+    pub fn hub_config_cached(&self) -> HubConfigResult {
+        match &self.hub_config {
+            Some(service) => service.load_cached(),
+            None => HubConfigResult {
+                config: HubConfig::default(),
+                is_online: false,
+                is_cached: false,
+                config_changed: false,
+                next_check_utc: None,
+            },
+        }
     }
 
     pub fn game_folder(&self) -> Option<PathBuf> {

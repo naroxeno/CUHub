@@ -54,6 +54,7 @@ pub struct Ui {
     pub remote_query: Signal<String>,
     pub remote_filter: Signal<RemoteFilter>,
     pub sources_ready: Signal<bool>,
+    pub announcement: Signal<Option<String>>,
     pub remote_busy: Signal<Option<String>>,
     pub pending_install: Signal<Option<PendingInstall>>,
     pub update_busy: Signal<Option<String>>,
@@ -119,6 +120,11 @@ impl Ui {
             t!("notice.no_token_saved")
         };
         let has_sources = hub.sources().is_some();
+        let announcement = hub
+            .hub_config_cached()
+            .config
+            .current_announcement
+            .map(|item| item.message);
         let app_data = hub.app_data().display().to_string();
         let bepinex = hub.bepinex_status().ok();
         let owner = Owner::current();
@@ -155,6 +161,7 @@ impl Ui {
             remote_query: signal(String::new()),
             remote_filter: signal(RemoteFilter::All),
             sources_ready: signal(has_sources),
+            announcement: signal(announcement),
             remote_busy: signal(None::<String>),
             pending_install: signal(None::<PendingInstall>),
             update_busy: signal(None::<String>),
@@ -302,6 +309,22 @@ impl Ui {
                 Ok(())
             }
             Err(error) => Err(error),
+        }
+    }
+
+    pub(crate) fn save_home_order(&self, order: Vec<String>) {
+        let saved = {
+            let mut hub = self.hub();
+            let mut settings = hub.settings().clone();
+            settings.home_order = order;
+            hub.save_settings(&settings)
+                .map(|()| hub.settings().clone())
+        };
+        match saved {
+            Ok(settings) => self.settings.set(settings),
+            Err(error) => self
+                .notice
+                .set(t!("notice.save_settings_failed", error = error.to_string())),
         }
     }
 

@@ -30,6 +30,7 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 | 位置 | 触发 | 效果 | 时长 / 帧率 |
 | --- | --- | --- | --- |
 | 七个页面根视图 | 切页（`when` 重新挂载） | 淡入 + 自下而上 24pt 滑入 | 450ms，一次性 |
+| Hub Home 卡片与公告卡 | 页面挂载；卡片悬停 | 淡入；hover 上移 2pt、底色与边框切换 | 一次性 / 即时 |
 | 侧栏选中项标签 | 该项被选中（`effect` 观察 `page`） | 标签淡入点亮 | 300ms，一次性 |
 | 状态行 | `notice` 变为非空 | 提示自左滑入 24pt + 淡入 | 300ms，一次性 |
 | 开发者控制台 | 打开浮层 | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
@@ -44,6 +45,13 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 ## 模组行布局
 
 - 证据行与来源行的说明文字放在 `flex_1` + `min_w(0)` 容器里并截断，行内按钮 `flex_shrink_0`。窗口较窄或来源说明很长时先裁掉文字，按钮不会被挤出面板（修掉过 Disable 因按钮在窗口外而点不到的回归）。
+
+## Hub Home 磁贴
+
+- 2 列 `grid`：GAME、MODS、CATALOGUE、BEPINEX 四张半宽卡，公告卡 `col_span_full()` 收尾；入口仍是 `pages::hub_home`，标题与面包屑走 `nav::title`。
+- 拖拽用原生 pan：内容层 `pan_values` + `bind_translate_x/y` 跟手，`on_pan_end` 按水平/垂直位移换位；拖拽中 `z_index` 抬升、底色 `SURFACE_RAISED`、边框 `ACCENT`，松手 spring 回位。
+- 顺序存 `Settings.home_order`（JSON `homeOrder`），经 `Ui::save_home_order` 写回；读取时按固定 id 表忽略未知、去重、补齐缺失，旧设置缺键即默认顺序。
+- 公告在启动时由 `Hub::hub_config_cached()` 读一次缓存存入 `Ui.announcement`，渲染路径不取 Hub 锁、只读缓存不联网；无当前公告显示 `hub.not_loaded`，不报错。GAME 卡副文本同时显示游戏目录与 app data 路径。
 
 ## 远程模组页
 

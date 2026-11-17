@@ -32,6 +32,7 @@ pub struct Settings {
     pub dashboard_list_view: bool,
     pub dashboard_show_adult_mods: bool,
     pub ignored_dependency_names: Vec<String>,
+    pub home_order: Vec<String>,
     pub setup_completed: bool,
 }
 
@@ -55,6 +56,7 @@ impl Default for Settings {
             dashboard_list_view: false,
             dashboard_show_adult_mods: false,
             ignored_dependency_names: Vec::new(),
+            home_order: Vec::new(),
             setup_completed: false,
         }
     }
@@ -186,6 +188,7 @@ mod tests {
             ui_scale: 3,
             language: "zh-CN".to_owned(),
             ignored_dependency_names: vec!["SomeDep".to_owned()],
+            home_order: vec!["mods".to_owned(), "game".to_owned()],
             setup_completed: true,
             ..Settings::default()
         };
@@ -193,6 +196,8 @@ mod tests {
         let raw = fs::read_to_string(store.path()).unwrap();
         assert!(raw.contains("gamePath"));
         assert!(raw.contains("ignoredDependencyNames"));
+        assert!(raw.contains("homeOrder"));
+        assert!(!raw.contains("home_order"));
         assert!(raw.contains("\"language\": \"zh-CN\""));
         assert!(raw.contains("\"setupCompleted\": true"));
         assert!(!raw.contains("game_path"));

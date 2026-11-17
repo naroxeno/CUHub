@@ -551,6 +551,66 @@ hub.local_data:
   en: "Local data folder"
   zh-CN: "本地数据文件夹"
   ja: "ローカルデータフォルダ"
+home.order_hint:
+  en: "Drag cards to reorder"
+  zh-CN: "拖拽卡片排序"
+  ja: "カードをドラッグして並べ替え"
+home.game.tag:
+  en: "GAME"
+  zh-CN: "游戏"
+  ja: "ゲーム"
+home.game.detail:
+  en: "Game folder"
+  zh-CN: "游戏文件夹"
+  ja: "ゲームフォルダ"
+home.local_data:
+  en: "Local data: %{path}"
+  zh-CN: "本地数据：%{path}"
+  ja: "ローカルデータ: %{path}"
+home.mods.tag:
+  en: "MODS"
+  zh-CN: "模组"
+  ja: "MOD"
+home.mods.detail:
+  en: "Installed in Plugins"
+  zh-CN: "已安装到 Plugins"
+  ja: "Plugins にインストール済み"
+home.catalogue.tag:
+  en: "CATALOGUE"
+  zh-CN: "目录"
+  ja: "カタログ"
+home.catalogue.detail:
+  en: "Nexus entries"
+  zh-CN: "Nexus 条目"
+  ja: "Nexus エントリ"
+home.ready.tag:
+  en: "BEPINEX"
+  zh-CN: "BEPINEX"
+  ja: "BEPINEX"
+home.ready.detail:
+  en: "BepInEx status"
+  zh-CN: "BepInEx 状态"
+  ja: "BepInEx の状態"
+home.ready.done:
+  en: "Ready"
+  zh-CN: "就绪"
+  ja: "準備完了"
+home.ready.incomplete:
+  en: "Incomplete"
+  zh-CN: "未完成"
+  ja: "未完了"
+home.ready.unknown:
+  en: "Unknown"
+  zh-CN: "未知"
+  ja: "不明"
+home.announcement.tag:
+  en: "HUB"
+  zh-CN: "公告"
+  ja: "お知らせ"
+home.announcement.read_only:
+  en: "Read-only cached config"
+  zh-CN: "只读缓存配置"
+  ja: "読み取り専用のキャッシュ設定"
 settings.game_folder:
   en: "Game folder"
   zh-CN: "游戏文件夹"

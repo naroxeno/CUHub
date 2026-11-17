@@ -93,7 +93,7 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 ## 7. app 模块
 
 - `shell`：导航表驱动的侧栏（宽树 / 窄图标栏）、顶栏、状态栏、开发者控制台、内容滚动容器；页面身份用稳定 id。
-- `pages`：nexus、remote_mods、local_mods、multiplayer、skins_backups、hub_home、settings。
+- `pages`：nexus、remote_mods、local_mods、multiplayer、skins_backups、home（Hub Home 磁贴）、settings。
 - `setup`：首启设置向导（六步全窗层），只读写 Hub 设置；BepInEx 步只读。
 - `ui`：字体、像素文字、面板（1px 双框 + 标题断口）、按钮与缩放 helper；组件多了再拆 `components`。
 - `palette`：像素调色板 token 与图标着色（固定常量，不做运行时派生）。

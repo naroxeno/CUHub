@@ -211,6 +211,8 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### L. Hub Home（公告与发布信息）
 
+当前实现：2 列磁贴（GAME / MODS / CATALOGUE / BEPINEX）加整行公告卡；拖拽换位并把顺序写入 `homeOrder`；公告只读本地缓存，无缓存显示“未加载”。L1–L10 记录完整目标，当前只落地磁贴与缓存公告。
+
 - **L1 (P1)** 顶部公告卡：发布者公告正文 + 发布时间；Check now（30s 冷却，按钮显示 `Check now (23s)` 倒计时）。
 - **L2 (P1)** Previous announcements：本机保存、可回看最近 3 条（即使订阅源已不再列出）。
 - **L3 (P1)** What changed in this build：从内嵌发布说明读 “What changed” 列表（`-` → `•`）；无文件时 “What changed notes are not available for this build.”。
@@ -285,7 +287,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **P3 (P1) Nexus Mods**：key 输入 + Save / Clear + 说明“Premium 才能直连下载，可选”。
 - **P4 (P1) Extras**：Enable easter eggs（“下次启动生效”）。
 - **P5 (P1) Diagnostics**：说明文字、Copy report、Open logs folder。
-- **P6 (P0)** 设置模型字段（16 个，全部要落盘）：gamePath、downloadPath、backupPath("Backups")、disableAutoDeleteImportedParentFiles、uiScale(2)、language("system"，跟随设备或 BCP 47 语言标签)、highContrastMode(false)、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、dashboardShowAdultMods、ignoredDependencyNames[]、setupCompleted(false，向导完成或跳过时置 true)。旧字段（textSize、四个颜色、activeUiPreset、animatedRgbEnabled、customUiPresets、themeColoursInitialized、rebrandThemeInitialized、缓存兼容性字段）读取时忽略、保存时丢弃。
+- **P6 (P0)** 设置模型字段（17 个，全部要落盘）：gamePath、downloadPath、backupPath("Backups")、disableAutoDeleteImportedParentFiles、uiScale(2)、language("system"，跟随设备或 BCP 47 语言标签)、highContrastMode(false)、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、dashboardShowAdultMods、ignoredDependencyNames[]、homeOrder[]、setupCompleted(false，向导完成或跳过时置 true)。旧字段（textSize、四个颜色、activeUiPreset、animatedRgbEnabled、customUiPresets、themeColoursInitialized、rebrandThemeInitialized、缓存兼容性字段）读取时忽略、保存时丢弃。
 - **P7 (P0)** 容错：JSON 解析失败不覆盖原文件，本次用默认值；数值越界夹紧（界面缩放 1–3、缩放档位非法则回落 2x）。
 - **P8 (P1)** 写入用缩进 JSON，便于用户手改。
 - **P9 (P1)** 设置页顶部固定「重新运行设置向导 / Run setup again / セットアップを再実行」按钮，始终可见；点击重开向导，不弹确认、不清已保存的设置，向导内每步仍即时保存。

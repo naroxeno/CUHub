@@ -1,6 +1,5 @@
-//! Smaller pages: multiplayer, skins and backups, hub home.
+//! Smaller pages: multiplayer and skins.
 
-use super::settings::{game_folder_path, row, setting_row};
 use crate::palette::*;
 use crate::ui::{Ui, button, panel, pix, rise_in, scaled};
 use nsh_core::prelude::*;
@@ -73,42 +72,4 @@ pub fn skins_backups(ui: &Ui) -> impl IntoElement {
             )
             .flex_1(),
         )
-}
-
-pub fn hub_home(ui: &Ui) -> impl IntoElement {
-    let z = ui.zoom;
-    let folder = ui.clone();
-    let data = ui.clone();
-    let mods = ui.clone();
-    let catalogue = ui.clone();
-    view()
-        .flex_col()
-        .flex_1()
-        .bind_motion(&rise_in())
-        .child(panel(
-            &z,
-            move || t!("panel.hub_home"),
-            view()
-                .flex_col()
-                .gap(scaled(&z, 10.0))
-                .child(pix(move || t!("hub.intro"), 12.0, TEXT_MUTED, &z))
-                .child(row(
-                    &z,
-                    "hub.featured",
-                    move || t!("hub.not_loaded"),
-                    TEXT_DIM,
-                ))
-                .child(setting_row(&z, "settings.game_folder", move || {
-                    game_folder_path(&folder).unwrap_or_else(|| t!("common.not_set"))
-                }))
-                .child(setting_row(&z, "hub.installed_mods", move || {
-                    mods.mods.get().len().to_string()
-                }))
-                .child(setting_row(&z, "hub.catalogue_entries", move || {
-                    catalogue.nexus_total.get().to_string()
-                }))
-                .child(setting_row(&z, "hub.local_data", move || {
-                    data.app_data.clone()
-                })),
-        ))
 }

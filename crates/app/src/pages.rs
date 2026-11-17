@@ -2,6 +2,7 @@
 
 mod bepinex;
 mod delete;
+mod home;
 mod local;
 mod misc;
 mod nexus;
@@ -11,8 +12,9 @@ mod shared;
 
 pub use bepinex::bepinex_overlay;
 pub use delete::delete_overlay;
+pub use home::hub_home;
 pub use local::local_mods;
-pub use misc::{hub_home, multiplayer, skins_backups};
+pub use misc::{multiplayer, skins_backups};
 pub use nexus::nexus;
 pub use remote::remote_mods;
 pub use settings::settings;
