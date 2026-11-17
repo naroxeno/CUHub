@@ -34,7 +34,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 | 域 | 内容 | 优先级 |
 |---|---|---|
-| A 应用外壳 | 侧栏导航、顶栏、状态栏、窗口、字体缩放、开发者控制台入口、彩蛋 | P0/P1 |
+| A 应用外壳 | 侧栏导航、标题栏、状态栏、窗口、字体缩放、开发者控制台入口、彩蛋 | P0/P1 |
 | B 游戏目录识别 | 手动选择、自动检测（Steam 库扫描）、三种路径粒度 | P0 |
 | C Nexus Dashboard | 社区目录列表、搜索/过滤/排序、18+、双视图、详情、右键菜单、下载入口 | P0 |
 | D 下载收件箱 | 目录监视、下载完成判定、自动导入询问、归档移动 | P0 |
@@ -66,8 +66,8 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### A. 应用外壳与导航
 
-- **A1 (P0)** 左侧栏 5 个顶层入口：模组（父节点）/ Multiplayer / Skins & Backups / Hub Home / Settings；「模组」默认展开为 Nexus Dashboard / Remote Mods / Local Mods 三个子项，父节点只折叠/展开、不切页，折叠状态只在本次运行内保留（不落盘）；子项带 1px 左竖线与缩进，选中态沿用导航项样式。页面索引固定为 0 Nexus / 1 Remote / 2 Local / 3 Multiplayer / 4 Skins / 5 Home / 6 Settings；子页的页头与状态栏显示「模组 / <子页>」两段面包屑。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
-- **A2 (P0)** 顶栏：Launch Game（主操作，始终可见）、Report issues（URL 来自 Hub 配置；为空则禁用并 tooltip “Link not available.”，否则 “Report a bug or issue”）。
+- **A1 (P0)** 左侧栏由 `shell/nav.rs` 的 `NAV` 表驱动：Hub Home（默认页）、模组组（Nexus Dashboard / Remote Mods / Local Mods，父节点只折叠/展开、不切页）、Multiplayer、Skins & Backups、Settings、About；折叠状态只在本次运行内保留（不落盘）。页面身份是稳定 id，不依赖索引；子页的页头与状态栏显示「模组 / <子页>」两段路径。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
+- **A2 (P0)** 标题栏：居中显示产品名与版本，不放操作按钮；启动游戏在侧栏页脚，反馈问题在 About 页。
 - **A3 (P0)** 底部状态栏：单一 status 文本，由各页面与外壳写入（“Game folder detected.”、“Asked Steam to launch Casualties Unknown.”、“Could not launch: …” 等）。
 - **A4 (P1)** 侧栏底部显示 `v{version}`；3 秒内点击 5 次打开开发者控制台（Debug 页/窗口）。这是隐藏入口，不走设置。
 - **A5 (P2)** 彩蛋：需在设置中开启 Easter Eggs 才生效（默认关，首次启动写一次 Initialized 标记，避免“默认开”误判）；含一段固定外链跳转与吉祥物点击计数。
@@ -76,6 +76,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **A8 (P1)** 启动流程：读设置 → 应用界面缩放（1x/2x/3x）→ 装载缓存公告并渲染 → 公告过期则后台刷新 → 启动下载监视器 → 游戏路径为空则自动检测（≤20s，失败弹检测对话框可跳设置）；首次启动由设置向导承接（A10），向导打开时跳过本次自动检测；向导跳过或完成后仍为空则不再自动检测，可在设置页手动检测。
 - **A9 (P1)** 单实例行为：当前实现无单实例锁（不实现也可），但下载监视器必须只跑一份。
 - **A10 (P1)** 设置向导：首次启动（`setupCompleted` 为 false 且游戏路径为空）打开六步向导——欢迎 → 游戏目录 → BepInEx（只读）→ 下载目录 → 外观 → 完成；顶部显示 Step n/6，底部 Back / Next / Skip，完成页按钮为 Finish。每步 Next 即时保存，`setupCompleted` 只在 Finish / Skip 时写入；Esc 等同 Skip，不二次确认。设置页可随时重新打开（P9）。
+- **A11 (P1)** 关于页：产品名与版本、项目源码、反馈问题、许可证全文三个外链；链接只接受 HTTPS，经 Hub 交给系统浏览器打开；页面注明非官方且与 Nexus Mods、游戏开发者无隶属关系。
 
 ### B. 游戏目录识别
 
@@ -162,12 +163,13 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### G. 依赖 / 兼容 / 已知 bug 数据
 
-- **G1 (P1)** 内嵌依赖目录 JSON：`{dependencies:[{mod, requires:[{name, minimumVersion, note}]}]}`；键名归一化（只留字母数字、小写）匹配。
+- **G1 (P1)** 内嵌依赖目录 JSON：`{dependencies:[{mod, requires:[{name, guid?, minimumVersion, note, optional?}]}]}`；键名归一化（只留字母数字、小写）匹配，guid 命中优先于 name 命中，name/guid 至少一个非空。
 - **G2 (P1)** 内嵌不兼容目录 JSON：`{incompatibilities:[{modA, modB, note}]}`，双向匹配。
-- **G3 (P1)** 缺失依赖：只对启用中的模组计算；列在行内 “Missing: … Please install before launching.”；提供 Download / Open Download / Ignore（Ignore 持久化到设置）。
+- **G3 (P1)** 缺失依赖：只对启用中的模组计算；列在行内 “Missing: … Please install before launching.”；提供 Download / Open Download / Ignore（Ignore 持久化到设置）。行内标注只看已装模组；安装前门禁见 G7。
 - **G4 (P1)** 冲突：“Incompatible with mod X”；已知 bug：“Known bug: …”。
 - **G5 (P1)** 数据文件覆盖顺序：可执行文件旁 `Data/Catalogs/` > 内嵌资源 > 旧路径；按“文件变了才重载”缓存。
 - **G6 (P2)** 社区兼容性规则解析器（`type|modA|modB|severity|message`，type ∈ conflict/bug/manual）：上游设置里仍保留缓存字段，但订阅源在 0.0.9 已移除。**建议不复刻**，除非要兼容旧配置。
+- **G7 (P0)** 安装前依赖门禁：首次安装合并清单条目 `depends`、依赖目录与 staging DLL 的 `BepInDependency`；更新合并依赖目录与 staging DLL。optional 跳过，缺依赖或版本低于 `minimumVersion` 时阻断，不下载（staging 复查失败则清 staging）。staging 复查时，包内自带的 DLL 按文件名或插件 GUID 视为已提供。已知缺失项给一键安装，未知项给 Nexus 搜索，过旧项要求手动更新；自动安装只对清单里明确列出的缺失项，且必须由用户点按钮确认。
 
 ### H. Modlist 分享码
 
@@ -396,10 +398,10 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y2 (P0)** 数据：`Hub::sources()` 的 entries；每行显示清单显示名与 `owner/name` 小字，已装时附已安装版本（读不到版本时标 Installed）。
 - **Y3 (P0)** 匹配：用清单 matcher（guid / dll / name）与已装模组匹配；同一 entry 命中多个已装模组时按 guid > dll > name 取最优，与 `sources::best_match` 的优先级一致。
 - **Y4 (P0)** 搜索与过滤：按名称或仓库搜索；All / Installed / Not installed 三态；每页 50 行（`NEXUS_PAGE_SIZE` + `page_slice`）；搜索词、过滤与页码只在内存里，不写设置。
-- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 下载、staging 并生成首次安装计划，成功即把计划交给既有的 PENDING UPDATE 面板；Apply 仍走 `apply_install`，Cancel 删 staging。准备期间与已有 pending 时所有行按钮一起禁用。
-- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；同样进 pending 面板。
+- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成首次安装计划，成功即把计划交给既有的 PENDING UPDATE 面板；Apply 仍走 `apply_install`，Cancel 删 staging。依赖检查被阻断时不进 pending，改为显示依赖提示面板；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用。
+- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成更新计划后同样跑 G7，阻断时显示依赖提示。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进 pending 面板。
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
-- **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*`；界面不出现 sha256、staging、plan、文件数等实现词。
+- **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
 
 实现状态（2026-11-15）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker，`pages::remote_mods` 负责视图；pending 面板与 `apply_pending` 复用 Local Mods 的同一套。未做：清单重载（core 无 reload 接口，改清单需重启）、远端 release 版本预检（按钮不判断是否有新版）、清单下发（清单目前需手工放到 `<AppData>/Sources/manifest.json`）。
 

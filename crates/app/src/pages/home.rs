@@ -82,17 +82,6 @@ fn tile(ui: &Ui, drag: HomeDrag, index: ReadSignal<usize>, parts: CardParts) -> 
         .flex_1()
         .min_w(px(0.0))
         .gap(scaled(&z, 8.0))
-        .bind_translate_x(&offset_x)
-        .bind_translate_y(&offset_y)
-        .pan_values(Some(&offset_x), Some(&offset_y))
-        .on_pan_start(move |_event: &PanEvent| {
-            dragging.set(Some(index.get_untracked()));
-        })
-        .on_pan_end(move |event: &PanEvent| {
-            finish_drag(&save_ui, drag, index, event);
-            spring_x.spring(0.0, Spring::default());
-            spring_y.spring(0.0, Spring::default());
-        })
         .child(
             view()
                 .flex_row()
@@ -123,17 +112,24 @@ fn tile(ui: &Ui, drag: HomeDrag, index: ReadSignal<usize>, parts: CardParts) -> 
                 rgb(BORDER_DIM)
             }
         })
-        .hover(|s| {
-            s.translate_y(DefiniteLength::from(px(-2.0)))
-                .bg(rgb(SURFACE_RAISED))
-                .border_color(rgb(ACCENT))
-        })
+        .hover(|s| s.bg(rgb(SURFACE_RAISED)).border_color(rgb(ACCENT)))
         .z_index(move || {
             if dragging.get() == Some(index.get()) {
                 10
             } else {
                 0
             }
+        })
+        .bind_translate_x(&offset_x)
+        .bind_translate_y(&offset_y)
+        .pan_values(Some(&offset_x), Some(&offset_y))
+        .on_pan_start(move |_event: &PanEvent| {
+            dragging.set(Some(index.get_untracked()));
+        })
+        .on_pan_end(move |event: &PanEvent| {
+            finish_drag(&save_ui, drag, index, event);
+            spring_x.spring(0.0, Spring::default());
+            spring_y.spring(0.0, Spring::default());
         })
         .bind_motion(&fade_in())
         .child(body)

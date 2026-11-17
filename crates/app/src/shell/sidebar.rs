@@ -1,16 +1,65 @@
 //! Sidebar: wide labeled tree with group headers, narrow icon rail, fold toggle and footer.
 
 use nsh_core::prelude::*;
+use std::time::Duration;
 
 use super::nav::{self, NavEntry, NavKind};
 use crate::palette::*;
 use crate::ui::{Ui, pix, pix_c, scaled};
 
+const WIDE_RAIL: f32 = 176.0;
+const NARROW_RAIL: f32 = 44.0;
+const FOLD_STEPS: u32 = 8;
+const FOLD_STEP_MS: u64 = 12;
+
 pub fn sidebar(ui: &Ui) -> impl IntoElement {
+    let z = ui.zoom;
+    let folded = ui.nav_collapsed.get_untracked();
+    let width = signal(if folded { NARROW_RAIL } else { WIDE_RAIL });
+    let generation = signal(0u32);
+    let watcher = ui.clone();
+    effect(move || {
+        let target = if watcher.nav_collapsed.get() {
+            NARROW_RAIL
+        } else {
+            WIDE_RAIL
+        };
+        let from = width.get_untracked();
+        if (from - target).abs() < 0.5 {
+            return;
+        }
+        let run = generation.get_untracked() + 1;
+        generation.set(run);
+        for step in 1..=FOLD_STEPS {
+            let width = width;
+            let generation = generation;
+            let value = from + (target - from) * (step as f32 / FOLD_STEPS as f32);
+            drop(set_timeout(
+                Duration::from_millis(FOLD_STEP_MS * step as u64),
+                move || {
+                    if generation.get_untracked() == run {
+                        width.set(value);
+                    }
+                },
+            ));
+        }
+    });
     let wide = ui.clone();
     let narrow = ui.clone();
+    let wide_box = ui.clone();
+    let narrow_box = ui.clone();
     view()
         .flex_col()
+        .w(move || scaled(&z, width.get())())
+        .overflow_hidden()
+        .child(when(
+            move || !wide_box.nav_collapsed.get(),
+            move || search_box(wide_box.clone(), false),
+        ))
+        .child(when(
+            move || narrow_box.nav_collapsed.get(),
+            move || search_box(narrow_box.clone(), true),
+        ))
         .child(when(
             move || !wide.nav_collapsed.get(),
             move || wide_rail(wide.clone()),
@@ -18,6 +67,31 @@ pub fn sidebar(ui: &Ui) -> impl IntoElement {
         .child(when(
             move || narrow.nav_collapsed.get(),
             move || narrow_rail(narrow.clone()),
+        ))
+}
+
+fn search_box(ui: Ui, narrow: bool) -> impl IntoElement {
+    let z = ui.zoom;
+    let press = ui.clone();
+    view()
+        .flex_row()
+        .items_center()
+        .justify_center()
+        .h(scaled(&z, 24.0))
+        .mx(scaled(&z, 5.0))
+        .my(scaled(&z, 6.0))
+        .gap(scaled(&z, 6.0))
+        .bg(rgb(SURFACE_RAISED))
+        .border(scaled(&z, 1.0))
+        .border_color(rgb(BORDER))
+        .hover(|s| s.border_color(rgb(ACCENT)))
+        .active(|s| s.bg(rgb(BORDER_DIM)))
+        .overflow_hidden()
+        .on_press(move || press.notice.set(t!("notice.search_soon")))
+        .child(pix("?", 10.0, TEXT_DIM, &z))
+        .child(when(
+            move || !narrow,
+            move || pix(t!("nav.search"), 11.0, TEXT_MUTED, &z),
         ))
 }
 
@@ -50,7 +124,7 @@ fn wide_rail(ui: Ui) -> impl IntoElement {
     }
     view()
         .flex_col()
-        .w(scaled(&z, 176.0))
+        .w_full()
         .bg(rgb(SURFACE))
         .border_r(scaled(&z, 1.0))
         .border_r_color(rgb(BORDER))
@@ -74,7 +148,7 @@ fn narrow_rail(ui: Ui) -> impl IntoElement {
     }
     view()
         .flex_col()
-        .w(scaled(&z, 44.0))
+        .w_full()
         .bg(rgb(SURFACE))
         .border_r(scaled(&z, 1.0))
         .border_r_color(rgb(BORDER))

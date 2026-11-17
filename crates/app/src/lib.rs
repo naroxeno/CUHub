@@ -26,7 +26,7 @@ pub fn App() -> impl IntoElement {
         .flex_col()
         .size_full()
         .bg(rgb(BG))
-        .child(shell::top_bar(&ui))
+        .child(shell::title_bar(&ui))
         .child(
             view()
                 .flex_row()

@@ -12,7 +12,7 @@ pub const MULTIPLAYER: &str = "multiplayer";
 pub const SKINS: &str = "skins";
 pub const HOME: &str = "home";
 pub const SETTINGS: &str = "settings";
-pub const SEARCH: &str = "search";
+pub const ABOUT: &str = "about";
 pub const LAUNCH: &str = "launch";
 pub const GROUP_MODS: &str = "mods";
 
@@ -38,10 +38,6 @@ pub const GROUPS: [NavGroup; 1] = [NavGroup {
     id: GROUP_MODS,
     key: "nav.mods",
 }];
-
-fn search(ui: &Ui) {
-    ui.notice.set(t!("notice.search_soon"));
-}
 
 fn launch(ui: &Ui) {
     ui.launch_game();
@@ -75,13 +71,17 @@ fn settings(ui: &Ui) -> AnyElement {
     pages::settings(ui).into_element()
 }
 
+fn about(ui: &Ui) -> AnyElement {
+    pages::about(ui).into_element()
+}
+
 pub static NAV: [NavEntry; 8] = [
     NavEntry {
-        id: SEARCH,
-        key: "nav.search",
-        icon: "?",
+        id: HOME,
+        key: "nav.hub_home",
+        icon: "HM",
         group: None,
-        kind: NavKind::Action(search),
+        kind: NavKind::Page(home),
     },
     NavEntry {
         id: NEXUS,
@@ -119,18 +119,18 @@ pub static NAV: [NavEntry; 8] = [
         kind: NavKind::Page(skins),
     },
     NavEntry {
-        id: HOME,
-        key: "nav.hub_home",
-        icon: "HM",
-        group: None,
-        kind: NavKind::Page(home),
-    },
-    NavEntry {
         id: SETTINGS,
         key: "nav.settings",
         icon: "ST",
         group: None,
         kind: NavKind::Page(settings),
+    },
+    NavEntry {
+        id: ABOUT,
+        key: "nav.about",
+        icon: "AB",
+        group: None,
+        kind: NavKind::Page(about),
     },
 ];
 

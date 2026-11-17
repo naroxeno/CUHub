@@ -4,12 +4,12 @@
 
 页面身份不再散落：侧栏与内容区都读 `shell/nav.rs` 的 `NAV` 表，加一页只需在表里加一行、在 `pages` 里加函数、补 locale key。
 
-- `shell.rs` 模块根：`mod dev/nav/sidebar/statusline/top_bar` + `pub use`；`content()` 遍历 `NAV` 的 `NavKind::Page` 条目生成 `when` 区域。
-- `shell/nav.rs`：`NAV`（8 条）、`GROUPS`（模组组）、`NavEntry`、`NavKind { Page(fn(&Ui) -> AnyElement), Action(fn(&Ui)) }`、`title(id)`、`in_group`。
+- `shell.rs` 模块根：`mod dev/nav/sidebar/statusline/title_bar` + `pub use`；`content()` 遍历 `NAV` 的 `NavKind::Page` 条目生成 `when` 区域。
+- `shell/nav.rs`：`NAV`（8 条）、`GROUPS`（模组组）、`NavEntry`、`NavKind { Page(fn(&Ui) -> AnyElement), Action(fn(&Ui)) }`、`title(id)`、`in_group`。搜索框不属于 `NAV`，在 `sidebar` 顶部单独渲染。
 - `shell/sidebar.rs`：宽 176px（组头 28、子项 26、缩进 16+竖线+8）与窄 44px（图标行、组边界 1px BORDER）两态，页脚启动键 + 版本行（仅宽）；窄模式不分组建，图标取自 `NavEntry::icon`。
-- `Ui.page: Signal<&'static str>`（默认 `nav::NEXUS`），新增 `nav_collapsed`、`nav_closed_group`（空串 = 都展开），删除 `mods_menu_open`；两者都在内存，不落盘。
+- `Ui.page: Signal<&'static str>`（默认 `nav::HOME`），新增 `nav_collapsed`、`nav_closed_group`（空串 = 都展开），删除 `mods_menu_open`；两者都在内存，不落盘。
 - `i18n.rs` 删掉 `PAGE_KEYS`、`NEXUS_PAGE`/`REMOTE_PAGE`/`LOCAL_PAGE`、`MODS_PAGE_COUNT`、`page_label`；页头、状态行、开发者浮层统一用 `nav::title(id)`，组内条目自动拼「模组 / 子页」。
-- 搜索入口是 `Action`，当前只写状态行 `notice.search_soon`；搜索本体仍留第二期，需要给 `Ui` 加 `focus` 通道才能跳到具体条目。
+- 搜索框在侧栏顶部（折叠开关之上），点击只写状态行 `notice.search_soon`；搜索本体仍留第二期，需要给 `Ui` 加 `focus` 通道才能跳到具体条目。
 
 ## 加一个页面
 
@@ -20,7 +20,7 @@
 ## 未做
 
 - 窄模式没有悬停名称（nsh 的 tooltip 原语未确认）；没有折叠状态持久化。
-- 搜索、启动键复用顶栏同一个 `Ui::launch_game`，两处入口并存。
+- 启动键只在侧栏页脚（走 `Ui::launch_game`）；标题栏不放操作入口，反馈问题在 About 页。顶部搜索框仍是占位。
 
 ## 审计发现（app 其余部分，2026-11-17 状态）
 

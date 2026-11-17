@@ -1,5 +1,6 @@
-//! The seven pages behind the shell navigation; data comes from the Hub facade.
+//! The pages behind the shell navigation; data comes from the Hub facade.
 
+mod about;
 mod bepinex;
 mod delete;
 mod home;
@@ -10,6 +11,7 @@ mod remote;
 mod settings;
 mod shared;
 
+pub use about::about;
 pub use bepinex::bepinex_overlay;
 pub use delete::delete_overlay;
 pub use home::hub_home;

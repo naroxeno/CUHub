@@ -1,15 +1,15 @@
-//! The shell around the pages: sidebar, top bar, status line and developer overlay.
+//! The shell around the pages: sidebar, title bar, status line and developer overlay.
 
 mod dev;
 pub mod nav;
 mod sidebar;
 mod statusline;
-mod top_bar;
+mod title_bar;
 
 pub use dev::dev_overlay;
 pub use sidebar::sidebar;
 pub use statusline::statusline;
-pub use top_bar::top_bar;
+pub use title_bar::title_bar;
 
 use nsh_core::prelude::*;
 

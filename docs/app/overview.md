@@ -2,21 +2,21 @@
 
 ## 职责
 
-nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区（模组树下的 Nexus / 远程模组 / 本地模组，加 Multiplayer / Skins & Backups / Hub Home / Settings）与开发者控制台浮层。数据全部来自 `cuhub_core::hub::Hub`；后台任务只写 signal，界面只读 signal（线程模型见 `docs/ARCHITECTURE.md`）。nsh 细节与坑见同目录 `nsh-notes.md`。
+nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容区（模组树下的 Nexus / 远程模组 / 本地模组，加 Multiplayer / Skins & Backups / Hub Home / Settings / About）与开发者控制台浮层。数据全部来自 `cuhub_core::hub::Hub`；后台任务只写 signal，界面只读 signal（线程模型见 `docs/ARCHITECTURE.md`）。nsh 细节与坑见同目录 `nsh-notes.md`。
 
 ## 导航树
 
 - 唯一数据源是 `src/shell/nav.rs` 的 `NAV` 表：每条含 `id`、locale `key`、窄模式 `icon`、可选 `group` 与 `NavKind`（`Page` 渲染函数 / `Action` 副作用）。加页只改表、`pages` 与 locale，不动 `shell.rs`。
-- 当前 8 条：Search（动作占位）、Nexus / 远程 / 本地（`group = "mods"`）、Multiplayer、Skins & Backups、Hub Home、Settings。组头来自 `GROUPS`，只翻 `nav_closed_group`，不写 `page`。
+- 当前 8 条：Hub Home（默认页）、Nexus / 远程 / 本地（`group = "mods"`）、Multiplayer、Skins & Backups、Settings、About。搜索框固定在侧栏顶部、折叠开关之上，不占 `NAV` 条目。组头来自 `GROUPS`，只翻 `nav_closed_group`，不写 `page`。
 - `Ui.page` 是 `Signal<&'static str>`，存 id；页头、状态行与开发者浮层统一用 `nav::title(id)`，组内条目自动拼「模组 / 子页」。
-- 侧栏两态：宽 176px（组头 28、子项 26、缩进 16 + 1px 竖线 + 8）与窄 44px（只有图标，组间 1px `BORDER` 分隔）；开关在 `nav_collapsed`，与 `nav_closed_group` 一样只存内存。
+- 侧栏两态：宽 176px（组头 28、子项 26、缩进 16 + 1px 竖线 + 8）与窄 44px（只有图标，组间 1px `BORDER` 分隔）；开关在 `nav_collapsed`，切换按 8 级阶梯改宽度，每级 12ms（约 96ms 走完），不做缓动；与 `nav_closed_group` 一样只存内存。
 - 页脚是启动键（`NAV` 之外的 `LAUNCH_ENTRY`，走 `Ui::launch_game`）与版本行；版本行五连点开开发者浮层。
-- 搜索入口当前只写状态行提示，搜索本体与「跳转到具体条目」仍未实现。
+- 顶部搜索框当前只写状态行提示，搜索本体与「跳转到具体条目」仍未实现。
 
 ## 视觉约束
 
 - 固定 14 色 token（`src/palette.rs`）。不新增颜色，也不做颜色补间：任何中间色都会离开调色板。
-- 所有尺寸按 `zoom`（1x/2x/3x，默认 2x）缩放，统一走 `ui::scaled` / `ui::pix` / `ui::panel` / `ui::button`；动画只作用于样式层（opacity、位移），不参与布局，也不写死像素。
+- 所有尺寸按 `zoom`（1x/2x/3x，默认 2x）缩放，统一走 `ui::scaled` / `ui::pix` / `ui::panel` / `ui::button`；动画默认只作用于样式层（opacity、位移），不参与布局，也不写死像素。唯一例外是侧栏折叠：宽度按 8 级阶梯跳变，属于结构性收放。
 - 像素风的"fancy"限定为收放、脉冲、闪烁、滑动、逐行出现，不用毛玻璃、渐变、弹跳堆料。
 
 ## 动画机制
@@ -29,14 +29,16 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 
 | 位置 | 触发 | 效果 | 时长 / 帧率 |
 | --- | --- | --- | --- |
-| 七个页面根视图 | 切页（`when` 重新挂载） | 淡入 + 自下而上 24pt 滑入 | 450ms，一次性 |
-| Hub Home 卡片与公告卡 | 页面挂载；卡片悬停 | 淡入；hover 上移 2pt、底色与边框切换 | 一次性 / 即时 |
+| 八个页面根视图 | 切页（`when` 重新挂载） | 淡入 + 自下而上 24pt 滑入 | 450ms，一次性 |
+| Hub Home 卡片与公告卡 | 页面挂载；卡片悬停 | 淡入；hover 底色与边框切换 | 一次性 / 即时 |
 | 侧栏选中项标签 | 该项被选中（`effect` 观察 `page`） | 标签淡入点亮 | 300ms，一次性 |
+| 侧栏折叠 / 展开 | `nav_collapsed` 切换 | 宽度 8 级阶梯，内容即时切换 | 96ms，12ms/级 |
 | 状态行 | `notice` 变为非空 | 提示自左滑入 24pt + 淡入 | 300ms，一次性 |
 | 开发者控制台 | 打开浮层 | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
 | 删除确认弹窗 | 打开（`when` 重新挂载） | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
 | 设置向导 | 打开 / 切步 | 遮罩淡入 + 卡片滑入；步骤内容淡入 | 450ms / 200ms |
 | PENDING UPDATE 面板 | 待定计划出现（本地模组页与远程模组页共用） | 滑入 | 450ms |
+| 依赖提示面板 | 安装被缺失依赖阻断 | 滑入 | 450ms |
 | Check 进行中 | `can_check` 为假且已知仓库 | 4 个 3px 方块脉冲追逐 | 640ms 循环，20 Hz 上限 |
 | 可更新行的 State 徽标 | `row.can_update()` | WARN 色呼吸 | 1800ms 循环，10 Hz 上限 |
 | Nexus 刷新中 | `nexus_refreshing` | 同款方块 spinner + 文案 | 640ms 循环，20 Hz 上限 |
@@ -49,7 +51,7 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 ## Hub Home 磁贴
 
 - 2 列 `grid`：GAME、MODS、CATALOGUE、BEPINEX 四张半宽卡，公告卡 `col_span_full()` 收尾；入口仍是 `pages::hub_home`，标题与面包屑走 `nav::title`。
-- 拖拽用原生 pan：内容层 `pan_values` + `bind_translate_x/y` 跟手，`on_pan_end` 按水平/垂直位移换位；拖拽中 `z_index` 抬升、底色 `SURFACE_RAISED`、边框 `ACCENT`，松手 spring 回位。
+- 拖拽用原生 pan：整张卡片（外框）`pan_values` + `bind_translate_x/y` 跟手，`on_pan_end` 按水平/垂直位移换位；拖拽中 `z_index` 抬升、底色 `SURFACE_RAISED`、边框 `ACCENT`，松手 spring 回位。
 - 顺序存 `Settings.home_order`（JSON `homeOrder`），经 `Ui::save_home_order` 写回；读取时按固定 id 表忽略未知、去重、补齐缺失，旧设置缺键即默认顺序。
 - 公告在启动时由 `Hub::hub_config_cached()` 读一次缓存存入 `Ui.announcement`，渲染路径不取 Hub 锁、只读缓存不联网；无当前公告显示 `hub.not_loaded`，不报错。GAME 卡副文本同时显示游戏目录与 app data 路径。
 
@@ -58,6 +60,8 @@ nsh 0.5.1 桌面壳：顶栏、侧栏树形导航、状态行、七页内容区�
 - 数据来自 `Hub::sources()`（core 启动时装载），页面不联网；行模型在 `src/ui/remote.rs`，与已装模组按 matcher（guid / dll / name）关联，同优先级取 guid 最优。
 - 状态都在 `Ui` 上：`remote_all` / `remote_rows` / `remote_page` / `remote_total` / `remote_query` / `remote_filter` / `remote_busy`；搜索、过滤与翻页只重建内存切片，不写设置。
 - 安装与更新共用 `pending_install`：准备阶段写 `remote_busy`（该行按钮与其它行一起禁用），成功后进 PENDING UPDATE 面板，Apply 走既有的 `apply_pending`，Cancel 删 staging；`refresh_mods` 同时重建本地与远程行，装完按钮立即变成 Update。
+- 依赖门禁在 `ui::install::prepare_remote_pending` 与 `prepare_update`：core 返回 `HubError::Dependencies` 时不进 pending，而是写 `dependency_prompt`（目标条目可选 + 问题列表）与状态行提示。渲染路径只读该 signal，不取 Hub 锁。
+- 依赖面板列 `Missing` / `Outdated`：有清单条目的缺失项可以 `Install missing`，worker 依次准备并 Apply 每个依赖，清 staging；首次安装随后自动重新准备目标条目，更新则清掉提示并让用户再点一次更新。未知依赖或版本不足只显示手动处理说明，不自动安装。`Cancel` 清掉提示，不触碰已装文件。
 - 空态分三种：清单缺失（一行说明 + 清单路径小字）、清单无条目、过滤后为空。
 
 ## 模组启用/禁用
