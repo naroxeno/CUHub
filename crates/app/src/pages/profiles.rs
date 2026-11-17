@@ -242,6 +242,7 @@ fn remove_confirm_block(ui: &Ui, name: &str) -> View {
 fn create_block(ui: &Ui) -> View {
     let z = ui.zoom;
     let name = ui.profiles.name;
+    let name_input = ui.profiles.name;
     let snapshot_ui = ui.clone();
     let blank_ui = ui.clone();
     let confirm_watch = ui.clone();
@@ -252,6 +253,7 @@ fn create_block(ui: &Ui) -> View {
         .child(
             input()
                 .value(name)
+                .on_change(move |text: &str| name_input.set(text.to_owned()))
                 .placeholder(move || t!("profiles.name_placeholder"))
                 .font_family(crate::ui::PIXEL_FONT.family)
                 .text_size(scaled(&z, 12.0))
