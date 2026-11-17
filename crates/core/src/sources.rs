@@ -10,7 +10,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::catalogs::normalize_key;
+use crate::catalogs::{DependencyRequirement, normalize_key};
 use crate::version::HubVersion;
 
 pub const SCHEMA_VERSION: u32 = 1;
@@ -181,6 +181,7 @@ pub struct SourceEntry {
     pub matcher: Matcher,
     pub asset: Option<String>,
     pub notes: Option<String>,
+    pub depends: Vec<DependencyRequirement>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,6 +256,7 @@ fn parse_entry_fields(value: Value) -> Result<SourceEntry, String> {
         matcher,
         asset,
         notes: document.notes.as_deref().and_then(clean_text),
+        depends: clean_dependencies(document.depends),
     })
 }
 
@@ -305,6 +307,25 @@ fn clean_asset(value: &str) -> Option<String> {
     Some(trimmed.to_owned())
 }
 
+fn clean_dependencies(values: Vec<DependencyRequirement>) -> Vec<DependencyRequirement> {
+    values
+        .into_iter()
+        .filter_map(|mut requirement| {
+            let name = clean_text(&requirement.name);
+            let guid = requirement.guid.as_deref().and_then(clean_text);
+            if name.is_none() && guid.is_none() {
+                return None;
+            }
+            requirement.name = name.or_else(|| guid.clone()).unwrap_or_default();
+            requirement.guid = guid;
+            requirement.minimum_version =
+                requirement.minimum_version.as_deref().and_then(clean_text);
+            requirement.note = requirement.note.as_deref().and_then(clean_text);
+            Some(requirement)
+        })
+        .collect()
+}
+
 fn clean_dll(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.contains('/') || trimmed.contains('\\') || trimmed.contains("..") {
@@ -338,6 +359,8 @@ struct EntryDocument {
     asset: Option<String>,
     #[serde(default)]
     notes: Option<String>,
+    #[serde(default)]
+    depends: Vec<DependencyRequirement>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -567,6 +590,18 @@ mod load_tests {
     }
 
     #[test]
+    fn entries_carry_declared_dependencies() {
+        let text = r#"{"schemaVersion":1,"generatedAt":"2026-10-01T00:00:00Z","mods":[{"name":"Target","repo":"owner/target","match":{"dll":["Target"]},"depends":[{"name":"ScavLib","minimumVersion":"1.2.0"},{"guid":"Starfi5h.CoreLib","optional":true}]}]}"#;
+        let manifest = SourceManifest::parse(text).expect("parse");
+        let entry = manifest.entries.first().expect("entry");
+        assert_eq!(entry.depends.len(), 2);
+        assert_eq!(entry.depends[0].name, "ScavLib");
+        assert_eq!(entry.depends[0].minimum_version.as_deref(), Some("1.2.0"));
+        assert_eq!(entry.depends[1].name, "Starfi5h.CoreLib");
+        assert!(entry.depends[1].optional);
+    }
+
+    #[test]
     fn broken_manifest_is_an_error() {
         let dir = temp_dir("manifest-broken");
         let path = manifest_path(&dir);
@@ -598,6 +633,7 @@ mod resolve_tests {
             matcher,
             asset: None,
             notes: None,
+            depends: Vec::new(),
         }
     }
 

@@ -7,7 +7,7 @@
 ## 输入输出
 
 - 输入：Plugins 绝对路径、`MetadataMod` 列表、`Catalogs`、忽略依赖名。
-- 输出：按名称排序的 `Vec<InstalledMod>`；失败只来自 Plugins 顶层不可读；BepInEx/Plugins 缺失不算错误，此时返回空表（vanilla 游戏根）。`InstalledMod` 额外带 `assembly_version`、`bepinex_version` 与插件 `guid`，供界面显示证据与后续来源解析。
+- 输出：按名称排序的 `Vec<InstalledMod>`；失败只来自 Plugins 顶层不可读；BepInEx/Plugins 缺失不算错误，此时返回空表（vanilla 游戏根）。`InstalledMod` 额外带 `assembly_version`、`bepinex_version`、插件 `guid` 与 `declared_dependencies`，供界面显示证据、来源解析与安装前检查。
 - 扫描器递归查找目录型模组中的 DLL，跳过符号链接，深度上限 16；单个子目录不可读时跳过而不是让整页失败。
 - `set_enabled(plugins, item, enabled)` 按 `item.dll_paths` 逐个改名；`set_all_enabled(plugins, enabled)` 递归收集 Plugins 下全部 DLL 后走同一条改名路径。进入前校验每个 DLL 都在 Plugins 内、是普通文件（不跟随符号链接）、目标不存在，然后才依次 `fs::rename`。失败逆序回滚已改名的文件，返回实际改名的文件数。
 - `delete_scope(plugins, item)` / `delete_all_scope(plugins)` 只统计：返回待删的一级条目绝对路径与递归文件数，供界面确认弹窗展示，不落盘。
@@ -18,7 +18,8 @@
 - 只看 Plugins 顶层条目，嵌套目录不单独成为模组。
 - 目录里一个 DLL 都没有时该条目不出现。
 - 没有元数据匹配的模组仍显示：名称取第一个未禁用 DLL 的茎名，状态为 `Unlisted`。
-- 对每个模组中的 DLL 读 .NET 元数据（`dotnetdll`）：取 Assembly 版本、`BepInPlugin` 构造参数里的 GUID 与插件版本。优先用未禁用 DLL；单个 DLL 解析失败只跳过该 DLL，不让整次扫描失败，也不把依赖 DLL 当成插件。读取前先看文件大小，超过 64 MiB 的 DLL 直接跳过（`MAX_DLL_BYTES`）。
+- 对每个模组中的 DLL 读 .NET 元数据（`dotnetdll`）：取 Assembly 版本、`BepInPlugin` 构造参数里的 GUID 与插件版本，以及 `BepInDependency` 的 GUID、最低版本与 `DependencyFlags`。优先用未禁用 DLL；单个 DLL 解析失败只跳过该 DLL，不让整次扫描失败，也不把依赖 DLL 当成插件。读取前先看文件大小，超过 64 MiB 的 DLL 直接跳过（`MAX_DLL_BYTES`）。
+- `BepInDependency` 的第二个参数可能是版本字符串，也可能是 `DependencyFlags` 整数；`SoftDependency`（位 2）记为可选依赖，缺省与 `HardDependency` 都算硬依赖。多个 DLL 的声明按 GUID/name 去重后合并进 `declared_dependencies`。
 - `installed_version` 优先 `BepInPlugin` 版本，其次 Assembly 版本；`guid` 优先插件 GUID，其次目录里的 `PluginGuid`。
 - 版本比较把 1–4 段点分十进制补齐后逐段比较；全 0（如 0.0.0.0）视为占位，不参与比较。两端都可解析时，安装版本更小才是 `OutOfDate`，否则 `UpToDate`；不可解析或只有占位版本时退回文件修改时间：修改时间不早于目录时间才 `UpToDate`，否则 `Unknown`。不再因为依赖 DLL 或没有版本证据而误报更新。
 - `.dll.disabled` 只按文件名后缀判断，大小写不敏感。
@@ -26,7 +27,15 @@
 - 删除只接受 Plugins 的直接子项：`strip_prefix` 后必须恰好一个普通组件，否则报 `OutsidePlugins`；Plugins 自身与嵌套路径一律拒绝。`delete_all` 按 FEATURES E8 删空 Plugins 顶层，非模组文件也会进入确认列表并被删除；`delete_mod` 只动单个来源路径。
 - 删除前逐项 `symlink_metadata`：目录删除时若条目其实是符号链接，只删链接本身；不会沿链接删到 Plugins 外。
 - 删除不可回滚；批量删除中途失败时前面的条目已消失，调用方应重新扫描而不是重试整批。
-- 依赖与冲突在扫描完成后统一计算；被禁用的模组不报告缺失依赖或冲突。
+- 依赖与冲突在扫描完成后统一计算；被禁用的模组不报告缺失依赖或冲突，被禁用的依赖也不算已满足。
+
+## 依赖检查
+
+- 依赖来源分三类：DLL 里的 `BepInDependency`（随扫描得到，写进 `declared_dependencies`）、`DependencyCatalog.json`（按模组名索引）、远程清单条目的 `depends`（只对这次要安装的条目生效）。
+- `dependencies::check_requirements` 只对启用中的已装模组匹配：optional 直接跳过；没有匹配项记 `Missing`；有匹配项但版本低于 `minimumVersion` 记 `Outdated` 并带上已装版本。版本比较复用 `HubVersion`，四段版本先截成三段再比，解析失败不阻断。
+- 找不到来源时 `entry` 为空，界面只能给 Nexus 搜索；清单能匹配到条目时带上 `SourceEntry`，界面可以一键安装。已知依赖名仍可经 `ignored_dependency_names` 忽略，忽略只作用于行内标注，不解除安装门禁。
+- `missing_labels` 把检查结果格式化成 `名称 最低版本+` 供 `annotate_dependencies` 写进 `InstalledMod.missing_dependencies`；安装前门禁在 `Hub::prepare_remote_install` 与 `Hub::plan_download`，本模块不下载、不写盘。
+- 安装前检查看的是完整 `InstalledMod` 表，包括刚下载但尚未 Apply 的 staging DLL（按 `read_dependencies` 读取），因此补丁包里新带的依赖也会被拦下。staging 内 DLL 自身的 identity（文件名 + `BepInPlugin` GUID）同时被当作包内已提供项，避免把随包附带的依赖误判为缺失。
 
 ## 常量与格式出处
 

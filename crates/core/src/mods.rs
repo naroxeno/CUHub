@@ -6,14 +6,30 @@ use std::path::{Component, Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
-use crate::catalogs::{Catalogs, names_match};
+use crate::catalogs::{Catalogs, DependencyRequirement};
 use crate::metadata::MetadataMod;
 use crate::paths;
 
+mod dependencies;
 mod dotnet;
+
+pub use dependencies::{DependencyIssue, IssueKind};
+pub(crate) use dependencies::{check_requirements, requirements_for};
 
 pub(crate) fn read_assembly_version(path: &Path) -> Option<String> {
     dotnet::read_dll(path).and_then(|evidence| evidence.assembly_version)
+}
+
+pub(crate) fn read_dependencies(path: &Path) -> Vec<DependencyRequirement> {
+    dotnet::read_dll(path)
+        .map(|evidence| evidence.dependencies)
+        .unwrap_or_default()
+}
+
+pub(crate) fn read_identity(path: &Path) -> Option<(String, Option<String>)> {
+    let evidence = dotnet::read_dll(path)?;
+    let name = path.file_stem()?.to_string_lossy().into_owned();
+    Some((name, evidence.plugin_guid))
 }
 
 const DLL_SUFFIX: &str = ".dll";
@@ -137,6 +153,7 @@ pub struct InstalledMod {
     pub expected_modified_at: Option<DateTime<Utc>>,
     pub disabled: bool,
     pub status: ModStatus,
+    pub declared_dependencies: Vec<DependencyRequirement>,
     pub missing_dependencies: Vec<String>,
     pub incompatible_with: Vec<String>,
 }
@@ -577,6 +594,7 @@ fn build_mod(path: &Path, metadata: &[MetadataMod]) -> Option<InstalledMod> {
         expected_modified_at,
         disabled,
         status,
+        declared_dependencies: evidence.dependencies,
         missing_dependencies: Vec::new(),
         incompatible_with: Vec::new(),
     })
@@ -601,11 +619,14 @@ fn dll_evidence(dlls: &[PathBuf]) -> dotnet::DllEvidence {
         if evidence.plugin_version.is_none() {
             evidence.plugin_version = found.plugin_version;
         }
-        if evidence.assembly_version.is_some()
-            && evidence.plugin_guid.is_some()
-            && evidence.plugin_version.is_some()
-        {
-            break;
+        for dependency in found.dependencies {
+            if !evidence
+                .dependencies
+                .iter()
+                .any(|existing| existing.matches(&dependency.name, dependency.guid.as_deref()))
+            {
+                evidence.dependencies.push(dependency);
+            }
         }
     }
     evidence
@@ -713,6 +734,11 @@ fn annotate_dependencies(
         .filter(|item| !item.disabled)
         .map(|item| item.name.clone())
         .collect::<Vec<_>>();
+    let active_mods = mods
+        .iter()
+        .filter(|item| !item.disabled)
+        .cloned()
+        .collect::<Vec<_>>();
 
     for item in mods.iter_mut() {
         item.missing_dependencies.clear();
@@ -720,21 +746,14 @@ fn annotate_dependencies(
         if item.disabled {
             continue;
         }
-        let requirements = catalogs
-            .dependencies
-            .requirements_for(&[item.name.as_str()]);
-        item.missing_dependencies = requirements
-            .into_iter()
-            .filter(|requirement| {
-                !active_names
-                    .iter()
-                    .any(|name| names_match(name, &requirement.name))
-                    && !ignored_dependencies
-                        .iter()
-                        .any(|name| names_match(name, &requirement.name))
-            })
-            .map(|requirement| requirement.display_label())
-            .collect();
+        let mut requirements = item.declared_dependencies.clone();
+        requirements.extend(
+            catalogs
+                .dependencies
+                .requirements_for(&[item.name.as_str()]),
+        );
+        item.missing_dependencies =
+            dependencies::missing_labels(&requirements, &active_mods, ignored_dependencies);
         item.incompatible_with = catalogs
             .incompatibilities
             .conflicts(&item.name, &active_names);

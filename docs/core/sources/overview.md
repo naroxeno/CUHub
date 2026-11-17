@@ -24,12 +24,18 @@
       "name": "ScavLib",
       "repo": "starfi5h/ScavLib",
       "match": { "guid": "Starfi5h.ScavLib", "dll": ["ScavLib.dll"], "name": ["ScavLib"] },
+      "depends": [
+        { "name": "CoreLib", "minimumVersion": "1.2.0" },
+        { "guid": "Starfi5h.ScavLib", "optional": true }
+      ],
       "asset": "ScavLib-1.2.3.zip",
       "notes": "optional"
     }
   ]
 }
 ```
+
+depends 只声明「装这条之前还需要什么」：name 与 guid 至少一个非空，guid 优先按 GUID 匹配、否则按 name；minimumVersion 是最低版本，optional 为真时安装前检查跳过。它不写入已装模组的状态，也不是完整依赖图；缺省视为没有声明。
 
 选择层：一个模组可能同时命中 GitHub 清单和内置 Nexus 目录。两个都展示，但只有一个生效源：默认版本最高者；版本打平时 GitHub 优先；都拿不到版本时也按同一平局规则。用户 pin 某类型后以 pin 为准，pin 的类型不存在（条目被删）时回默认。生效源只决定用谁的版本判更新，不做下载。
 

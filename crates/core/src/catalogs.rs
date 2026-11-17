@@ -14,11 +14,22 @@ const INCOMPATIBILITY_FILE: &str = "IncompatibilityCatalog.json";
 #[serde(rename_all = "camelCase", default)]
 pub struct DependencyRequirement {
     pub name: String,
+    pub guid: Option<String>,
     pub minimum_version: Option<String>,
     pub note: Option<String>,
+    pub optional: bool,
 }
 
 impl DependencyRequirement {
+    pub fn matches(&self, name: &str, guid: Option<&str>) -> bool {
+        if let Some(required) = self.guid.as_deref()
+            && let Some(actual) = guid
+        {
+            return names_match(required, actual);
+        }
+        names_match(&self.name, name)
+    }
+
     pub fn display_label(&self) -> String {
         let version = match self.minimum_version.as_deref() {
             Some(value) if !value.trim().is_empty() => format!(" {value}+"),
@@ -306,8 +317,10 @@ mod tests {
     fn labels_include_minimum_version_and_note() {
         let requirement = DependencyRequirement {
             name: "RshLib".to_string(),
+            guid: None,
             minimum_version: Some("2.0.0".to_string()),
             note: Some("Steam multiplayer".to_string()),
+            optional: false,
         };
         assert_eq!(
             requirement.display_label(),
@@ -315,8 +328,10 @@ mod tests {
         );
         let bare = DependencyRequirement {
             name: "CUCoreLib".to_string(),
+            guid: None,
             minimum_version: Some("  ".to_string()),
             note: None,
+            optional: false,
         };
         assert_eq!(bare.display_label(), "CUCoreLib");
     }

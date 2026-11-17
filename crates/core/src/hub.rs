@@ -8,14 +8,14 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
-use crate::catalogs::Catalogs;
+use crate::catalogs::{Catalogs, DependencyRequirement};
 use crate::github::{self, CheckFailure, RateLimit, ReleaseAsset, ReleaseInfo};
 use crate::hubconfig::{HubConfig, HubConfigChannel, HubConfigResult, HubConfigService};
 use crate::install::{self, UpgradePlan};
 use crate::launch::{self, LaunchError};
 use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
-use crate::mods::{self, InstalledMod, ModsError};
+use crate::mods::{self, DependencyIssue, InstalledMod, ModsError};
 use crate::network::{self, Fetch, Network, NetworkError};
 use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
 use crate::nexus_auth::{GithubTokenStore, KeyStoreError};
@@ -35,6 +35,7 @@ pub enum HubError {
     Launch(LaunchError),
     MissingMetadataLink,
     UnsafeMetadataLink,
+    UnsafeLink,
     OpenLink(io::Error),
     Settings(io::Error),
     Network(NetworkError),
@@ -49,6 +50,7 @@ pub enum HubError {
     NetworkUnavailable,
     Source(ChoiceError),
     Sources(sources::LoadError),
+    Dependencies(Vec<DependencyIssue>),
     Install(String),
     Plan(String),
     Apply(String),
@@ -75,7 +77,11 @@ impl std::fmt::Display for HubError {
                 formatter,
                 "The catalogue link is not an HTTPS URL, so it was not opened."
             ),
-            Self::OpenLink(error) => write!(formatter, "Could not open the Nexus page: {error}"),
+            Self::UnsafeLink => write!(
+                formatter,
+                "The link is not an HTTPS URL, so it was not opened."
+            ),
+            Self::OpenLink(error) => write!(formatter, "Could not open the link: {error}"),
             Self::Settings(error) => write!(formatter, "Could not save settings: {error}"),
             Self::Network(error) => error.fmt(formatter),
             Self::Cache(error) => error.fmt(formatter),
@@ -105,6 +111,23 @@ impl std::fmt::Display for HubError {
             }
             Self::Source(error) => error.fmt(formatter),
             Self::Sources(error) => error.fmt(formatter),
+            Self::Dependencies(issues) => {
+                let labels = issues
+                    .iter()
+                    .map(|issue| match issue.kind {
+                        mods::IssueKind::Missing => issue.name.clone(),
+                        mods::IssueKind::Outdated => match issue.installed_version.as_deref() {
+                            Some(installed) => format!("{} ({installed} installed)", issue.name),
+                            None => issue.name.clone(),
+                        },
+                    })
+                    .collect::<Vec<_>>();
+                write!(
+                    formatter,
+                    "Install or update these mods first: {}.",
+                    labels.join(", ")
+                )
+            }
             Self::Install(message) => write!(formatter, "Could not unpack the update: {message}"),
             Self::Plan(message) => write!(formatter, "The update cannot be installed: {message}"),
             Self::Apply(message) => write!(formatter, "The update failed: {message}"),
@@ -130,7 +153,7 @@ impl std::error::Error for HubError {
             Self::Path(error) => Some(error),
             Self::Mods(error) => Some(error),
             Self::Launch(error) => Some(error),
-            Self::MissingMetadataLink | Self::UnsafeMetadataLink => None,
+            Self::MissingMetadataLink | Self::UnsafeMetadataLink | Self::UnsafeLink => None,
             Self::OpenLink(error) => Some(error),
             Self::Settings(error) => Some(error),
             Self::Network(error) => Some(error),
@@ -139,7 +162,8 @@ impl std::error::Error for HubError {
             Self::Credentials(error) => Some(error),
             Self::Json(error) => Some(error),
             Self::Io(error) => Some(error),
-            Self::Install(_)
+            Self::Dependencies(_)
+            | Self::Install(_)
             | Self::Plan(_)
             | Self::Apply(_)
             | Self::GameRunning
@@ -638,6 +662,18 @@ impl Hub {
         self.metadata.is_empty() || self.metadata_cache.is_stale()
     }
 
+    pub fn open_external_link(&self, url: &str) -> Result<(), HubError> {
+        if !network::is_https_url(url) {
+            return Err(HubError::UnsafeLink);
+        }
+        let mut child = platform::open_url(url).map_err(HubError::OpenLink)?;
+        thread::spawn(move || {
+            let _ = child.wait();
+        });
+        self.logs.activity("Link", &format!("Opened {url}."));
+        Ok(())
+    }
+
     pub fn open_nexus_download_page(&self, mod_id: &str) -> Result<(), HubError> {
         let url = self
             .metadata
@@ -780,6 +816,24 @@ impl Hub {
             .join(format!("{stamp}-{}", std::process::id()))
     }
 
+    fn package_dependency_issues(
+        &self,
+        mut requirements: Vec<DependencyRequirement>,
+        staged_dlls: &[PathBuf],
+        installed: &[InstalledMod],
+    ) -> Vec<DependencyIssue> {
+        let provided: Vec<(String, Option<String>)> = staged_dlls
+            .iter()
+            .filter_map(|path| mods::read_identity(path))
+            .collect();
+        requirements.retain(|requirement| {
+            !provided
+                .iter()
+                .any(|(name, guid)| requirement.matches(name, guid.as_deref()))
+        });
+        mods::check_requirements(&requirements, installed, self.sources.as_ref())
+    }
+
     pub fn plan_download(
         &self,
         download: &Path,
@@ -814,13 +868,38 @@ impl Hub {
             owned_root: &installed.source_path,
             owned_files: &installed.dll_paths,
         };
-        match install::plan_payload(&staged, target) {
-            Ok(plan) => Ok(plan),
+        let plan = match install::plan_payload(&staged, target) {
+            Ok(plan) => plan,
             Err(error) => {
                 let _ = fs::remove_dir_all(&staged.staging_root);
-                Err(HubError::Plan(error.to_string()))
+                return Err(HubError::Plan(error.to_string()));
             }
+        };
+        let mut requirements = self
+            .catalogs
+            .dependencies
+            .requirements_for(&[installed.name.as_str()]);
+        let mut staged_dlls = Vec::new();
+        for file in &plan.files {
+            if !install::is_dll_file(&file.staged) {
+                continue;
+            }
+            requirements.extend(mods::read_dependencies(&file.staged));
+            staged_dlls.push(file.staged.clone());
         }
+        let installed_mods = match self.scan_mods() {
+            Ok(mods) => mods,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&staged.staging_root);
+                return Err(error);
+            }
+        };
+        let issues = self.package_dependency_issues(requirements, &staged_dlls, &installed_mods);
+        if !issues.is_empty() {
+            let _ = fs::remove_dir_all(&staged.staging_root);
+            return Err(HubError::Dependencies(issues));
+        }
+        Ok(plan)
     }
 
     pub fn discard_staging(&self, staging: &Path) {
@@ -926,11 +1005,30 @@ impl Hub {
         Ok(plugins)
     }
 
+    pub fn remote_install_issues(
+        &self,
+        entry: &sources::SourceEntry,
+    ) -> Result<Vec<DependencyIssue>, HubError> {
+        let installed = self.scan_mods()?;
+        let requirements = mods::requirements_for(entry, &self.catalogs);
+        Ok(mods::check_requirements(
+            &requirements,
+            &installed,
+            self.sources.as_ref(),
+        ))
+    }
+
     pub fn prepare_remote_install(
         &self,
         entry: &sources::SourceEntry,
     ) -> Result<RemoteInstall, HubError> {
         self.ensure_game_closed()?;
+        let installed = self.scan_mods()?;
+        let requirements = mods::requirements_for(entry, &self.catalogs);
+        let issues = mods::check_requirements(&requirements, &installed, self.sources.as_ref());
+        if !issues.is_empty() {
+            return Err(HubError::Dependencies(issues));
+        }
         let plugins = self.plugins_dir()?;
         let downloads = self.app_data.join("Downloads");
         let archive =
@@ -948,6 +1046,20 @@ impl Hub {
                 return Err(HubError::Install(error.to_string()));
             }
         };
+        let mut staged_dlls = Vec::new();
+        let mut staged_requirements = Vec::new();
+        for file in &staged.files {
+            if !install::is_dll_file(&file.relative) {
+                continue;
+            }
+            staged_requirements.extend(mods::read_dependencies(&file.path));
+            staged_dlls.push(file.path.clone());
+        }
+        let issues = self.package_dependency_issues(staged_requirements, &staged_dlls, &installed);
+        if !issues.is_empty() {
+            let _ = fs::remove_dir_all(&staged.staging_root);
+            return Err(HubError::Dependencies(issues));
+        }
         let plan = match install::plan_first_install(&staged, &plugins, &entry.name) {
             Ok(plan) => plan,
             Err(error) => {
