@@ -1,6 +1,6 @@
 //! Remote (Nexus) list page: filters, rows, pager and empty state.
 
-use super::shared::pending_panel;
+use super::shared::{dependency_panel, pending_panel};
 use crate::palette::*;
 use crate::shell::nav;
 use crate::ui::{
@@ -16,6 +16,9 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
     let pending = ui.pending_install;
     let pending_z = z;
     let pending_ui = ui.clone();
+    let dependency = ui.dependency_prompt;
+    let dependency_z = z;
+    let dependency_ui = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
     let pager_ui = ui.clone();
@@ -77,6 +80,10 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
     } else {
         body = body.child(remote_manifest_hint(&z, &manifest_path));
     }
+    body = body.child(when(
+        move || dependency.get().is_some(),
+        move || dependency_panel(&dependency_z, &dependency_ui),
+    ));
     body = body.child(when(
         move || pending.get().is_some(),
         move || pending_panel(&pending_z, &pending_ui),

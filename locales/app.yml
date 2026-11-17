@@ -59,6 +59,10 @@ nav.settings:
   en: "Settings"
   zh-CN: "设置"
   ja: "設定"
+nav.about:
+  en: "About"
+  zh-CN: "关于"
+  ja: "情報"
 nav.search:
   en: "Search"
   zh-CN: "搜索"
@@ -91,6 +95,10 @@ panel.settings:
   en: "SETTINGS"
   zh-CN: "设置"
   ja: "設定"
+panel.about:
+  en: "ABOUT"
+  zh-CN: "关于"
+  ja: "情報"
 panel.pending_update:
   en: "PENDING UPDATE"
   zh-CN: "待应用的更新"
@@ -111,10 +119,30 @@ topbar.launch:
   en: "Launch Game"
   zh-CN: "启动游戏"
   ja: "ゲームを起動"
-topbar.report_issues:
+about.tagline:
+  en: "A desktop hub for Casualties: Unknown mods."
+  zh-CN: "Casualties: Unknown 的桌面模组中心。"
+  ja: "Casualties: Unknown のデスクトップMODハブ。"
+about.repository:
+  en: "Source code"
+  zh-CN: "源代码"
+  ja: "ソースコード"
+about.report_issues:
   en: "Report issues"
   zh-CN: "反馈问题"
   ja: "問題を報告"
+about.license_link:
+  en: "License"
+  zh-CN: "许可证"
+  ja: "ライセンス"
+about.license_note:
+  en: "Released under the GNU Affero General Public License v3.0."
+  zh-CN: "以 GNU Affero 通用公共许可证 v3.0 发布。"
+  ja: "GNU Affero 一般公衆ライセンス v3.0 で公開。"
+about.disclaimer:
+  en: "Unofficial. Not affiliated with Nexus Mods or the developers of Casualties: Unknown."
+  zh-CN: "非官方项目，与 Nexus Mods 及 Casualties: Unknown 开发者无隶属关系。"
+  ja: "非公式。Nexus Mods および Casualties: Unknown の開発者とは関係ありません。"
 common.saved:
   en: "Saved"
   zh-CN: "已保存"
@@ -339,6 +367,54 @@ remote.failed:
   en: "Install prepare failed: %{error}"
   zh-CN: "准备安装失败：%{error}"
   ja: "インストールの準備に失敗しました: %{error}"
+dependency.blocked:
+  en: "Some dependencies are missing or outdated."
+  zh-CN: "有依赖缺失或版本过旧。"
+  ja: "依存MODが見つからないか、バージョンが古いです。"
+dependency.resolve_first:
+  en: "Resolve the dependency prompt first."
+  zh-CN: "请先处理依赖提示。"
+  ja: "先に依存関係の確認を済ませてください。"
+dependency.still_blocked:
+  en: "Dependencies are still missing or outdated."
+  zh-CN: "依赖仍然缺失或版本过旧。"
+  ja: "依存MODがまだ不足しているか、古いままです。"
+dependency.failed:
+  en: "Could not install dependencies: %{error}"
+  zh-CN: "安装依赖失败：%{error}"
+  ja: "依存MODをインストールできませんでした: %{error}"
+dependency.installing:
+  en: "Installing missing dependencies…"
+  zh-CN: "正在安装缺失的依赖…"
+  ja: "不足している依存MODをインストール中…"
+dependency.installed_retry:
+  en: "Dependencies are installed. Start the update again."
+  zh-CN: "依赖已安装，请再点一次更新。"
+  ja: "依存MODをインストールしました。もう一度更新してください。"
+dependency.install:
+  en: "Install missing"
+  zh-CN: "安装缺失项"
+  ja: "不足分をインストール"
+dependency.manual:
+  en: "Some dependencies are not in the manifest or are outdated. Install or update them manually, then try again."
+  zh-CN: "部分依赖不在清单里或版本过旧。请手动安装或更新后再试。"
+  ja: "マニフェストにない、または古い依存MODがあります。手動でインストール／更新してから再試行してください。"
+dependency.missing:
+  en: "%{name} is required but not installed."
+  zh-CN: "需要 %{name}，但尚未安装。"
+  ja: "%{name} が必要ですが、インストールされていません。"
+dependency.missing_version:
+  en: "%{name} %{version}+ is required but not installed."
+  zh-CN: "需要 %{name} %{version}+，但尚未安装。"
+  ja: "%{name} %{version}+ が必要ですが、インストールされていません。"
+dependency.outdated:
+  en: "%{name} %{required}+ is required; installed %{installed}."
+  zh-CN: "需要 %{name} %{required}+；当前安装的是 %{installed}。"
+  ja: "%{name} %{required}+ が必要です。インストール済み: %{installed}。"
+panel.dependencies:
+  en: "Dependencies"
+  zh-CN: "依赖"
+  ja: "依存関係"
 remote.empty:
   en: "The manifest has no entries."
   zh-CN: "清单里还没有条目。"
@@ -955,6 +1031,14 @@ notice.opened_nexus:
   en: "Opened the Nexus download page in the browser."
   zh-CN: "已在浏览器中打开 Nexus 下载页。"
   ja: "ブラウザで Nexus のダウンロードページを開きました。"
+notice.link_opened:
+  en: "Opened the link in your browser."
+  zh-CN: "已在浏览器中打开链接。"
+  ja: "リンクをブラウザで開きました。"
+notice.link_failed:
+  en: "Could not open the link: %{error}"
+  zh-CN: "无法打开链接：%{error}"
+  ja: "リンクを開けませんでした: %{error}"
 notice.open_nexus_failed:
   en: "Could not open the Nexus page: %{error}"
   zh-CN: "无法打开 Nexus 页面：%{error}"

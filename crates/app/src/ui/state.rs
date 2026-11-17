@@ -1,7 +1,7 @@
 //! Hub-backed UI state, its constructor and page refresh entry points.
 
 use super::delete::DeletePrompt;
-use super::install::PendingInstall;
+use super::install::{DependencyPrompt, PendingInstall};
 use super::remote::{RemoteFilter, RemoteRow, build_remote_rows};
 use super::rows::CheckState;
 use super::rows::LocalModRow;
@@ -57,6 +57,7 @@ pub struct Ui {
     pub announcement: Signal<Option<String>>,
     pub remote_busy: Signal<Option<String>>,
     pub pending_install: Signal<Option<PendingInstall>>,
+    pub dependency_prompt: Signal<Option<DependencyPrompt>>,
     pub update_busy: Signal<Option<String>>,
     pub toggle_busy: Signal<Option<String>>,
     pub bulk_busy: Signal<bool>,
@@ -135,7 +136,7 @@ impl Ui {
             t!("notice.mods_found", count = mods.len())
         };
         Self {
-            page: signal(nav::NEXUS),
+            page: signal(nav::HOME),
             zoom: signal(zoom),
             dev: signal(false),
             taps: signal(0u32),
@@ -164,6 +165,7 @@ impl Ui {
             announcement: signal(announcement),
             remote_busy: signal(None::<String>),
             pending_install: signal(None::<PendingInstall>),
+            dependency_prompt: signal(None::<DependencyPrompt>),
             update_busy: signal(None::<String>),
             toggle_busy: signal(None::<String>),
             bulk_busy: signal(false),
@@ -214,6 +216,17 @@ impl Ui {
         };
         if needs_refresh {
             self.refresh_metadata(false);
+        }
+    }
+
+    pub fn open_link(&self, url: &str) {
+        let result = {
+            let hub = self.hub();
+            hub.open_external_link(url)
+        };
+        match result {
+            Ok(()) => self.notice.set(t!("notice.link_opened")),
+            Err(error) => self.notice.set(t!("notice.link_failed", error = error)),
         }
     }
 

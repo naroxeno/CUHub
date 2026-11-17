@@ -4,6 +4,65 @@ use crate::palette::*;
 use crate::ui::{Ui, button, panel, pix, rise_in, scaled};
 use nsh_core::prelude::*;
 
+pub(super) fn dependency_panel(z: &Signal<u8>, ui: &Ui) -> View {
+    let z = *z;
+    let Some(prompt) = ui.dependency_prompt.get() else {
+        return view();
+    };
+    let mut body = view().flex_col().gap(scaled(&z, 4.0));
+    for issue in &prompt.issues {
+        let line = match issue.kind {
+            cuhub_core::mods::IssueKind::Missing => match issue.minimum_version.as_deref() {
+                Some(version) => t!(
+                    "dependency.missing_version",
+                    name = issue.name.clone(),
+                    version = version.to_owned()
+                ),
+                None => t!("dependency.missing", name = issue.name.clone()),
+            },
+            cuhub_core::mods::IssueKind::Outdated => t!(
+                "dependency.outdated",
+                name = issue.name.clone(),
+                required = issue.minimum_version.clone().unwrap_or_default(),
+                installed = issue
+                    .installed_version
+                    .clone()
+                    .unwrap_or_else(|| t!("common.none"))
+            ),
+        };
+        let color = if issue.kind == cuhub_core::mods::IssueKind::Missing {
+            DANGER
+        } else {
+            WARN
+        };
+        body = body.child(pix(line, 10.0, color, &z));
+    }
+    if prompt.has_manual() {
+        body = body.child(pix(move || t!("dependency.manual"), 10.0, TEXT_MUTED, &z));
+    }
+    let install_ui = ui.clone();
+    let cancel_ui = ui.clone();
+    let can_install = prompt.can_install() && ui.remote_busy.get().is_none();
+    body = body.child(
+        view()
+            .flex_row()
+            .gap(scaled(&z, 8.0))
+            .child(button(
+                &z,
+                move || t!("dependency.install"),
+                can_install,
+                move || install_ui.install_dependencies(),
+            ))
+            .child(button(
+                &z,
+                move || t!("common.cancel"),
+                true,
+                move || cancel_ui.dismiss_dependency_prompt(),
+            )),
+    );
+    panel(&z, move || t!("panel.dependencies"), body).bind_motion(&rise_in())
+}
+
 pub(super) fn pending_panel(z: &Signal<u8>, ui: &Ui) -> View {
     let z = *z;
     let Some(pending) = ui.pending_install.get() else {

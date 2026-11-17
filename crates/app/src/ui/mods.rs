@@ -1,6 +1,6 @@
 //! Mod list actions: toggles, source checks and pins, details and launch.
 
-use super::install::prepare_update;
+use super::install::{DependencyPrompt, RemoteAttempt, prepare_update};
 use super::rows::CheckState;
 use super::rows::build_local_rows;
 use super::rows::failure_notice;
@@ -227,13 +227,20 @@ impl Ui {
             })
             .await;
             match result {
-                Ok(Ok(pending)) => {
+                Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
                     let files = pending.plan.files.len();
                     ui.pending_install.set(Some(pending));
                     ui.apply_status.set(String::new());
                     ui.notice
                         .set(t!("notice.update_ready", name = name, files = files));
+                }
+                Ok(Ok(RemoteAttempt::Blocked(issues))) => {
+                    ui.dependency_prompt.set(Some(DependencyPrompt {
+                        target: None,
+                        issues,
+                    }));
+                    ui.notice.set(t!("dependency.blocked"));
                 }
                 Ok(Err(error)) => ui.notice.set(error.to_string()),
                 Err(error) => ui

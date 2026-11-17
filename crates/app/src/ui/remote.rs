@@ -1,10 +1,10 @@
 //! Remote manifest rows plus the install and update workers behind the remote page.
 
-use super::install::{PendingInstall, prepare_update};
+use super::install::{DependencyPrompt, RemoteAttempt, prepare_remote_pending, prepare_update};
 use super::rows::dll_stems;
 use super::rows::{nexus_page_count, page_slice, source_key};
 use super::state::Ui;
-use cuhub_core::hub::{Hub, HubError, RemoteInstall};
+use cuhub_core::hub::Hub;
 use cuhub_core::mods::InstalledMod;
 use cuhub_core::sources::{LocalMod, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
@@ -157,6 +157,10 @@ impl Ui {
             self.notice.set(t!("notice.pending_first"));
             return;
         }
+        if self.dependency_prompt.get().is_some() {
+            self.notice.set(t!("dependency.resolve_first"));
+            return;
+        }
         let key = row.key.clone();
         let name = row.entry.name.clone();
         self.remote_busy.set(Some(key));
@@ -165,31 +169,26 @@ impl Ui {
         let ui = self.clone();
         self.spawn_worker(async move {
             let entry = row.entry;
+            let target = entry.clone();
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                let RemoteInstall {
-                    name,
-                    staging,
-                    plan,
-                } = hub.prepare_remote_install(&entry)?;
-                let game_running = hub.game_running()?;
-                Ok::<PendingInstall, HubError>(PendingInstall {
-                    mod_name: name,
-                    source: SourceKind::Github,
-                    plan,
-                    staging,
-                    notes: Vec::new(),
-                    game_running,
-                })
+                prepare_remote_pending(&hub, entry)
             })
             .await;
             ui.remote_busy.set(None);
             match result {
-                Ok(Ok(pending)) => {
+                Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
                     ui.pending_install.set(Some(pending));
                     ui.apply_status.set(String::new());
                     ui.notice.set(t!("remote.ready", name = name));
+                }
+                Ok(Ok(RemoteAttempt::Blocked(issues))) => {
+                    ui.dependency_prompt.set(Some(DependencyPrompt {
+                        target: Some(target),
+                        issues,
+                    }));
+                    ui.notice.set(t!("dependency.blocked"));
                 }
                 Ok(Err(error)) => ui.notice.set(t!("remote.failed", error = error)),
                 Err(error) => ui.notice.set(t!("remote.failed", error = error)),
@@ -236,13 +235,20 @@ impl Ui {
             .await;
             ui.remote_busy.set(None);
             match result {
-                Ok(Ok(pending)) => {
+                Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
                     let files = pending.plan.files.len();
                     ui.pending_install.set(Some(pending));
                     ui.apply_status.set(String::new());
                     ui.notice
                         .set(t!("notice.update_ready", name = name, files = files));
+                }
+                Ok(Ok(RemoteAttempt::Blocked(issues))) => {
+                    ui.dependency_prompt.set(Some(DependencyPrompt {
+                        target: None,
+                        issues,
+                    }));
+                    ui.notice.set(t!("dependency.blocked"));
                 }
                 Ok(Err(error)) => ui.notice.set(error.to_string()),
                 Err(error) => ui

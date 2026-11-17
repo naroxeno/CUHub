@@ -1,10 +1,10 @@
 //! Pending install staging, archive download and apply/discard.
 
 use super::state::Ui;
-use cuhub_core::hub::{Hub, HubError};
+use cuhub_core::hub::{Hub, HubError, RemoteInstall};
 use cuhub_core::install::UpgradePlan;
-use cuhub_core::mods::InstalledMod;
-use cuhub_core::sources::{Repo, SourceKind};
+use cuhub_core::mods::{DependencyIssue, InstalledMod, IssueKind};
+use cuhub_core::sources::{Repo, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -19,6 +19,57 @@ pub struct PendingInstall {
     pub game_running: bool,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct DependencyPrompt {
+    pub target: Option<SourceEntry>,
+    pub issues: Vec<DependencyIssue>,
+}
+
+impl DependencyPrompt {
+    pub fn can_install(&self) -> bool {
+        self.issues
+            .iter()
+            .any(|issue| issue.kind == IssueKind::Missing && issue.entry.is_some())
+    }
+
+    pub fn has_manual(&self) -> bool {
+        self.issues.iter().any(|issue| {
+            issue.kind == IssueKind::Outdated
+                || (issue.kind == IssueKind::Missing && issue.entry.is_none())
+        })
+    }
+}
+
+pub(super) enum RemoteAttempt {
+    Ready(PendingInstall),
+    Blocked(Vec<DependencyIssue>),
+}
+
+pub(super) fn prepare_remote_pending(
+    hub: &Hub,
+    entry: SourceEntry,
+) -> Result<RemoteAttempt, HubError> {
+    match hub.prepare_remote_install(&entry) {
+        Ok(RemoteInstall {
+            name,
+            staging,
+            plan,
+        }) => {
+            let game_running = hub.game_running()?;
+            Ok(RemoteAttempt::Ready(PendingInstall {
+                mod_name: name,
+                source: SourceKind::Github,
+                plan,
+                staging,
+                notes: Vec::new(),
+                game_running,
+            }))
+        }
+        Err(HubError::Dependencies(issues)) => Ok(RemoteAttempt::Blocked(issues)),
+        Err(error) => Err(error),
+    }
+}
+
 pub(super) fn prepare_update(
     hub: &Hub,
     item: &InstalledMod,
@@ -27,7 +78,7 @@ pub(super) fn prepare_update(
     repo: Option<&Repo>,
     asset: Option<&str>,
     nexus_id: Option<&str>,
-) -> Result<PendingInstall, HubError> {
+) -> Result<RemoteAttempt, HubError> {
     let mut source = effective
         .unwrap_or_else(|| choose_update_source(hub, pinned, nexus_id.is_some(), repo.is_some()));
     let mut notes = Vec::new();
@@ -54,16 +105,20 @@ pub(super) fn prepare_update(
         }
     };
     let staging = hub.staging_root();
-    let plan = hub.plan_download(&archive, item, &staging)?;
+    let plan = match hub.plan_download(&archive, item, &staging) {
+        Ok(plan) => plan,
+        Err(HubError::Dependencies(issues)) => return Ok(RemoteAttempt::Blocked(issues)),
+        Err(error) => return Err(error),
+    };
     let game_running = hub.game_running()?;
-    Ok(PendingInstall {
+    Ok(RemoteAttempt::Ready(PendingInstall {
         mod_name: item.name.clone(),
         source,
         plan,
         staging,
         notes,
         game_running,
-    })
+    }))
 }
 
 fn choose_update_source(
@@ -87,6 +142,13 @@ fn choose_update_source(
     } else {
         SourceKind::Nexus
     }
+}
+
+fn install_one_dependency(hub: &Hub, entry: &SourceEntry) -> Result<(), HubError> {
+    let RemoteInstall { staging, plan, .. } = hub.prepare_remote_install(entry)?;
+    let applied = hub.apply_install(&plan);
+    hub.discard_staging(&staging);
+    applied.map(|_| ())
 }
 
 fn download_github_archive(
@@ -214,5 +276,70 @@ impl Ui {
         self.pending_install.set(None);
         self.apply_status.set(String::new());
         self.notice.set(t!("notice.discarded"));
+    }
+
+    pub fn install_dependencies(&self) {
+        let Some(prompt) = self.dependency_prompt.get() else {
+            return;
+        };
+        if self.remote_busy.get().is_some() || self.apply_running.get() {
+            return;
+        }
+        let entries: Vec<SourceEntry> = prompt
+            .issues
+            .iter()
+            .filter(|issue| issue.kind == IssueKind::Missing)
+            .filter_map(|issue| issue.entry.clone())
+            .collect();
+        if entries.is_empty() {
+            return;
+        }
+        let target = prompt.target.clone();
+        let fallback_target = prompt.target.clone();
+        self.remote_busy.set(Some(String::from("dependencies")));
+        self.notice.set(t!("dependency.installing"));
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        self.spawn_worker(async move {
+            let result = blocking(move || -> Result<Option<RemoteAttempt>, HubError> {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                for entry in &entries {
+                    install_one_dependency(&hub, entry)?;
+                }
+                match target {
+                    Some(target) => prepare_remote_pending(&hub, target).map(Some),
+                    None => Ok(None),
+                }
+            })
+            .await;
+            ui.remote_busy.set(None);
+            match result {
+                Ok(Ok(Some(RemoteAttempt::Ready(pending)))) => {
+                    let name = pending.mod_name.clone();
+                    ui.dependency_prompt.set(None);
+                    ui.pending_install.set(Some(pending));
+                    ui.apply_status.set(String::new());
+                    ui.notice.set(t!("remote.ready", name = name));
+                }
+                Ok(Ok(Some(RemoteAttempt::Blocked(issues)))) => {
+                    ui.dependency_prompt.set(Some(DependencyPrompt {
+                        target: fallback_target,
+                        issues,
+                    }));
+                    ui.notice.set(t!("dependency.still_blocked"));
+                }
+                Ok(Ok(None)) => {
+                    ui.dependency_prompt.set(None);
+                    ui.notice.set(t!("dependency.installed_retry"));
+                }
+                Ok(Err(error)) => ui.notice.set(t!("dependency.failed", error = error)),
+                Err(error) => ui.notice.set(t!("dependency.failed", error = error)),
+            }
+        });
+    }
+
+    pub fn dismiss_dependency_prompt(&self) {
+        self.dependency_prompt.set(None);
+        self.notice.set(String::new());
     }
 }
