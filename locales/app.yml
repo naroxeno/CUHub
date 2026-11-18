@@ -451,6 +451,18 @@ local.enable_all:
   en: "Enable all"
   zh-CN: "全部启用"
   ja: "すべて有効化"
+local.managed_by_profile:
+  en: "Managed by profile"
+  zh-CN: "由档案管理"
+  ja: "プロファイル管理"
+notice.all_managed_by_profile:
+  en: "Every mod in Plugins is managed by a profile. Switch profiles instead of deleting them here."
+  zh-CN: "Plugins 里的模组都由档案管理，请切换档案，不要在这里删除。"
+  ja: "Plugins のMODはすべてプロファイル管理です。ここで削除せず、プロファイルを切り替えてください。"
+notice.managed_by_profile:
+  en: "This mod is deployed by a profile. Switch profiles instead of updating it here."
+  zh-CN: "这个模组由档案部署，请切换档案，不要在这里更新。"
+  ja: "このMODはプロファイルが配置しています。ここで更新せず、プロファイルを切り替えてください。"
 local.empty:
   en: "No mods were found in the selected game folder."
   zh-CN: "在所选游戏文件夹中未找到模组。"
@@ -1143,6 +1155,14 @@ notice.disabled_all:
   en: "Disabled all mods: %{count} DLL file(s) renamed."
   zh-CN: "已禁用所有模组：已重命名 %{count} 个 DLL 文件。"
   ja: "すべてのMODを無効化しました: %{count} 件の DLL ファイルを変更。"
+notice.enabled_all_skipped:
+  en: "Enabled every other mod: %{count} DLL file(s) renamed. %{skipped} mod(s) are managed by a profile."
+  zh-CN: "已启用其余模组：重命名了 %{count} 个 DLL 文件；%{skipped} 个模组由档案管理。"
+  ja: "ほかのMODを有効化しました: %{count} 件の DLL を変更。%{skipped} 件はプロファイル管理です。"
+notice.disabled_all_skipped:
+  en: "Disabled every other mod: %{count} DLL file(s) renamed. %{skipped} mod(s) are managed by a profile."
+  zh-CN: "已禁用其余模组：重命名了 %{count} 个 DLL 文件；%{skipped} 个模组由档案管理。"
+  ja: "ほかのMODを無効化しました: %{count} 件の DLL を変更。%{skipped} 件はプロファイル管理です。"
 notice.enable_all_failed:
   en: "Could not enable every mod: %{error}"
   zh-CN: "无法启用所有模组：%{error}"

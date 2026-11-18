@@ -98,6 +98,12 @@ impl Ui {
             self.notice.set(t!("notice.no_mods_to_change"));
             return;
         }
+        let skipped = self
+            .local_rows
+            .get()
+            .iter()
+            .filter(|row| row.managed)
+            .count();
         self.bulk_busy.set(true);
         self.notice.set(if enabled {
             t!("notice.enabling_all")
@@ -116,7 +122,21 @@ impl Ui {
             match result {
                 Ok(Ok(count)) => {
                     ui.refresh_mods();
-                    ui.notice.set(if enabled {
+                    ui.notice.set(if skipped > 0 {
+                        if enabled {
+                            t!(
+                                "notice.enabled_all_skipped",
+                                count = count,
+                                skipped = skipped
+                            )
+                        } else {
+                            t!(
+                                "notice.disabled_all_skipped",
+                                count = count,
+                                skipped = skipped
+                            )
+                        }
+                    } else if enabled {
                         t!("notice.enabled_all", count = count)
                     } else {
                         t!("notice.disabled_all", count = count)
@@ -262,7 +282,7 @@ impl Ui {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
                     let files = pending.plan.files.len();
-                    if accept_pending(&ui, pending) {
+                    if accept_pending(&ui, *pending) {
                         ui.notice
                             .set(t!("notice.update_ready", name = name, files = files));
                     }

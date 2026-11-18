@@ -185,7 +185,7 @@ impl Ui {
             match result {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
-                    if accept_pending(&ui, pending) {
+                    if accept_pending(&ui, *pending) {
                         ui.notice.set(t!("remote.ready", name = name));
                     }
                 }
@@ -248,7 +248,7 @@ impl Ui {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
                     let files = pending.plan.files.len();
-                    if accept_pending(&ui, pending) {
+                    if accept_pending(&ui, *pending) {
                         ui.notice
                             .set(t!("notice.update_ready", name = name, files = files));
                     }

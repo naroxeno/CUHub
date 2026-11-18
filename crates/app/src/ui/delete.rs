@@ -63,6 +63,10 @@ impl Ui {
     }
 
     pub fn request_delete_all(&self) {
+        if !self.mods.get().is_empty() && self.local_rows.get().iter().all(|row| row.managed) {
+            self.notice.set(t!("notice.all_managed_by_profile"));
+            return;
+        }
         self.start_delete(DeleteTarget::All);
     }
 

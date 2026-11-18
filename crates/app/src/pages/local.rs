@@ -353,61 +353,65 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
             },
         ));
     }
-    let toggle_ui = ui.clone();
-    let toggle_key = row.source_key.clone();
-    let enable = row.item.disabled;
-    let toggle_label_key = if enable {
-        "common.enable"
+    if row.managed {
+        line = line.child(pix(t!("local.managed_by_profile"), 10.0, TEXT_MUTED, z));
     } else {
-        "common.disable"
-    };
-    let toggle_z = *z;
-    let toggle_watch = ui.clone();
-    line = line.child(
-        when(
-            move || toggle_watch.mod_files_busy(),
-            move || button(&toggle_z, move || t!(toggle_label_key), false, || {}),
-        )
-        .otherwise({
-            let toggle_ui = toggle_ui.clone();
-            move || {
+        let toggle_ui = ui.clone();
+        let toggle_key = row.source_key.clone();
+        let enable = row.item.disabled;
+        let toggle_label_key = if enable {
+            "common.enable"
+        } else {
+            "common.disable"
+        };
+        let toggle_z = *z;
+        let toggle_watch = ui.clone();
+        line = line.child(
+            when(
+                move || toggle_watch.mod_files_busy(),
+                move || button(&toggle_z, move || t!(toggle_label_key), false, || {}),
+            )
+            .otherwise({
                 let toggle_ui = toggle_ui.clone();
-                let toggle_key = toggle_key.clone();
-                button(
-                    &toggle_z,
-                    move || t!(toggle_label_key),
-                    true,
-                    move || {
-                        toggle_ui.set_mod_enabled(toggle_key.clone(), enable);
-                    },
-                )
-            }
-        }),
-    );
-    let delete_watch = ui.clone();
-    let delete_z = *z;
-    line = line.child(
-        when(
-            move || delete_watch.mod_files_busy(),
-            move || danger_button(&delete_z, move || t!("common.delete"), false, || {}),
-        )
-        .otherwise({
-            let delete_ui = ui.clone();
-            let delete_key = row.source_key.clone();
-            move || {
-                let delete_ui = delete_ui.clone();
-                let delete_key = delete_key.clone();
-                danger_button(
-                    &delete_z,
-                    move || t!("common.delete"),
-                    true,
-                    move || {
-                        delete_ui.request_delete_mod(delete_key.clone());
-                    },
-                )
-            }
-        }),
-    );
+                move || {
+                    let toggle_ui = toggle_ui.clone();
+                    let toggle_key = toggle_key.clone();
+                    button(
+                        &toggle_z,
+                        move || t!(toggle_label_key),
+                        true,
+                        move || {
+                            toggle_ui.set_mod_enabled(toggle_key.clone(), enable);
+                        },
+                    )
+                }
+            }),
+        );
+        let delete_watch = ui.clone();
+        let delete_z = *z;
+        line = line.child(
+            when(
+                move || delete_watch.mod_files_busy(),
+                move || danger_button(&delete_z, move || t!("common.delete"), false, || {}),
+            )
+            .otherwise({
+                let delete_ui = ui.clone();
+                let delete_key = row.source_key.clone();
+                move || {
+                    let delete_ui = delete_ui.clone();
+                    let delete_key = delete_key.clone();
+                    danger_button(
+                        &delete_z,
+                        move || t!("common.delete"),
+                        true,
+                        move || {
+                            delete_ui.request_delete_mod(delete_key.clone());
+                        },
+                    )
+                }
+            }),
+        );
+    }
     line
 }
 

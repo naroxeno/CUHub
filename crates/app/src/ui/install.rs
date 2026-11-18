@@ -4,6 +4,7 @@ use super::state::Ui;
 use cuhub_core::hub::{Hub, HubError, RemoteInstall};
 use cuhub_core::install::UpgradePlan;
 use cuhub_core::mods::{DependencyIssue, InstalledMod, IssueKind};
+use cuhub_core::packages::PackagePlan;
 use cuhub_core::sources::{Repo, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
@@ -40,6 +41,7 @@ pub struct PendingInstall {
     pub mod_name: String,
     pub source: SourceKind,
     pub plan: UpgradePlan,
+    pub package: PackagePlan,
     pub staging: PathBuf,
     pub notes: Vec<PendingNote>,
     pub game_running: bool,
@@ -67,7 +69,7 @@ impl DependencyPrompt {
 }
 
 pub(super) enum RemoteAttempt {
-    Ready(PendingInstall),
+    Ready(Box<PendingInstall>),
     Blocked(Vec<DependencyIssue>),
 }
 
@@ -80,16 +82,18 @@ pub(super) fn prepare_remote_pending(
             name,
             staging,
             plan,
+            package,
         }) => {
             let game_running = hub.game_running()?;
-            Ok(RemoteAttempt::Ready(PendingInstall {
+            Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
                 mod_name: name,
                 source: SourceKind::Github,
                 plan,
+                package,
                 staging,
                 notes: Vec::new(),
                 game_running,
-            }))
+            })))
         }
         Err(HubError::Dependencies(issues)) => Ok(RemoteAttempt::Blocked(issues)),
         Err(error) => Err(error),
@@ -133,20 +137,26 @@ pub(super) fn prepare_update(
         }
     };
     let staging = hub.staging_root();
-    let plan = match hub.plan_download(&archive, item, &staging) {
-        Ok(plan) => plan,
+    let source_label = match source {
+        SourceKind::Github => "github",
+        SourceKind::Nexus => "nexus",
+    };
+    let package = match hub.prepare_package_update(&archive, item, &staging, source_label) {
+        Ok(package) => package,
         Err(HubError::Dependencies(issues)) => return Ok(RemoteAttempt::Blocked(issues)),
         Err(error) => return Err(error),
     };
+    let plan = package.preview();
     let game_running = hub.game_running()?;
-    Ok(RemoteAttempt::Ready(PendingInstall {
+    Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
         mod_name: item.name.clone(),
         source,
         plan,
+        package,
         staging,
         notes,
         game_running,
-    }))
+    })))
 }
 
 fn choose_update_source(
@@ -172,9 +182,11 @@ fn choose_update_source(
     }
 }
 
-fn install_one_dependency(hub: &Hub, entry: &SourceEntry) -> Result<(), HubError> {
-    let RemoteInstall { staging, plan, .. } = hub.prepare_remote_install(entry)?;
-    let applied = hub.apply_install(&plan);
+fn install_one_dependency(hub: &mut Hub, entry: &SourceEntry) -> Result<(), HubError> {
+    let RemoteInstall {
+        staging, package, ..
+    } = hub.prepare_remote_install(entry)?;
+    let applied = hub.apply_package(&package);
     hub.discard_staging(&staging);
     applied.map(|_| ())
 }
@@ -223,13 +235,13 @@ impl Ui {
                     ui.notice.set(t!("notice.update_cancelled"));
                     break;
                 }
-                let plan = pending.plan.clone();
+                let package = pending.package.clone();
                 let worker_hub = hub.clone();
                 let result = blocking(move || {
-                    let hub = worker_hub
+                    let mut hub = worker_hub
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    hub.apply_install(&plan)
+                    hub.apply_package(&package)
                 })
                 .await;
                 match result {
@@ -243,7 +255,7 @@ impl Ui {
                             hub.discard_staging(&staging);
                         })
                         .await;
-                        let count = report.replaced.len() + report.created.len();
+                        let count = report.files;
                         let backup = report
                             .backup
                             .as_ref()
@@ -334,9 +346,9 @@ impl Ui {
         let ui = self.clone();
         self.spawn_worker(async move {
             let result = blocking(move || -> Result<Option<RemoteAttempt>, HubError> {
-                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let mut hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 for entry in &entries {
-                    install_one_dependency(&hub, entry)?;
+                    install_one_dependency(&mut hub, entry)?;
                 }
                 match target {
                     Some(target) => prepare_remote_pending(&hub, target).map(Some),
@@ -348,7 +360,7 @@ impl Ui {
             match result {
                 Ok(Ok(Some(RemoteAttempt::Ready(pending)))) => {
                     let name = pending.mod_name.clone();
-                    if accept_pending(&ui, pending) {
+                    if accept_pending(&ui, *pending) {
                         ui.dependency_prompt.set(None);
                         ui.notice.set(t!("remote.ready", name = name));
                     }

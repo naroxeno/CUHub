@@ -82,6 +82,7 @@ pub struct LocalModRow {
     pub source_key: String,
     pub item: InstalledMod,
     pub source: SourceRow,
+    pub managed: bool,
 }
 
 impl LocalModRow {
@@ -148,9 +149,10 @@ pub(super) fn build_local_rows(
                 check,
                 pinned,
             });
+            let managed = hub.links().get(&item.source_path).is_some();
             LocalModRow {
                 key: format!(
-                    "{key}|{}|{}|{}",
+                    "{key}|{}|{}|{}|{managed}",
                     check_tag(check),
                     pin_tag(pinned),
                     item.disabled
@@ -158,6 +160,7 @@ pub(super) fn build_local_rows(
                 source_key: key,
                 item: item.clone(),
                 source,
+                managed,
             }
         })
         .collect()
