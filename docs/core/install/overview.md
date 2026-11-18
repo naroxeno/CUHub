@@ -2,7 +2,7 @@
 
 ## 职责
 
-把用户选定的压缩包或裸 DLL 变成一次可审查的单模组升级：解包到 staging、按归属规则生成计划、备份后替换、失败回滚。另负责 BepInEx 本体的检测与安装计划（pin 死的发行版 + 白名单，见下）。不决定来源、不碰界面。
+负责解包到 staging、归档布局与归属规则、BepInEx 本体的检测与安装计划（pin 死的发行版 + 白名单，见下）。普通模组的安装/更新已改由 `packages` 落 Store 并按档案部署；本模块的 `plan_download` / `apply_install` 只保留给 BepInEx 与回退。不决定来源、不碰界面。
 
 ## 输入与输出
 
@@ -10,7 +10,7 @@
 - `stage_dll(dll, staging_root)`：release 只发裸 DLL 时使用；校验 `.dll` 扩展与 PE 头（`MZ`）后复制成只有一个文件的 `StagedArchive`。
 - `plan_payload(staged, PlanTarget)`：可安装文件只有一个 DLL 时按裸 DLL 规则规划（名字优先；该模组只有一个已装 DLL 时，release 改名也替换它），否则交给 `plan_upgrade`。
 - `plan_upgrade(staged, PlanTarget)`：根据归档布局、目标根与当前模组的归属范围生成 `UpgradePlan`；计划里同时列出冲突与警告。
-- `plan_first_install(staged, plugins, name)`：为尚未安装的模组生成首次安装计划，规则见「首次安装」。
+- `plan_first_install(staged, plugins, name)`：旧链路的首次安装计划，规则见「首次安装（旧链路）」；正常远程安装已改走 `packages`。
 - `normalize_install_name(name)`：把清单显示名变成可用作目录名的字符串。
 - `detect(game_root)`：读 BepInEx 本体的安装状态（是否安装、是否完整、5 或 6、是否 IL2CPP）。
 - `plan_install(game_root, staged, Mode)`：按白名单为本体生成计划；Fresh 把既有目标全部记为冲突，Repair 只替换白名单内的普通文件。
@@ -28,9 +28,9 @@
 
 已存在的目标文件只有在当前模组的 `source_path`（目录或文件）或 `dll_paths` 内才允许替换。其他已存在文件一律记为 conflict，计划不可执行。新增文件允许，但父链必须是目录或尚不存在；父链遇到 symlink 或普通文件时拒绝。
 
-## 首次安装
+## 首次安装（旧链路）
 
-远程模组页可以直接安装尚未安装的 GitHub 模组。`plan_first_install(staged, plugins, name)` 复用同一套 `UpgradePlan` 与 `apply_upgrade`，但此时没有任何归属信息，规则比更新更严。
+远程模组页现在生成 `PackagePlan`。这里的 `plan_first_install(staged, plugins, name)` 只保留给旧链路与测试，复用同一套 `UpgradePlan` 与 `apply_upgrade`；首次安装没有归属信息，规则比更新更严。
 
 - 裸 DLL：落到 `BepInEx/plugins/<DLL 文件名>`，布局记 `Dll`，动作只有 `Create`；文件名沿用 release 资产名，不按清单显示名改名。
 - 归档：落到 `BepInEx/plugins/<规范化显示名>`。布局判定与 wrapper 剥离同 `plan_upgrade`；归档带 `plugins/` 前缀或含 `BepInEx/plugins/...` 时目标根会升到 `BepInEx/plugins`，与更新路径一致。
@@ -68,7 +68,9 @@
 
 ## 接线
 
-`Hub` 把本模块串成一次用户发起的升级：`download_nexus_latest` 或 `download_github_asset` 把归档放到 `<AppData>/Downloads`；`plan_download` 按扩展名解包或复制到 `<AppData>/Staging/<nanos>-<pid>` 并生成计划；UI 的 pending 面板展示文件数、替换/新增、目标根、警告与冲突，用户点 Apply 才 `apply_install`。取消或计划失败时删 staging。
+普通模组的统一链路：`download_nexus_latest` 或 `download_github_asset` 把归档放到 `<AppData>/Downloads`；`Hub::prepare_package_update` / `prepare_remote_install` 解包或复制到 `<AppData>/Staging/<nanos>-<pid>`，调用 `packages::plan_package` 生成 `PackagePlan`；UI 的 pending 面板展示文件数、目标与警告，用户点 Apply 后 `Hub::apply_package` 入库、写活动档案、按档案部署。取消或计划失败时删 staging。
+
+旧的 `plan_download` + `apply_install` 链路只用于 BepInEx 与回退：`plan_download` 解包后生成 `UpgradePlan`，`apply_install` 在游戏未运行时备份并逐文件替换。两者不再处理普通模组的远程安装/更新。
 
 来源选择在 UI 层：pin 优先；未 pin 时有 Nexus Premium 走 Nexus，否则 GitHub；Nexus 下载失败且未 pin 时回退 GitHub，并在面板注明。GitHub 资产按清单 `asset` 精确名选择，未填时取 release 里第一个 zip/7z/rar 或裸 DLL；裸 DLL 下载后同样走 `stage_dll` 与 `plan_payload`。
 
@@ -76,6 +78,6 @@
 
 BepInEx 本体复用同一条链路：`Hub::prepare_bepinex` 下载到 `<AppData>/Downloads`、按 pin 的 sha256 校验、解包到 staging 再生成计划；用户确认后 `apply_install`，最后 `finish_bepinex` 建 `BepInEx/plugins`。取消删除 staging，备份同样落在 `<AppData>/Backups`。
 
-远程首次安装同理：`Hub::prepare_remote_install(entry)` 先查游戏进程并确认 plugins 存在，按清单的 `repo`/`asset` 下载到 `<AppData>/Downloads`，再 staging 并使用 `plan_first_install`。返回的 `RemoteInstall { name, staging, plan }` 与更新计划一样交给 pending 面板，确认后 `apply_install`；下载之后的任何失败都会删掉 staging。
+远程首次安装走 `Hub::prepare_remote_install(entry)`：先查游戏进程并确认 plugins 存在，按清单的 `repo`/`asset` 下载到 `<AppData>/Downloads`，再 staging 并生成 `PackagePlan`。返回的 `RemoteInstall { name, staging, package }` 交给 pending 面板，确认后 `Hub::apply_package`；下载之后的任何失败都会删掉 staging。`plan_first_install` 仅供旧链路与测试使用。
 
 不做：一键升级、后台自动安装、release 页链接、把归档送进收件箱再确认。Update 在 `OutOfDate`、或生效源为 GitHub 且 release 版本高于已装版本时出现；禁用模组与无法确定来源的行不给，Nexus Standard 的 403 仍按失败展示。

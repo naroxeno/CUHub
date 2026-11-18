@@ -60,7 +60,7 @@ cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的
 
 ### 5.1 握手
 
-`guest → host: hello`
+`guest → host: hello`（普通 `req`，`method:"hello"`）
 
 | 字段 | 含义 |
 |---|---|
@@ -70,15 +70,15 @@ cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的
 | `game` | `{pid, unity_version, bepinex_version}` |
 | `mods` | `[{guid, version}]`，进程内已加载的模组 |
 
-`host → guest: hello.ok`：`{host_version, caps, commands, perms}`。
+`host → guest: hello.ok`：`res` 的 `result` 为 `{host_version, caps, commands, perms}`（`ok:true`）。
 
 `commands` 是宿主已知的命令表，`perms` 是每条命令当下的授权（`granted` / `denied` / `ask`）。授权不在握手里改，只能由用户在 cuhub 里改，改完用 `evt: perms.changed` 通知。
 
-拒绝：`bad_token`（断开，不回详情）、`proto_mismatch`（附带双方 major）、`duplicate_pid`。
+拒绝：先回 `res.ok:false` 再断开；`bad_token`（message 只写 token rejected，不回详情）、`proto_mismatch`（附带双方 major）、`duplicate_pid`、`busy`（已有会话）。
 
 ### 5.2 心跳
 
-`ping` / `pong`，10 秒一次；连续 3 次未回则断开重连。
+`ping` 是 `req`，对端用 `res` 回；双向各发，10 秒一次；连续 3 次未回则断开重连。
 
 ### 5.3 状态上报
 
@@ -86,6 +86,8 @@ cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的
 |---|---|---|
 | `game.state` | guest → host | `{screen: menu\|loading\|in_world, session?: {...}}` |
 | `mods.loaded` | guest → host | 已加载模组与加载时间，用于显示“这个模组真的起来了” |
+
+MVP 尚未实现这两个上报，宿主收到未知 `evt` 忽略。
 
 ### 5.4 命令
 

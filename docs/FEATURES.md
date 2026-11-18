@@ -51,7 +51,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | O 外观系统 | 像素风固定调色板、1px 双框、像素字体、整数缩放、语义状态色 | P1 |
 | P 设置与迁移 | 全部设置项、旧配置迁移、JSON 容错 | P0 |
 | Q 日志/诊断/崩溃报告 | 会话日志、保留策略、崩溃报告、诊断命令、自检命令 | P0 |
-| R 多人页（预览） | 样例数据、过滤、布局占位 | P2 |
+| R 多人页（虚拟局域网） | EasyTier 隧道、C1 房间码、房主发现、连接状态与对端表 | P1 |
 | S 打包发布 | 单文件、内嵌资源、Data 覆盖、双平台、版本注入 | P0 |
 | T 已移除功能 | 自更新、应用内卸载器、HubContent 订阅源、Supabase | 不复刻 |
 | U 来源表与整合包 | 来源优先级、GitHub 内置 tag、用户正则、表校验、CUPK1 整合包 | P2 |
@@ -67,12 +67,12 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### A. 应用外壳与导航
 
-- **A1 (P0)** 左侧栏由 `shell/nav.rs` 的 `NAV` 表驱动：Hub Home（默认页）、模组组（Nexus Dashboard / Remote Mods / Local Mods，父节点只折叠/展开、不切页）、Multiplayer、Skins & Backups、Settings、About；折叠状态只在本次运行内保留（不落盘）。页面身份是稳定 id，不依赖索引；子页的页头与状态栏显示「模组 / <子页>」两段路径。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
-- **A2 (P0)** 标题栏：居中显示产品名与版本，不放操作按钮；启动游戏在侧栏页脚，反馈问题在 About 页。
+- **A1 (P0)** 左侧栏由 `shell/nav.rs` 的 `NAV` 表驱动：Hub Home（默认页）、模组组（Nexus Dashboard / Remote Mods / Local Mods / 模组档案，父节点只折叠/展开、不切页）、Multiplayer、Skins & Backups、Settings、About；折叠状态只在本次运行内保留（不落盘）。页面身份是稳定 id，不依赖索引；子页的页头与状态栏显示「模组 / <子页>」两段路径。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
+- **A2 (P0)** 标题栏：无系统边框，自绘 40px HUD 条——左侧品牌块、CUHUB 与版本，中间状态点与 `///`，右侧最小化/最大化/关闭；空白区可拖动窗口，按钮区不拖动。启动游戏在侧栏页脚，反馈问题在 About 页。
 - **A3 (P0)** 底部状态栏：单一 status 文本，由各页面与外壳写入（“Game folder detected.”、“Asked Steam to launch Casualties Unknown.”、“Could not launch: …” 等）。
 - **A4 (P1)** 侧栏底部显示 `v{version}`；3 秒内点击 5 次打开开发者控制台（Debug 页/窗口）。这是隐藏入口，不走设置。
 - **A5 (P2)** 彩蛋：需在设置中开启 Easter Eggs 才生效（默认关，首次启动写一次 Initialized 标记，避免“默认开”误判）；含一段固定外链跳转与吉祥物点击计数。
-- **A6 (P1)** 窗口：Linux 用客户端装饰 + 图标；像素壳（纯黑底、1px 白描边双框、方角导航条、无圆角无阴影），规格见 O。
+- **A6 (P1)** 窗口：不用系统标题栏（`WindowFrameStyle::None`），自绘标题栏加 8 条边缘/角落缩放热区；像素壳（纯黑底、1px 白描边双框、方角导航条、无圆角无阴影），规格见 O。
 - **A7 (P0)** 全局缩放：1x/2x/3x（默认 2x）整数倍，作用到整个窗口（继承），启动时应用、改设置即时应用；不提供任意字号。
 - **A8 (P1)** 启动流程：读设置 → 应用界面缩放（1x/2x/3x）→ 装载缓存公告并渲染 → 公告过期则后台刷新 → 启动下载监视器 → 游戏路径为空则自动检测（≤20s，失败弹检测对话框可跳设置）；首次启动由设置向导承接（A10），向导打开时跳过本次自动检测；向导跳过或完成后仍为空则不再自动检测，可在设置页手动检测。
 - **A9 (P1)** 单实例行为：当前实现无单实例锁（不实现也可），但下载监视器必须只跑一份。
@@ -131,10 +131,10 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E3 (P0)** 版本证据展示：“Assembly x | BepInEx y | Modified t”，没有证据时 “No version evidence found”。
 - **E4 (P0)** 更新判定（与元数据比对）：0.0.0.0 视为占位符不算过期；只要任一新于元数据即 “up to date”；文件修改时间 ≥ 元数据 `LatestFileModifiedUtc` 也算 up to date；全部新于全部期望值才算 out of date。被禁用的模组不报更新。
 - **E5 (P0)** 状态文案（逐字复刻）：Disabled — re-enable… / placeholder 提示 / Up to date: X 1.2 matches Y 1.2 / installed newer than live metadata / modified date matches / No comparable update data was found. / Out of date: 1.0 is below 1.3。
-- **E6 (P0)** 禁用/启用：把该模组所有 DLL 在 `.dll` 与 `.dll.disabled` 间改名；目标已存在则报错 “Cannot rename 'X' because 'Y' already exists.”
+- **E6 (P0)** 禁用/启用：把该模组所有 DLL 在 `.dll` 与 `.dll.disabled` 间改名；目标已存在则报错 “Cannot rename 'X' because 'Y' already exists.” 由 `Links.json` 托管的档案部署条目不参与改名，Hub 返回 `ManagedByProfile`，行内只显示「由档案管理」。
 - **E7 (P0)** 禁用态视觉：整行文字 danger 红、左缘 2px danger 竖条，动作按钮显示 Enable。
-- **E8 (P0)** 批量：Disable all / Enable all（递归匹配两种扩展名）；Delete all（删空 Plugins，破坏性确认，tooltip 写明不动受保护资源与设置）。
-- **E9 (P0)** 单项删除：按来源路径删除（目录或文件）。
+- **E8 (P0)** 批量：Disable all / Enable all（递归匹配两种扩展名）；Delete all（删空 Plugins，破坏性确认，tooltip 写明不动受保护资源与设置）。批量和 Delete all 都跳过 `Links.json` 托管的条目，并在提示里报告跳过数量。
+- **E9 (P0)** 单项删除：按来源路径删除（目录或文件）；档案部署的条目拒绝删除，只能通过切换/修改档案移除。
 - **E10 (P0)** 三列布局：每列可从 8 种视图任选 —— Enabled Mods / Disabled Mods / Sharecode Requested Mods / Missing Dependencies / Update Available / Incompatibility / Known Bugs / Needs Attention；默认 启用 / 禁用 / 分享码请求。
 - **E11 (P1)** 第三列（分享码）可手动隐藏/显示（开关持久化）；隐藏时网格第三列宽度归零。
 - **E12 (P1)** 本地搜索框：匹配名称、GUID、依赖标签。
@@ -144,7 +144,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E16 (P2)** 版本证据缺失、GUID 缺失的模组仍要能显示与操作，不能因缺数据整页失败。
 - **E17 (P1)** 匹配算法：DLL 名与元数据 `DllNames` 忽略大小写求交；优先“归一化名 == DLL 茎名”，其次 `DllNames` 只有一项的，最后按 `DllNames` 数量升序（避免同名不同模组串台，例如自带 CUCoreLib.dll 的模组）。
 
-实现状态（2026-11-15）：core 已落地 E1 扫描、E2 的主要字段、E3 版本证据、E4 更新判定、E5 状态文案、E6 禁用/启用、E8 的批量禁用/启用与 Delete all、E9 单项删除、E15 未收录模组、E17 匹配；E6、E7、E8、E9 的界面已接；分享码请求、已知 bug 数据、E10–E14 的界面仍未做。
+实现状态（2026-11-19）：core 已落地 E1 扫描、E2 的主要字段、E3 版本证据、E4 更新判定、E5 状态文案、E6 禁用/启用、E8 的批量禁用/启用与 Delete all（均跳过档案托管条目）、E9 单项删除、E15 未收录模组、E17 匹配；E6、E7、E8、E9 的界面已接，托管条目显示「由档案管理」；分享码请求、已知 bug 数据、E10–E14 的界面仍未做。
 
 ### F. 压缩包安装（安装计划）
 
@@ -318,7 +318,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **R8 (P0)** `multiplayer.json`（0600，原子写）只存 `lastRoom{role,code}`、`corePath`、`relayOverride`；密钥只从房间码在内存派生，不落盘、不进日志。
 - **R9 (P0)** 同一时刻只允许一个隧道；重复开房或加入先停旧进程再起新的。
 - **R10 (P0)** 提权：不自提权。Windows 用 `platform::elevated()`（`Shell32!IsUserAnAdmin`）判断当前进程，不足时状态卡常显提示「以管理员身份重新打开 Cuhub」，点击开房/加入直接报权限错；Linux/macOS 不做进程级预检查，由 EasyTier core 文件能力（如 `cap_net_admin+ep`）在 exec 时取得 TUN 权限。不弹 UAC、不循环重试。
-- **R11 (P1)** 桥（W1–W6 条件触发）：`mp.state` 扩展 `transport` / `virtual_ip` / `lan_port` / `room_code`，`mp.join` 接受这些字段；联机 mod 作者确认前保留复制粘贴兜底。
+- **R11 (P1)** 桥（W1–W6 条件触发）：`mp.state` 扩展 `transport` / `virtual_ip` / `lan_port` / `room_code`，`mp.join` 接受这些字段；联机 mod 作者确认前保留复制粘贴兜底。桥宿主与 C# 插件 MVP 已落地，Multiplayer 页尚未消费桥事件。
 - **R12 (P1)** 单测：房间码往返/校验/多命中、CLI JSON、参数生成、release 解压；本机双实例、双机同/异 NAT、杀内核清理仍待实测。
 - **S1 (P0)** 单文件自包含可执行（Windows exe + Linux）；内嵌：依赖目录、不兼容目录、发布说明（`Version {version}.txt`）、离线公告副本。
 - **S2 (P0)** `Data/` 目录（可执行文件旁）优先于内嵌资源，允许用户手改目录数据；改动按文件时间戳重载。
@@ -388,7 +388,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **W8 (P1)** 权限管理：设置页的桥区块列出每条命令与三档权限，默认只读；任何授权变更写日志（旧值、新值、来源）。
 - **W9 (P2)** 第三方接入：发布 `CuhubBridge.Core` 的接入说明与最小示例，协议文档作为跨语言契约。
 
-实现状态（2026-11-15，实验性，不发布）：仅 `crates/core/src/bridge/` 的帧编解码与 rendezvous 文件（W1 的发现文件一侧），无监听、无会话、无命令；游戏侧只有协议常量，插件工程未建。其余条目按编号排队。
+实现状态（2026-11-19，实验性，不发布）：W1 已落地——Rust 宿主有监听、握手、单会话、命令表、权限、审计与 13 个回环集成测试，C# `CuhubBridge.Core` + `CuhubBridge.Plugin` 能编译（`dotnet build -c Release` 无警告，未真机加载），实现 `hello`、10 秒心跳与 `mp.state` / `mp.host` / `mp.join`；`mp.leave` / `mp.kick` / `save.*` / `skin.*` 回 `unavailable`。W2/W3 未接线：`take_events` 没有 UI 消费者，Multiplayer 页仍走 EasyTier 状态，连接状态未显示。W4 只有游戏侧命令，权限确认 UI 未做；W5–W9 未开始。插件未打进 Cuhub 安装包，需 `just package-bridge` 单独生成。
 
 边界：不做通用 RPC、不做任意文件读写、不做进程注入；命令表只增不删；Nexus key 与 GitHub token 永不进桥。
 
@@ -415,12 +415,12 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y2 (P0)** 数据：`Hub::sources()` 的 entries；每行显示清单显示名与 `owner/name` 小字，已装时附已安装版本（读不到版本时标 Installed）。
 - **Y3 (P0)** 匹配：用清单 matcher（guid / dll / name）与已装模组匹配；同一 entry 命中多个已装模组时按 guid > dll > name 取最优，与 `sources::best_match` 的优先级一致。
 - **Y4 (P0)** 搜索与过滤：按名称或仓库搜索；All / Installed / Not installed 三态；每页 50 行（`NEXUS_PAGE_SIZE` + `page_slice`）；搜索词、过滤与页码只在内存里，不写设置。
-- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成首次安装计划，成功即把计划交给既有的 PENDING UPDATE 面板；Apply 仍走 `apply_install`，Cancel 删 staging。依赖检查被阻断时不进 pending，改为显示依赖提示面板；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。
-- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成更新计划后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进 pending 面板。
+- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成 `PackagePlan`，成功即交给 PENDING UPDATE 面板；Apply 走 `Hub::apply_package`，载荷先进 Store，再写入活动档案并按档案部署。依赖检查被阻断时不进 pending，改为显示依赖提示面板；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。旧 `apply_install` 只保留给 BepInEx 与回退。
+- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成 `PackagePlan` 后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级；由 `Links.json` 托管的条目允许更新：新版本进 Store 后替换活动档案里的同 `modId` 条目，并重排链接，不再以 `ManagedByProfile` 拒绝。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进 pending 面板。
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
 
-实现状态（2026-11-15）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker，`pages::remote_mods` 负责视图；pending 面板与 `apply_pending` 复用 Local Mods 的同一套。未做：清单重载（core 无 reload 接口，改清单需重启）、远端 release 版本预检（按钮不判断是否有新版）、清单下发（清单目前需手工放到 `<AppData>/Sources/manifest.json`）。
+实现状态（2026-11-19）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，pending 面板与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。未做：清单重载（core 无 reload 接口，改清单需重启）、远端 release 版本预检（按钮不判断是否有新版）、清单下发（清单目前需手工放到 `<AppData>/Sources/manifest.json`）。
 
 边界：只读清单，不在应用内编辑或抓取；不重托管模组、不伪造下载 URL；游戏进程检查、路径越界与目标已存在由 core 拒绝，界面只展示错误。
 
@@ -437,7 +437,7 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
 - **Z7 (P1)** 语言与实现词：新增文案全部走 `nav.profiles` / `profiles.*`（en / zh-CN / ja），界面不出现 plan、staging、manifest 等实现词；破坏性操作的范围写在确认框里。
 - **Z8 (P1)** 线程与一致性：所有 Hub 调用在 worker（`spawn_worker` + `blocking`）里执行，UI 线程只读信号；切换档案不改 `Links.json` 之外的配置，`configOverrides` 仍只持久化、不执行；BepInEx 与 `config` 的部署不受档案应用影响。
 
-实现状态（2026-11-17）：Z1–Z7 的界面部分已落地——`crates/app/src/ui/profiles.rs` 负责行模型、worker 与错误映射，`crates/app/src/pages/profiles.rs` 负责视图与内联确认；core 侧 `plan_profile` / `apply_profile` / `plan_adopt` / `apply_adopt` 均为既有实现，本次未改 core。未做：DESIGN-v2 §3 的 M4 整合包（pack manifest 导入/导出、CUPK1 打包）未开始；档案区还没有 `configOverrides` 编辑、条目级启用/禁用与条目复制（字段已存在，无 UI 入口）；迁移撤销（undo adopt）与内容库删除/清空的两段式入口未做。
+实现状态（2026-11-19）：Z1–Z7 的界面部分已落地——`crates/app/src/ui/profiles.rs` 负责行模型、worker 与错误映射，`crates/app/src/pages/profiles.rs` 负责视图与内联确认；同日起安装/更新统一走 Store：`packages::apply` 先入库再写入活动档案，未迁移的散装模组在更新时被收编并备份原文件。未做：DESIGN-v2 §3 的 M4 整合包（pack manifest 导入/导出、CUPK1 打包）未开始；档案区还没有 `configOverrides` 编辑、条目级启用/禁用与条目复制（字段已存在，无 UI 入口）；迁移撤销（undo adopt）与内容库删除/清空的两段式入口未做。
 
 边界：迁移只处理 Plugins 下的散装条目，被跳过的条目原样保留；删除档案不回滚已部署文件；档案应用只按 `Links.json` 重建 Plugins 根层部署，不触碰 `BepInEx/config`；路径越界、游戏运行中与目标冲突由 core 拒绝，界面只展示错误。
 

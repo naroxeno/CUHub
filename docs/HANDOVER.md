@@ -1,101 +1,82 @@
 # 交接说明
 
-截至 2026-11-15：core 基座与 GitHub 源的离线层、Check 接线已完成（github/sources/source_choice 模块，Hub 门面与 Local Mods 第三行），核心 170 个单测通过；禁用/启用与批量开关（FEATURES E6/E8）以及删除（E8 Delete all、E9 单项删除）已在 core 落地，app 已接（删除走两段式确认弹窗，列出绝对路径与文件数）；install 核心（zip/7z/rar 与裸 DLL staging、归属计划、备份/替换/回滚）与 Hub/UI 接线已落地（OutOfDate 或 GitHub release 版本更高的模组可 Update：选源、下载、解包、确认计划、Apply，游戏运行时排队）；app 的 Local Mods、Settings（含 Nexus key 与 GitHub token 的保存/校验/清除）、Nexus 目录列表（分页、下载入口、后台与手动刷新）与 Launch Game 已接 core，真实游戏目录验证能发现 2 个模组与 DLL 版本/GUID、反查 app id 4576490 并持久化设置。Nexus 直连下载尚未用真实 key 跑通，见 §4；GitHub 源还差远程清单仓库 URL，pin 按钮已落地，见 §4 第 10 条。界面已接 en / 简体中文 / 日本語 三语（Settings.language 持久化，locales 在仓库根，nsh 注入）；spike 工程在仓库外 `/home/naroxeno/cuhub-spike`（nsh 0.5.1，7 页），只作参考。
+截至 2026-11-19。当前工作副本有大量未提交改动，接手前先读本文与 [ARCHITECTURE.md](ARCHITECTURE.md)，再按模块看 [FEATURES.md](FEATURES.md) 与对应 `docs/core/` 说明。
 
-## 1. 仓库现状
+## 1. 仓库现状（最要紧）
 
-- jj 仓库（colocated，`main` 分支）；基础规则、app 原型与 core 分模块提交都在 `main`，`@` 是新的空 change。
-- 骨架：根 `Cargo.toml` 是 virtual workspace（`crates/core` + `crates/app`），根 `nsh.json` 指向 `crates/app`；`crates/app` 是 nsh 根组件 `App` 与 `main.rs` 的 `run_app`；像素字体在 `crates/app/assets/fonts/`。
-- core 模块：`paths`、`settings`、`logs`、`steam`（VDF + 库发现 + appid 反查）、`modlist`、`catalogs`、`version`、`metadata`、`network`、`hubconfig`、`mods`、`launch`、`nexus_auth`、`nexus`、`hub`、`github`、`sources`、`source_choice`、`install`；`platform` 只有 `linux`/`windows` 同名函数；无 UI 依赖。
-- 许可：仓库根 `LICENSE` 为 AGPL-3.0 全文，两个 crate 的 `Cargo.toml` 标 `AGPL-3.0-or-later`（2026-11-17 由 `-only` 改为 `-or-later`，便于与陶瓦等 or-later 代码合流）。
-- app（2026-11-15）：六页壳、1x/2x/3x 持久化缩放、14 token 调色板、开发者控制台；Local Mods 读 `Hub::scan_mods`，Settings 写入 `Settings.json` 并可保存/清除 Nexus API key，Nexus 页读缓存目录并分页 50 条显示，提供 Open page/Download、Details（占位）与 Refresh catalogue；目录过期时启动后台刷新；启动时自动发现 Steam 安装。GitHub 源在 Local Mods 每行第三行显示仓库、匹配依据、check 结果与生效源，可手动 Check；OutOfDate 或 GitHub release 版本更高的行可 Update（未列入清单的模组同样适用），下载归档后先展示计划再 Apply，游戏运行中排队。Multiplayer、Skins & Backups 仍是占位。界面文案已接 i18n：`locales/app.yml` 在仓库根（与 `nsh.json` 同级），`_version: 2` 采用 key 在外、语言在内的写法；nsh 在 run/dev/test/package 时写成 `.nsh/rust/translations.json` 并注入入口，普通 cargo 构建不注入。Settings 页 Language 可选 System / English / 日本語 / 简体中文，`Settings.language` 持久化；切换语言会 `set_locale` 并重建 local / nexus 行。core 错误文案仍为英文。
-- 2026-11-15 晚：BepInEx 自动安装（默认 5 LTS 5.4.23.6、设置页可选 6 Mono，sha256 校验、修复只覆盖白名单文件、IL2CPP 与游戏运行中拒绝）、模组导航改为树形（Nexus / 远程 / 本地），新增远程模组页（只读 `<AppData>/Sources/manifest.json`，安装走两段式确认）；`ui.rs` 与 `pages.rs` 拆成模块目录（根文件留 `mod` + `pub use`）；三处输入框补像素字体；`dist/{linux,windows,macos}` 为打包输出（已 gitignore），Windows 包含 Inno 安装器与测试清单。
-- 上游源码快照在 `ref/upstream/`（已进 `.gitignore`，不提交、不发版）。
-- 2026-11-17：按 `docs/core/audit-checklist.md` 完成全面自查修复：`atomic` 统一原子写（含 fsync）、`is_inside` 解析目录链符号链接、`game_paths` 不再要求 BepInEx、DLL 与缓存读取加大小上限、app 去掉渲染期取 Hub 锁与无上限重试；`cargo test -p cuhub-core --lib` 219 通过，`cargo check --workspace --all-targets` 通过。命名类问题（D 组）按 §2.2 只记建议、未动代码。
+- jj 仓库（colocated）。`main` 在 `c78f48af`（fix：安装更新并发保护与联机提权判定）；`origin/main` 落后 2 个提交，停在 `c251dba0`。
+- 当前工作副本 `upsoxkru`，父提交 `c78f48af`，尚未提交：51 个文件、约 +4939/−314。包含内容库/档案、统一安装、EasyTier 联机、桥宿主与 C# 插件、无边框标题栏、文档与 i18n；也包含其他会话完成的桥实现。提交前先 `jj diff` 分组，不要把桥和内容库混成一个提交。
+- 核心模块已从 `mod.rs` 全部改为同级 `<name>.rs`（`steam`、`bridge`、`install`、`easytier`、`platform`），对外路径不变。
+- 许可为 AGPL-3.0-or-later。陶瓦（Terracotta）移植代码保留来源与改动说明，台账在 `docs/third-party/terracotta.md`。
 
-## 2. 已有文档
+## 2. 已完成
 
-| 文件 | 内容 |
-|---|---|
-| `AGENTS.md` | 代理规则：决策权、先问再做、注释政策、文档渐进披露、架构文档唯一位置 |
-| `docs/FEATURES.md` | 全量功能清单（A–U），含像素风外观系统、来源表、里程碑与风险 |
-| `docs/ARCHITECTURE.md` | 架构：两 crate、Hub 门面、事件、线程、外部边界、持久化、spike 结论与剩余未决 |
-| `docs/app/nsh-notes.md` | nsh 0.5.1 的 API 与坑：工程骨架、列表/浮层、图片、任务、网络、窗口、测试、打包 |
-| `docs/GITHUB_SOURCE.md` | 下一会话交接：单独仓库维护的 GitHub 模组清单、待拍板项与 MVP 顺序 |
+### 内容库与档案（M2）
 
-## 3. 已拍板的决定
+- 默认 Store 在 `<appdata>/Store`，设置向导与设置页都能改；自定义路径就是 Store 根。
+- 布局 `<store>/mods/<modId>/<version>/{payload,entry.json}`；导入先写临时目录再 rename，`entry.json` 记 sha256；已有版本拒绝，同版本不同字节由 `packages` 拒绝。
+- `links` 维护 `Links.json`（游戏路径 → modId/version/kind/files）；目录优先 junction/symlink，单文件优先硬链接，失败退拷贝；删除只解链或删记录文件，不递归删游戏目录。
+- `profiles` 维护 `<appdata>/Profiles/<name>.json` 与 `active.txt`；`plan_apply` / `apply_plan` 只动 Plugins 根层的托管条目。托管条目的启停、删除、改名由档案接管，Hub 返回 `ManagedByProfile`，批量操作跳过。
+- `adopt` 把现有散装模组导入 Store、备份原文件到 `Backups/Adopt-*` 再建链接；迁移不自动执行。
+- GUI 已有 Profiles 页（新建/应用/删除、从当前部署创建）与 Adopt 卡；Settings 与 Setup 有内容库位置。
+- 安装/更新已统一走 `packages`：下载 → `PackagePlan` → Store → 活动档案 → Links；未托管旧目录先备份再收编。旧 `plan_download` / `apply_install` 只留给 BepInEx 与回退。未做：M4 整合包、`configOverrides` UI、条目级启停/复制、undo adopt、Store 删除入口。
 
-| 项 | 决定 |
-|---|---|
-| 结构 | 两个 crate：`core`（无 UI）+ `app`（nsh），依赖单向 |
-| 交互形态 | 方案 C：`Hub` 门面 + 最多 5 个事件变体，不用事件总线 |
-| 许可 | 仓库与两个 crate 使用 AGPL-3.0-or-later（`LICENSE` 为 AGPL-3.0 全文） |
-| 下载 | 模组文件下载也归 `core::network`；`app` 不联网 |
-| 启动 | `core::launch` 经 `steam://rungameid/{appid}` 启动，失败回退 `steam -applaunch`；不直接跑 exe |
-| 平台差异 | `core/src/platform/{windows,linux}.rs`，同名函数导出 |
-| 外观 | 像素风固定调色板（14 个 token），无用户自定义主题；1x/2x/3x 整数缩放，默认 2x |
-| 字体 | Fusion Pixel 12px（OFL），缺字回落 Ark Pixel，再回落等宽 |
-| 无障碍 | 保留高对比模式（O12），P2 |
-| 多人页 | 保留占位页（假数据、明确标注），P2 |
-| 解压 | `zip` / `sevenz-rust` / `rars`（纯 Rust 库，外部 unrar 仅兜底） |
-| 单模组升级 | 解压到 staging；只覆盖当前 mod 自己的文件，其他已存在文件冲突即停；新增文件允许；release 只发裸 DLL 时优先按文件名匹配已装 DLL，该模组只有一个 DLL 时即使 release 改名也直接替换（计划里写 warning）；备份到 `<AppData>/Backups/<timestamp>`；游戏运行时排队；不做一键升级 |
-| 禁用/启用 | core 只改 DLL 扩展名（`.dll` ⇄ `.dll.disabled`），预检后逐个 rename，目标存在即报错、失败回滚；批量按整棵 Plugins 递归处理；界面已接，变更期间相关按钮一起置灰；界面后台任务挂在 App 组件 owner 上（`Ui::spawn_worker`），避免按钮换成禁用副本时分支 owner 销毁、任务被取消而卡死 |
-| 删除 | 只删 Plugins 的一级条目（目录或 DLL 文件），不碰 BepInEx/core、设置与受保护资源；界面弹窗先列出绝对路径与文件数；游戏运行时拒绝；不做备份 |
-| .NET 元数据 | `dotnetdll` 0.4（GPL-3.0+，与 AGPL 兼容）读取 Assembly 版本与 `BepInPlugin` GUID/版本；单个 DLL 解析失败降级跳过 |
-| 自研 | VDF 解析、SemVer 比较、皮肤合成（`image` + 自算变换） |
-| 来源 | 用户来源表 > 目录字段 > Nexus id；GitHub 内置 tag 解析，其它来源用用户正则；独立 GitHub 清单的优先级待定 |
-| 整合包 | `CUPK1:` 排在 M8，先做来源解析与缓存 |
-| 发布 | GitHub Releases：tag 触发双平台产物 + SHA-256，不做应用内自更新 |
-| appdata | 目录名 `CUHub`（`~/.local/share/CUHub`） |
-| 设置 | JSON 键 camelCase；解析失败不覆盖原文件；`uiScale` 夹 1–3 |
-| 网络 | `core::network` 是唯一联网层（`reqwest` blocking）；`app` 不联网，封面由 core 落到 `IconCache` |
-| 目录 | `catalogs` 只读 `Data/Catalogs/` 与旧 `Services/`；内嵌 AGPL 数据未搬 |
-| Nexus key | 用户自己的 key 存 `NexusApiKey.dat`/`.key`（AES-256-GCM + 0600）；空值清除；不进日志/仓库；直连下载只走官方 API v1；Nexus 页已有目录列表与下载入口 |
-| GitHub token | 可选；与 Nexus key 同一信封，独立文件 `GithubToken.dat`/`.key`；只在 api.github.com 请求带 `Authorization: Bearer …`；校验走 `GET /rate_limit`；不写日志 |
-| GitHub 源 | 在 Nexus 之外新增 GitHub 源；清单由单独仓库维护（schema v1：schemaVersion/generatedAt/mods，条目 name+repo+match+可选 asset）；客户端只读清单与公开 release；匹配 guid > dll > name，name 仅兜底；两源都显示，默认最新版本，用户可 pin（`<AppData>/source-choice.json`）；release 不缓存，404 回退 prerelease；Check 不下载资产，Update 时按 asset、首个 zip/7z/rar 或裸 DLL 下载，计划确认后安装；不做一键升级 |
-| 公告 | `hubconfig` 按版本选 stable/prerelease，缓存 30 分钟，只保留 https 链接 |
-| BepInEx 安装 | 默认 5 LTS 最新（5.4.23.6），UI 可选 6 Mono（be.793）；sha256 校验；Fresh 遇冲突即停，Repair 只覆盖白名单文件并备份；IL2CPP（GameAssembly.dll）拒绝；游戏运行中拒绝 |
-| 远程模组 | 模组一栏树形展开 Nexus / 远程 / 本地；远程页只读本地 `Sources/manifest.json`，不联网拉清单；匹配 guid > dll > name，dll 用不带扩展名的 stem；安装/更新走 pending 计划确认 |
-| 打包 | `just package-*` 产物落 `dist/<platform>/`；Windows 安装器由 PATH 里的 iscc 生成（本机走 wine 装 Inno Setup 6） |
-| 不做 | 自更新、遥测、应用内卸载器、Supabase、插件系统、用户主题 |
+### 联机（M1）
 
-## 4. 还没定的
+- `crates/core/src/easytier/`：release（2.6.4 下载/校验/解压）、detect、ports、argument、process（父死子跟、RPC 回环）、status（CLI JSON）、tunnel（房主/客人、客人发现后带 `--port-forward` 重启一次）。
+- 房间码自定 C1：16 字符、32 字符表、XOR 校验，显示 `C1-XXXX-XXXX-XXXX-XXXX`；不与陶瓦 Scaffolding 互通。房主 hostname 约定 `cuhub-host-<port>`，客人从 peer list 找房主。
+- Multiplayer 页已接：开房/加入、状态卡、房间码复制、对端表、EasyTier 未就绪提示与自定义目录、1500ms 轮询。公共节点默认 4 条；实测 `public.easytier.top`、`public2.easytier.cn`、`etnode.zkitefly.eu.org/node1` 时常握手失败，`/node2` 可用。
+- 提权：Windows 要求以管理员重开 Cuhub（`IsUserAnAdmin`，不做 runas 单拉）；Linux/macOS 不预检查 Cuhub 自身能力，由 easytier-core 文件的 `cap_net_admin+ep` 在 exec 时生效。
+- 未做：双机同/异 NAT 实测、Windows 实机、延迟/中继列、手动 IP:端口退路、Windows 无边框窗口验证。
 
-1. 项目正式名与远程仓库：名字没定，先搁置；本地 jj 仓库不受影响，随时能接远程。
-2. Windows 交叉编译与 CI 是否在 M0 就要。
-3. 首次发布前要确认：是否把产物也传到 Nexus 页面（可选，不阻塞）。
-4. `core::network` 目前是 blocking API；`ARCHITECTURE §2` 说 Hub 层 async。拟由 Hub 把阻塞调用放进 worker，等确认。
-5. 是否把上游的目录 JSON 与离线公告内嵌进仓库：许可证已解决，但是否搬运仍需拍板。
-6. macOS Steam 候选根、来源表 `sources.json` schema 未定。
-7. 目录刷新已接后台 worker，但 blocking 闭包持有 Hub 互斥锁（最长约 20s）；期间其它 Hub 操作等待。是否改为锁外抓取待定。
-8. Nexus 直连下载还没有真实 key 的端到端验证；Nexus 页已有下载入口（有 key 走官方 API，无 key 打开 Files 页），Standard 账号会收到 403，需要 Premium。
-9. Windows 上 `NexusApiKey.key` 与 `GithubToken.key` 仍靠用户配置目录 ACL，尚未用 DPAPI 包裹；跨平台迁移旧裸 DPAPI blob 也未实现。
-10. GitHub 源：清单仓库 URL 与远程拉取未定（目前只读本地 `Sources/manifest.json`，改清单需重启）；清单 dll 匹配值要求不带 `.dll` 扩展名，与 `docs/GITHUB_SOURCE.md` 示例不一致，改实现还是改文档待定；限流 reset 时间、版本预检、清单热重载未做。
-11. Windows runner 构建仍报 1 个 warning（`nsh package -v` 才显示），未定位。
-12. macOS 包只能在 Darwin 上打（本机无 SDK、无 target），`dist/macos` 目前有配方无产物。
+### 桥（Bridge，实验性，不发布）
 
-## 5. 建议的下一步
+- Rust 宿主：`crates/core/src/bridge/{proto,rendezvous,command,session,handshake,server}.rs` 加 `hub/bridge_host.rs`；监听 127.0.0.1、token、单会话、命令表、三档权限、审计；`crates/core/tests/bridge_server.rs` 13 个回环集成测试。
+- C# 游戏侧：`mods/cuhub-bridge/` 的 `CuhubBridge.Core` + `CuhubBridge.Plugin`，`dotnet build -c Release` 通过、无警告；实现发现、hello、10 秒心跳、`mp.state`、`mp.host` / `mp.join`（反射 CUCoreLib），其余命令回 `unavailable`。尚未真机加载。
+- 未接线：`take_events` 没有 UI 消费者，Multiplayer 页不显示桥状态；`game.state` / `mods.loaded`、权限确认、`mp.leave` / `mp.kick` / `save.*` / `skin.*` 未做。桥没有打进 Cuhub 安装包，需 `just package-bridge` 生成 zip。
+- 详细边界见 [bridge 模块说明](core/bridge/overview.md)、[协议](bridge/protocol.md)、[实施方案](bridge/plan.md)、[C# 研究](bridge/csharp-plugin.md)。
 
-1. **core 基座与只读扫描（已完成 2026-11-14）**：paths → settings → logs → steam → modlist → catalogs → version → metadata → network → hubconfig → mods → Hub；96 个单测通过，`cargo clippy --workspace --all-targets -- -D warnings` 通过。
-2. **app 对接（已完成 2026-11-14）**：Local Mods 真实列表、Settings 游戏目录与缩放持久化、Nexus 目录列表与刷新、Steam 自动发现；app 仍不联网。
-3. **core 基座收尾（2026-11-14）**：`launch` 已接 Launch Game 并改为非阻塞，AGPL 许可证已落地；`dotnetdll` 读取 DLL 版本/GUID，Windows Steam 根接入注册表；真实游戏根反查 app id 4576490 验证通过。
-4. **下一步**：审查 GitHub 源代码；模组详情页（封面缓存、BBCode 描述、来源表）、启用/禁用与删除的界面接线（已完成）、下载/导入、来源表与解压（边界未定）、Hub 锁外刷新。
-5. **界面 i18n（2026-11-15 已完成）**：英文 / 简体中文 / 日本語；语言存 `Settings.json` 的 `language` 字段（默认 `system`，跟随设备），app 文案集中在仓库根的 `locales/app.yml`与 `crates/app/src/i18n.rs`，`t!` 写在显示处并由 `set_locale` 驱动重渲染，切换语言会重建行文案；core 错误文案仍为英文（后续按错误码映射）。nsh 的 `_version: 2` 是 key 在外、语言在内，写成语言在外会生成方向相反的 `translations.json`，`t!` 只显示键名。
-6. **GitHub 源与单模组升级（2026-11-15 已落地）**：清单 schema、匹配、pin、本地清单、Hub check（含 prerelease 回退）、Local Mods 第三行与 Check 按钮、失败文案；行可 Update（`OutOfDate` 或 GitHub release 版本更高），按 pin / Premium Nexus / GitHub 选源，下载归档或裸 DLL 后展示计划再 Apply，游戏运行中排队；裸 DLL 文件名不一致且模组只有一个 DLL 时按该 DLL 替换并写 warning。剩余：清单仓库 URL 与远程拉取、限流 reset 头、一键升级。
-7. **BepInEx 自动安装与远程模组页（2026-11-15 晚完成）**：core 的 `install::bepinex`（Release 常量、detect、plan_install{Mode::Fresh,Repair}、ensure_plugins、sha256）、Hub 的 prepare/finish、设置页与本地模组空态入口、远程模组页与树形导航、两段式确认与游戏运行中拒绝；Windows 包已出 `dist/windows`（未真机验证）。
-8. 按 M1 起做本地模组（B、E1–E9、E17），这是产品成立的最短路径；E6 与 E8 的批量开关、E8 Delete all 与 E9 单项删除已在 core 落地，界面接线（含删除确认弹窗）与 E7 禁用态视觉已完成；E10–E14 的三列布局与行内动作仍未做。
-9. **踩坑总结（2026-11-17 已完成）**：落 `docs/core/pitfalls.md`，覆盖门禁与诊断层错位、路径包含只靠词法、core 展示层与 app i18n 两套、`write_atomic` 各写一遍且没有 fsync、模块名与实职不符，另记读取不设上限、渲染期取 Hub 锁、无上限重试、失败时退化成看似可用的路径。
+## 3. 当前结构
 
-## 6. 接手须知
+- core：`paths / settings / network / metadata / hubconfig / nexus_auth / nexus / install / packages / store / links / profiles / adopt / mods / catalogs / modlist / sources / protect / backup / skins / steam / launch / bridge / easytier / room / multiplayer / logs / hub`。
+- app：9 项侧栏（Hub Home、Nexus、远程、本地、模组档案、多人游戏、皮肤与备份、设置、关于）；`shell/title_bar.rs` 是无边框 HUD 标题栏，`shell/frame_edges.rs` 是 8 条缩放热区，`ui/fx.rs` 是共用动效时长。
+- 持久化：`Settings.json`、`Store/`、`Profiles/`、`Links.json`、`Backups/`、`Tools/easytier/`、`multiplayer.json`（0600）；桥的 `bridge.json` 在 Proton prefix 的 `ProgramData/CasualtiesHub/`，`bridge.lock` 在 appdata。
+- 内容库自定义根路径修复过：以前会生成 `Store/Store/mods`，现在 Hub 直接把 `Settings::store_dir` 当 Store 根。
 
-- 版本控制是 jj：`jj --no-pager st/desc -m .../new`，提交后 `jj bookmark set main -r @`；不要用裸 git 写操作。
-- 注释政策是「默认零注释」：说明写进 `docs/` 镜像目录（`crates/core/src/mods.rs` → `docs/core/mods/overview.md`）。
-- 造轮子、改架构、动依赖、碰认证/解包/删除/遥测之前，先按 `AGENTS.md` §2 提案等确认。
-- 所有远端响应按不可信处理；破坏性操作两段式（先给计划，确认后才执行）。
-- 写盘/删除/解压的改动必须在一次性目录验证，不要拿真实游戏目录试。
+## 4. 已拍板 / 约束
 
-## 7. 工具链与 cargo（2026-11-14）
+- 安装/更新统一走 Store；旧链路仅 BepInEx 与回退。任何回退到直接写 Plugins 的改动都要先问。
+- 档案托管条目不做文件级启停/删除；改版本走档案或更新，避免穿过链接改 Store。
+- 联机复用陶瓦的进程/房间码思路，但不搬 Scaffolding 协议，也不做 MC 广播中继；游戏侧联机 mod 支持 UDP 直连。
+- 桥只监听 loopback，游戏侧输入按不可信处理；CUCoreLib 是软依赖、全反射，不代装；凭据永不进桥。
+- 破坏性操作两段式确认；游戏运行时拒绝写游戏目录（更新会排队）。
 
-- 一律用 `~/.cargo/bin/cargo`（`1.102.0`，自报 `huacnlee/cargo 0.103.0-1`）。不要用 `/usr/bin`、`/usr/sbin` 下的 rustup shim；`PATH` 里通常已解析到 `~/.cargo/bin`，报告构建结果时仍注明 `cargo -Vv` 第一行。
-- 这个 fork 让所有仓库共享一份 target：仓库内 `target/` 几乎为空是正常现象，不要据此判断「没编译过」。
-- 首次整 workspace 冷编译约 26 分钟（wgpu/gtk4 等依赖），本机磁盘紧张，构建前先看剩余空间。
+## 5. 建议下一步
+
+1. 先提交当前工作副本：按「内容库/档案 + 统一安装」「联机」「桥」「UI/标题栏」「文档」拆，至少把桥单独放一个提交。
+2. 桥的真机验证：`just build-bridge` / `just package-bridge`，把两个 DLL 放进 `BepInEx/plugins/CuhubBridge/`，确认 BepInEx 5.4.23.6 能加载、`mp.state` 有值、`mp.host` / `mp.join` 与游戏内 UI 等价；再决定是否接页面状态。
+3. 联机双机实测（同 NAT / 异 NAT），重点看房主发现、`--port-forward` 重启、退出清理；Windows 无边框标题栏也要实机看。
+4. 内容库后续：M4 整合包、`configOverrides`、Store 删除入口、undo adopt；先补用户可见入口再动数据格式。
+5. 收尾基线警告：`cargo clippy -p cuhub-core --all-targets -- -D warnings` 仍有既有 `hub.rs` 的 `collapsible_if` 与 `settings.rs` 的 `field_reassign_with_default`；与桥无关，修时单独提交。
+
+## 6. 验证命令
+
+```sh
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+cargo fmt --all -- --check
+nsh check
+cargo test -p cuhub-core          # 301 单测 + 13 桥集成
+cargo test -p cuhub --all-targets
+cargo clippy -p cuhub --no-deps -- -D warnings
+
+just build-bridge                 # dotnet build，需 dotnet SDK 与游戏 Managed DLL
+just package-bridge               # dist/bridge/CuhubBridge.zip
+```
+
+## 7. 接手须知
+
+- 版本控制只用 jj：`jj --no-pager st` / `jj diff` / `jj describe` / `jj new`；提交后 `jj bookmark set main -r @`。不要用裸 git 写操作。
+- nsh 的 `Input` 是受控组件：`.value(signal)` 只负责显示，必须同时写 `.on_change` 回写信号，否则按钮读到空串。仓库里除已修的档案名输入框外，其它输入都已按这个模式写。
+- 默认零注释；解释写 `docs/` 镜像目录。新增/修改行为要同步 FEATURES 对应条目与模块 `overview.md`。
+- `tmp-shots/` 是本机截图临时目录，已在 `.git/info/exclude`；`mods/**/bin`、`mods/**/obj` 由 .gitignore 忽略，不要提交构建产物。
+- 写盘/删除/解包改动先在一次性目录或临时游戏副本验证，不要拿真实游戏目录试。

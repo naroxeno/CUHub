@@ -224,13 +224,15 @@ BepInEx 的 Plugins 顶层就是「一个目录或一个 DLL = 一个模组」�
 
 ### 3.10 迁移
 
-不自动收编。设置里给一次性「导入现有模组到内容库」：扫描 Plugins → 复制进 Store（先复制、后校验）→ 生成 `Adopted` profile → 逐项确认后把原文件替换成链接（替换前备份到 `Backups/`）。任一项失败就停在那一步，已完成的保留，界面列出待处理项。未执行迁移时旧行为完全不变。
+不自动收编。设置里给一次性「导入现有模组到内容库」：扫描 Plugins → 复制进 Store（先复制、后校验）→ 生成 `Adopted` profile → 逐项确认后把原文件替换成链接（替换前备份到 `Backups/`）。任一项失败就停在那一步，已完成的保留，界面列出待处理项。迁移仍不自动执行；安装/更新已统一走 Store，未迁移的散装模组在首次更新时被收编并备份原文件。
 
 ### 3.11 与现有模块的关系
 
 | 模块 | 变化 |
 |---|---|
-| `install` | 目标从 Plugins 改为 Store；`apply_upgrade` 的替换/备份逻辑复用，写盘路径换成 Store |
+| `install` | 保留 staging、归档布局、`UpgradePlan` 与 BepInEx；单模组安装/更新不再直接写 Plugins，改由 `packages` 落 Store |
+| `packages`（新增） | 载荷入库、写活动档案、按档案部署、替换未托管文件前备份；返回 `PackagePlan` / `PackageReport` |
+| `hub` | `prepare_package_update` / `apply_package` / `prepare_remote_install` 串起 Store + Profile + Link；旧 `plan_download` / `apply_install` 只留回退 |
 | `mods` | 扫描仍读 Plugins（部署结果），快照额外带 `modId` 与来源版本 |
 | `backup` | 增「切 profile 前自动备份一次」的可选项，默认关 |
 | `modlist`（CUH1） | 保留，转为「轻量清单」；整合包走新格式，不混用 |
