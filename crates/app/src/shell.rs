@@ -1,12 +1,14 @@
 //! The shell around the pages: sidebar, title bar, status line and developer overlay.
 
 mod dev;
+mod frame_edges;
 pub mod nav;
 mod sidebar;
 mod statusline;
 mod title_bar;
 
 pub use dev::dev_overlay;
+pub use frame_edges::frame_edges;
 pub use sidebar::sidebar;
 pub use statusline::statusline;
 pub use title_bar::title_bar;

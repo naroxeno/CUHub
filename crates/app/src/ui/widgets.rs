@@ -1,8 +1,10 @@
 //! Pixel-scaled widgets and motion helpers shared by app views.
 
-use crate::palette::*;
 use nsh_core::element::FontAsset;
 use nsh_core::prelude::*;
+
+use super::fx::{PRESS_SHIFT, states};
+use crate::palette::*;
 
 pub const PIXEL_FONT: FontAsset = asset!("fonts/fusion-pixel-12px-proportional-zh_hans.otf");
 
@@ -52,8 +54,12 @@ pub fn panel(
                 .child(view().flex_1().h(scaled(&z, 1.0)).bg(rgb(BORDER)))
                 .child(
                     view()
+                        .flex_row()
+                        .items_center()
+                        .gap(scaled(&z, 5.0))
                         .px(scaled(&z, 8.0))
                         .bg(rgb(SURFACE))
+                        .child(view().w(scaled(&z, 2.0)).h(scaled(&z, 9.0)).bg(rgb(ACCENT)))
                         .child(pix(title, 12.0, TEXT, &z)),
                 )
                 .child(view().flex_1().h(scaled(&z, 1.0)).bg(rgb(BORDER))),
@@ -84,20 +90,27 @@ pub fn button(
     on_press: impl Fn() + 'static,
 ) -> Text {
     let z = *zoom;
-    let mut button = pix(label, 12.0, if enabled { TEXT } else { TEXT_DIM }, &z)
-        .px(scaled(&z, 10.0))
-        .py(scaled(&z, 4.0))
-        .bg(rgb(SURFACE_RAISED))
-        .border(scaled(&z, 1.0))
-        .border_color(if enabled {
-            rgb(BORDER)
-        } else {
-            rgb(BORDER_DIM)
-        });
+    let mut button = states(
+        pix(label, 12.0, if enabled { TEXT } else { TEXT_DIM }, &z)
+            .px(scaled(&z, 10.0))
+            .py(scaled(&z, 4.0))
+            .bg(rgb(SURFACE_RAISED))
+            .border(scaled(&z, 1.0))
+            .border_color(if enabled {
+                rgb(BORDER)
+            } else {
+                rgb(BORDER_DIM)
+            }),
+    );
     if enabled {
         button = button
             .hover(|s| s.bg(rgb(TEXT)).text_color(rgb(BG)))
-            .active(|s| s.bg(rgb(ACCENT_PRESS)).text_color(rgb(TEXT)))
+            .active(|s| {
+                s.bg(rgb(ACCENT_PRESS))
+                    .text_color(rgb(TEXT))
+                    .translate_y(px(PRESS_SHIFT))
+            })
+            .cursor(Cursor::Pointer)
             .on_press(on_press);
     }
     button.flex_shrink_0()
@@ -110,20 +123,27 @@ pub fn danger_button(
     on_press: impl Fn() + 'static,
 ) -> Text {
     let z = *zoom;
-    let mut button = pix(label, 12.0, if enabled { DANGER } else { TEXT_DIM }, &z)
-        .px(scaled(&z, 10.0))
-        .py(scaled(&z, 4.0))
-        .bg(rgb(SURFACE_RAISED))
-        .border(scaled(&z, 1.0))
-        .border_color(if enabled {
-            rgb(DANGER)
-        } else {
-            rgb(BORDER_DIM)
-        });
+    let mut button = states(
+        pix(label, 12.0, if enabled { DANGER } else { TEXT_DIM }, &z)
+            .px(scaled(&z, 10.0))
+            .py(scaled(&z, 4.0))
+            .bg(rgb(SURFACE_RAISED))
+            .border(scaled(&z, 1.0))
+            .border_color(if enabled {
+                rgb(DANGER)
+            } else {
+                rgb(BORDER_DIM)
+            }),
+    );
     if enabled {
         button = button
             .hover(|s| s.bg(rgb(DANGER)).text_color(rgb(BG)))
-            .active(|s| s.bg(rgb(DANGER)).text_color(rgb(BG)))
+            .active(|s| {
+                s.bg(rgb(DANGER))
+                    .text_color(rgb(BG))
+                    .translate_y(px(PRESS_SHIFT))
+            })
+            .cursor(Cursor::Pointer)
             .on_press(on_press);
     }
     button.flex_shrink_0()

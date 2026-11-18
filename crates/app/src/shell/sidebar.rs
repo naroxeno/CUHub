@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use super::nav::{self, NavEntry, NavKind};
 use crate::palette::*;
-use crate::ui::{Ui, pix, pix_c, scaled};
+use crate::ui::{PRESS_SHIFT, STATE_MS, Ui, pix, pix_c, scaled};
 
 const WIDE_RAIL: f32 = 176.0;
 const NARROW_RAIL: f32 = 44.0;
@@ -84,8 +84,11 @@ fn search_box(ui: Ui, narrow: bool) -> impl IntoElement {
         .bg(rgb(SURFACE_RAISED))
         .border(scaled(&z, 1.0))
         .border_color(rgb(BORDER))
+        .transition()
+        .duration(STATE_MS)
         .hover(|s| s.border_color(rgb(ACCENT)))
-        .active(|s| s.bg(rgb(BORDER_DIM)))
+        .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
+        .cursor(Cursor::Pointer)
         .overflow_hidden()
         .on_press(move || press.notice.set(t!("notice.search_soon")))
         .child(pix("?", 10.0, TEXT_DIM, &z))
@@ -264,8 +267,11 @@ fn nav_row(ui: Ui, entry: &'static NavEntry, child: bool) -> impl IntoElement {
                 rgb(SURFACE)
             }
         })
+        .transition()
+        .duration(STATE_MS)
         .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .active(|s| s.bg(rgb(BORDER_DIM)))
+        .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
+        .cursor(Cursor::Pointer)
         .on_press(move || run_entry(&press, entry))
         .child(view().w(scaled(&z, if child { 16.0 } else { 0.0 })))
         .child(
@@ -321,8 +327,11 @@ fn icon_row(ui: Ui, entry: &'static NavEntry) -> impl IntoElement {
                 rgb(SURFACE)
             }
         })
+        .transition()
+        .duration(STATE_MS)
         .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .active(|s| s.bg(rgb(BORDER_DIM)))
+        .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
+        .cursor(Cursor::Pointer)
         .on_press(move || run_entry(&press, entry))
         .child(pix_c(
             move || entry.icon.to_owned(),

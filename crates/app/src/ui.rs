@@ -2,6 +2,7 @@
 
 mod bepinex;
 mod delete;
+mod fx;
 mod github;
 mod install;
 mod mods;
@@ -15,6 +16,7 @@ mod widgets;
 
 #[allow(unused_imports)]
 pub use delete::*;
+pub use fx::*;
 #[allow(unused_imports)]
 pub use install::*;
 #[allow(unused_imports)]

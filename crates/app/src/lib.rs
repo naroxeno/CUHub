@@ -7,6 +7,8 @@ mod setup;
 mod shell;
 mod ui;
 
+use nsh_core::desktop::{WindowAttributes, WindowFrameStyle};
+use nsh_core::element::desktop::current_window;
 use nsh_core::prelude::*;
 
 use crate::palette::BG;
@@ -22,7 +24,12 @@ fn native(registry: &mut Registry) {
 pub fn App() -> impl IntoElement {
     let ui = Ui::new();
     ui.start_background_tasks();
-    view()
+
+    let mut attrs = WindowAttributes::default();
+    attrs.frame = Some(WindowFrameStyle::None);
+    current_window().set(attrs);
+
+    let mut root = view()
         .flex_col()
         .size_full()
         .bg(rgb(BG))
@@ -38,5 +45,9 @@ pub fn App() -> impl IntoElement {
         .child(pages::delete_overlay(&ui))
         .child(pages::bepinex_overlay(&ui))
         .child(shell::dev_overlay(&ui))
-        .child(setup::wizard(&ui))
+        .child(setup::wizard(&ui));
+    for edge in shell::frame_edges(&ui) {
+        root = root.child(edge);
+    }
+    root
 }
