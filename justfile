@@ -48,6 +48,18 @@ build:
 release:
     nsh build --release
 
+# build the BepInEx bridge (needs dotnet 10 and the game's Managed DLLs)
+build-bridge:
+    dotnet build mods/cuhub-bridge/CuhubBridge.Plugin/CuhubBridge.Plugin.csproj -c Release
+
+# platform-neutral bridge in dist/bridge; unzip into BepInEx/plugins
+package-bridge: build-bridge
+    rm -rf dist/bridge
+    mkdir -p dist/bridge/CuhubBridge
+    install -m 0644 mods/cuhub-bridge/CuhubBridge.Plugin/bin/Release/netstandard2.1/CuhubBridge.Plugin.dll dist/bridge/CuhubBridge/
+    install -m 0644 mods/cuhub-bridge/CuhubBridge.Plugin/bin/Release/netstandard2.1/CuhubBridge.Core.dll dist/bridge/CuhubBridge/
+    cd dist/bridge && zip -qr CuhubBridge.zip CuhubBridge
+
 # installable package for this host in dist/<platform>/
 package:
     rm -rf dist/{{os()}}

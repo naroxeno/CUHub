@@ -1,5 +1,5 @@
-// CuhubBridge.Core - protocol constants shared with cuhub (docs/bridge/protocol.md).
-// Experimental shell: no transport, no JSON, no runtime. The game-side mods are not adapted yet.
+// CuhubBridge.Core: protocol constants and the third-party-facing contract.
+// No BepInEx or Unity dependency; safe to reference from any CU mod.
 
 namespace CuhubBridge
 {
@@ -28,6 +28,10 @@ namespace CuhubBridge
         public const int Major = 1;
         public const int Minor = 0;
         public const int MaxFrame = 1024 * 1024;
+        public const int IdReplaySeconds = 60;
+        public const int PingIntervalSeconds = 10;
+        public const int PingMissLimit = 3;
+        public const int HandshakeTimeoutSeconds = 5;
 
         public static class Methods
         {
@@ -36,6 +40,9 @@ namespace CuhubBridge
             public const string GameState = "game.state";
             public const string ModsLoaded = "mods.loaded";
             public const string CommandInvoke = "cmd.invoke";
+            public const string PermissionsChanged = "perms.changed";
+            public const string ConfigChanged = "config.changed";
+            public const string ModsChanged = "mods.changed";
         }
 
         public static class Errors
@@ -47,14 +54,22 @@ namespace CuhubBridge
             public const string Unavailable = "unavailable";
             public const string Timeout = "timeout";
         }
+
+        public static class Commands
+        {
+            public const string MpState = "mp.state";
+            public const string MpHost = "mp.host";
+            public const string MpJoin = "mp.join";
+        }
     }
 
     public static class Api
     {
         public const int ContractVersion = 1;
 
-        public const bool Implemented = false;
+        public const bool Implemented = true;
 
-        public static string Status => "Experimental shell: the bridge is not wired up yet.";
+        public static string Status =>
+            "CuhubBridge.Plugin owns the loopback connection; third-party command registration is not exposed yet.";
     }
 }
