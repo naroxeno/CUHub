@@ -3,6 +3,7 @@
 mod apply;
 mod archive;
 mod bepinex;
+mod package;
 mod plan;
 mod process;
 
@@ -15,6 +16,7 @@ pub use bepinex::{
     EXPERIMENTAL, Flavor, HashError, LTS, Mode, Release, Status, detect, ensure_plugins,
     plan_install, release_for, releases, verify_sha256,
 };
+pub use package::{PackageFile, PackagePayload, plan_package};
 pub use plan::{
     FileAction, Layout, PlanError, PlanTarget, PlannedFile, UpgradePlan, normalize_install_name,
     plan_first_install, plan_payload, plan_upgrade,

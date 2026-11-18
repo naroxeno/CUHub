@@ -20,6 +20,7 @@ pub mod multiplayer;
 pub mod network;
 pub mod nexus;
 pub mod nexus_auth;
+pub mod packages;
 pub mod paths;
 pub mod platform;
 pub mod profiles;

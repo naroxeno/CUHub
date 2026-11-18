@@ -277,8 +277,23 @@ pub fn set_enabled(plugins: &Path, item: &InstalledMod, enabled: bool) -> Result
 }
 
 pub fn set_all_enabled(plugins: &Path, enabled: bool) -> Result<usize, ModsError> {
-    let dlls = collect_dlls(plugins);
+    set_all_enabled_except(plugins, enabled, &[])
+}
+
+pub(crate) fn set_all_enabled_except(
+    plugins: &Path,
+    enabled: bool,
+    skip: &[PathBuf],
+) -> Result<usize, ModsError> {
+    let dlls = collect_dlls(plugins)
+        .into_iter()
+        .filter(|dll| !is_skipped(dll, skip))
+        .collect::<Vec<_>>();
     rename_dlls(plugins, &dlls, enabled)
+}
+
+fn is_skipped(path: &Path, skip: &[PathBuf]) -> bool {
+    skip.iter().any(|root| path.starts_with(root))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -292,7 +307,18 @@ pub fn delete_scope(plugins: &Path, item: &InstalledMod) -> Result<DeleteScope, 
 }
 
 pub fn delete_all_scope(plugins: &Path) -> Result<DeleteScope, ModsError> {
-    scope_of(plugins, all_entries(plugins)?)
+    delete_all_scope_except(plugins, &[])
+}
+
+pub(crate) fn delete_all_scope_except(
+    plugins: &Path,
+    skip: &[PathBuf],
+) -> Result<DeleteScope, ModsError> {
+    let roots = all_entries(plugins)?
+        .into_iter()
+        .filter(|root| !is_skipped(root, skip))
+        .collect();
+    scope_of(plugins, roots)
 }
 
 pub fn delete_mod(plugins: &Path, item: &InstalledMod) -> Result<usize, ModsError> {
@@ -300,7 +326,15 @@ pub fn delete_mod(plugins: &Path, item: &InstalledMod) -> Result<usize, ModsErro
 }
 
 pub fn delete_all(plugins: &Path) -> Result<usize, ModsError> {
-    delete_roots(plugins, all_entries(plugins)?)
+    delete_all_except(plugins, &[])
+}
+
+pub(crate) fn delete_all_except(plugins: &Path, skip: &[PathBuf]) -> Result<usize, ModsError> {
+    let roots = all_entries(plugins)?
+        .into_iter()
+        .filter(|root| !is_skipped(root, skip))
+        .collect();
+    delete_roots(plugins, roots)
 }
 
 fn scope_of(plugins: &Path, roots: Vec<PathBuf>) -> Result<DeleteScope, ModsError> {
@@ -1032,6 +1066,32 @@ mod tests {
         assert!(delete_roots(&plugins, vec![plugins.join("Pack").join("Core.dll")]).is_err());
         assert!(delete_roots(&plugins, vec![plugins.clone()]).is_err());
         assert!(outside.exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn skips_managed_entries_when_changing_every_mod() {
+        let dir = temp_dir("mods-skip-managed");
+        let plugins = dir.join("Plugins");
+        fs::create_dir_all(plugins.join("Pack")).unwrap();
+        fs::write(plugins.join("Pack").join("Pack.dll"), b"x").unwrap();
+        fs::write(plugins.join("Linked.dll"), b"x").unwrap();
+        fs::write(plugins.join("Loose.dll"), b"x").unwrap();
+
+        let managed = vec![plugins.join("Pack"), plugins.join("Linked.dll")];
+        assert_eq!(
+            set_all_enabled_except(&plugins, false, &managed).unwrap(),
+            1
+        );
+        assert!(plugins.join("Loose.dll.disabled").exists());
+        assert!(plugins.join("Pack").join("Pack.dll").exists());
+        assert!(plugins.join("Linked.dll").exists());
+
+        let scope = delete_all_scope_except(&plugins, &managed).unwrap();
+        assert_eq!(scope.roots, vec![plugins.join("Loose.dll.disabled")]);
+        assert_eq!(delete_all_except(&plugins, &managed).unwrap(), 1);
+        assert!(plugins.join("Pack").join("Pack.dll").exists());
+        assert!(plugins.join("Linked.dll").exists());
         let _ = fs::remove_dir_all(dir);
     }
 

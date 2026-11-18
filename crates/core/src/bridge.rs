@@ -1,5 +1,8 @@
-//! Experimental game bridge: discovery file and frame codec only.
-//! The game-side mods are not adapted yet, so nothing listens and no command runs.
+//! Experimental bridge host: framing, discovery, command policy and the loopback server.
 
+pub mod command;
+pub mod handshake;
 pub mod proto;
 pub mod rendezvous;
+pub mod server;
+pub mod session;

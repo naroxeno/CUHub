@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::bridge::command::BridgeSettings;
+
 const SETTINGS_FILE: &str = "Settings.json";
 const DEFAULT_BACKUP_DIR: &str = "Backups";
 const DEFAULT_STORE_DIR: &str = "Store";
@@ -36,6 +38,7 @@ pub struct Settings {
     pub ignored_dependency_names: Vec<String>,
     pub home_order: Vec<String>,
     pub setup_completed: bool,
+    pub bridge: BridgeSettings,
 }
 
 impl Default for Settings {
@@ -61,6 +64,7 @@ impl Default for Settings {
             ignored_dependency_names: Vec::new(),
             home_order: Vec::new(),
             setup_completed: false,
+            bridge: BridgeSettings::default(),
         }
     }
 }

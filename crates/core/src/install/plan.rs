@@ -292,7 +292,7 @@ fn plan_bare_dll(files: &[&StagedFile], target: PlanTarget<'_>) -> Result<Upgrad
     })
 }
 
-fn usable_files(staged: &StagedArchive) -> Vec<&StagedFile> {
+pub(super) fn usable_files(staged: &StagedArchive) -> Vec<&StagedFile> {
     staged
         .files
         .iter()
@@ -410,7 +410,7 @@ pub fn normalize_install_name(name: &str) -> String {
     normalized
 }
 
-fn detect_layout(files: &[&StagedFile]) -> Layout {
+pub(super) fn detect_layout(files: &[&StagedFile]) -> Layout {
     if files
         .iter()
         .any(|file| has_component(&file.relative, "BepInEx"))
@@ -421,7 +421,7 @@ fn detect_layout(files: &[&StagedFile]) -> Layout {
     }
 }
 
-fn has_plugins_prefix(files: &[&StagedFile]) -> bool {
+pub(super) fn has_plugins_prefix(files: &[&StagedFile]) -> bool {
     files.iter().any(|file| {
         first_component(&file.relative).is_some_and(|name| name.eq_ignore_ascii_case("plugins"))
     })
@@ -442,7 +442,7 @@ fn first_component(path: &Path) -> Option<String> {
         .map(|component| component.as_os_str().to_string_lossy().into_owned())
 }
 
-fn common_root(files: &[&StagedFile]) -> Option<String> {
+pub(super) fn common_root(files: &[&StagedFile]) -> Option<String> {
     let first = first_component(&files.first()?.relative)?;
     let all_share = files.iter().all(|file| {
         file.relative.components().count() > 1
@@ -451,7 +451,7 @@ fn common_root(files: &[&StagedFile]) -> Option<String> {
     all_share.then_some(first)
 }
 
-fn relative_for(
+pub(super) fn relative_for(
     file: &StagedFile,
     layout: Layout,
     wrapper: Option<&str>,

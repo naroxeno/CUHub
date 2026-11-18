@@ -1,4 +1,4 @@
-//! Content store: immutable per-version payloads under `<appdata>/Store/mods/<modId>/<version>/payload`.
+//! Content store: immutable per-version payloads under `<store>/mods/<modId>/<version>/payload`.
 //! Each published version carries an `entry.json` manifest of its source, install time and file hashes.
 //! Deployment, profiles and packs are separate modules; nothing here touches the game directory.
 
@@ -11,7 +11,6 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-const STORE_DIR: &str = "Store";
 const MODS_DIR: &str = "mods";
 const PAYLOAD_DIR: &str = "payload";
 const TEMPORARY_DIR: &str = "payload.tmp";
@@ -309,7 +308,7 @@ impl Store {
     }
 
     fn mods_root(&self) -> PathBuf {
-        self.root.join(STORE_DIR).join(MODS_DIR)
+        self.root.join(MODS_DIR)
     }
 
     fn version_dir(&self, mod_id: &str, version: &str) -> PathBuf {
@@ -487,7 +486,7 @@ mod tests {
             .unwrap();
         assert_eq!(stored.mod_id, "com.author.qol");
         assert_eq!(stored.version, "1.2.3");
-        let version_dir = directory.join("Store/mods/com.author.qol/1.2.3");
+        let version_dir = directory.join("mods/com.author.qol/1.2.3");
         assert_eq!(stored.path, version_dir.join("payload"));
         assert_eq!(stored.size_bytes, 15);
         assert_eq!(
@@ -565,7 +564,7 @@ mod tests {
             Err(StoreError::InvalidVersion(_))
         ));
         assert!(store.resolve("../evil", "1.0").is_none());
-        assert!(!directory.join("Store").exists());
+        assert!(!directory.join("mods").exists());
         let _ = fs::remove_dir_all(directory);
     }
 
@@ -606,7 +605,7 @@ mod tests {
         assert!(store.resolve("alpha", "9.9").is_none());
         store.remove("alpha", "1.0").unwrap();
         assert!(store.resolve("alpha", "1.0").is_none());
-        assert!(!directory.join("Store/mods/alpha").exists());
+        assert!(!directory.join("mods/alpha").exists());
         store.remove("alpha", "1.0").unwrap();
         assert_eq!(store.list().unwrap().len(), 1);
         assert_eq!(store.total_bytes(), 15);
