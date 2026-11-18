@@ -1,6 +1,8 @@
 //! Remote manifest rows plus the install and update workers behind the remote page.
 
-use super::install::{DependencyPrompt, RemoteAttempt, prepare_remote_pending, prepare_update};
+use super::install::{
+    DependencyPrompt, RemoteAttempt, accept_pending, prepare_remote_pending, prepare_update,
+};
 use super::rows::dll_stems;
 use super::rows::{nexus_page_count, page_slice, source_key};
 use super::state::Ui;
@@ -157,6 +159,10 @@ impl Ui {
             self.notice.set(t!("notice.pending_first"));
             return;
         }
+        if self.update_busy.get().is_some() || self.apply_running.get() || self.profiles.is_busy() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.dependency_prompt.get().is_some() {
             self.notice.set(t!("dependency.resolve_first"));
             return;
@@ -179,9 +185,9 @@ impl Ui {
             match result {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
-                    ui.pending_install.set(Some(pending));
-                    ui.apply_status.set(String::new());
-                    ui.notice.set(t!("remote.ready", name = name));
+                    if accept_pending(&ui, pending) {
+                        ui.notice.set(t!("remote.ready", name = name));
+                    }
                 }
                 Ok(Ok(RemoteAttempt::Blocked(issues))) => {
                     ui.dependency_prompt.set(Some(DependencyPrompt {
@@ -202,6 +208,10 @@ impl Ui {
         }
         if self.pending_install.get().is_some() {
             self.notice.set(t!("notice.pending_first"));
+            return;
+        }
+        if self.update_busy.get().is_some() || self.apply_running.get() || self.profiles.is_busy() {
+            self.notice.set(t!("notice.busy"));
             return;
         }
         let Some(item) = row.installed.clone() else {
@@ -238,10 +248,10 @@ impl Ui {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
                     let files = pending.plan.files.len();
-                    ui.pending_install.set(Some(pending));
-                    ui.apply_status.set(String::new());
-                    ui.notice
-                        .set(t!("notice.update_ready", name = name, files = files));
+                    if accept_pending(&ui, pending) {
+                        ui.notice
+                            .set(t!("notice.update_ready", name = name, files = files));
+                    }
                 }
                 Ok(Ok(RemoteAttempt::Blocked(issues))) => {
                     ui.dependency_prompt.set(Some(DependencyPrompt {

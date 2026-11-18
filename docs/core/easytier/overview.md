@@ -15,7 +15,7 @@ EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它�
 
 ## 边界与失败模式
 
-- 提权：不自提权。`Hub::start_tunnel` 先查 `platform::elevated()`（Windows 管理员令牌；Linux `CAP_NET_ADMIN`），不足直接 `HubError::Elevation`。
+- 提权：不自提权。Windows 在 `Hub::start_tunnel` 先查 `platform::elevated()`（管理员令牌），不足直接 `HubError::Elevation`；Linux 不做进程级预检查，TUN 权限由 core 文件的 `cap_net_admin+ep` 在 exec 时授予，失败表现为 core 退出。
 - 内核缺失：先托管目录，再用户指定目录，最后按 release 下载；解压只取必需文件名，扁平写入缓存目录，缺一个即失败。
 - 用户指定目录不完整时只记日志后回退下载，不删除用户文件。
 - 隧道全程同一时刻只允许一个；重建前先停旧进程。

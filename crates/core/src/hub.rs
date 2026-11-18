@@ -557,7 +557,7 @@ impl Hub {
     }
 
     pub fn can_create_tunnel(&self) -> bool {
-        crate::platform::elevated()
+        cfg!(not(windows)) || crate::platform::elevated()
     }
 
     pub fn room_code(&self) -> Option<String> {
@@ -663,7 +663,7 @@ impl Hub {
     }
 
     fn start_tunnel(&self, room: RoomCode, role: Role, port: u16) -> Result<Tunnel, HubError> {
-        if !crate::platform::elevated() {
+        if cfg!(windows) && !crate::platform::elevated() {
             return Err(HubError::Elevation);
         }
         let mut detection = easytier::detect_managed(&self.app_data);
@@ -1234,12 +1234,35 @@ impl Hub {
             .dependencies
             .requirements_for(&[installed.name.as_str()]);
         let mut staged_dlls = Vec::new();
+        let mut staged_version: Option<HubVersion> = None;
         for file in &plan.files {
             if !install::is_dll_file(&file.staged) {
                 continue;
             }
+            if let Some(version) =
+                mods::read_mod_version(&file.staged).and_then(|value| HubVersion::parse(&value))
+                && staged_version
+                    .as_ref()
+                    .is_none_or(|current| &version > current)
+            {
+                staged_version = Some(version);
+            }
             requirements.extend(mods::read_dependencies(&file.staged));
             staged_dlls.push(file.staged.clone());
+        }
+        if let Some(installed_version) = installed
+            .installed_version
+            .as_deref()
+            .and_then(HubVersion::parse)
+            && let Some(staged_version) = staged_version.as_ref()
+            && staged_version < &installed_version
+        {
+            let _ = fs::remove_dir_all(&staged.staging_root);
+            return Err(HubError::Update(format!(
+                "the download contains version {} but {} is installed; refusing to downgrade",
+                staged_version.original(),
+                installed_version.original()
+            )));
         }
         let installed_mods = match self.scan_mods() {
             Ok(mods) => mods,

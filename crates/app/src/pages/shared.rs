@@ -82,7 +82,11 @@ pub(super) fn pending_panel(z: &Signal<u8>, ui: &Ui) -> View {
         cuhub_core::sources::SourceKind::Nexus => "Nexus",
     };
     let target_root = pending.plan.target_root.display().to_string();
-    let mut notes = pending.notes.clone();
+    let mut notes = pending
+        .notes
+        .iter()
+        .map(|note| note.text())
+        .collect::<Vec<_>>();
     notes.extend(pending.plan.warnings.clone());
     let mut body = view()
         .flex_col()

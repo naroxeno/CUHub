@@ -83,8 +83,8 @@
 ### 2.7 进程、提权、端口
 
 - 内核进程由 Cuhub 拉起、Cuhub 退出即终止；不从 shell 继承 stdin，stdout/stderr 进 `Logs/`。
-- 不自提权：`platform::elevated()` 检测当前进程是否已具备建 TUN 的权限（Windows 用 `Shell32!IsUserAnAdmin`，Linux 读 `/proc/self/status` 的 `CapEff` 第 12 位 `CAP_NET_ADMIN`，macOS 暂恒真）。不足时 `start_tunnel` 返回 `HubError::Elevation`，界面提示「以管理员身份重新打开 Cuhub」；不弹 UAC、不循环重试。
-- Linux 也可 `sudo setcap cap_net_admin+ep <core>` 后免 root；提示里给出这条指引，不自动执行。
+- 不自提权，也不在 Linux/macOS 做进程级预检查：Windows 用 `platform::elevated()`（`Shell32!IsUserAnAdmin`）检查当前进程，不足时 `start_tunnel` 返回 `HubError::Elevation`，界面提示「以管理员身份重新打开 Cuhub」；Linux 的 TUN 权限由 core 文件的 `cap_net_admin+ep` 在 exec 时授予，Cuhub 自己缺权不影响。不弹 UAC、不循环重试。
+- Linux 用 `sudo setcap cap_net_admin+ep <core>` 后免 root；提示里给出这条指引，不自动执行。
 - RPC 只绑 `127.0.0.1`，端口从系统分配的空闲端口拿，写进本次会话状态；不占固定 15888。
 - 端口转发不做 RPC 补丁：陶瓦靠 easytier gRPC 动态加转发，本项目没有移植 linkage，客人改为「发现房主后带 `--port-forward` 参数重启一次」，`forwarded` 标记防循环；TCP 与 UDP 各一条，本地端口尽量等于房主端口。
 - 同一时刻只允许一个隧道；重复创建房间时先停旧进程再起新的。
@@ -96,7 +96,7 @@
 | 错误 | 文案要点 | 可执行动作 |
 |---|---|---|
 | `NoCore` | 还没下载内核（约 33 MB） | 下载 / 指定已装路径 |
-| `NeedElevation` | 需要管理员权限才能建虚拟网卡 | 以管理员身份重新打开 Cuhub |
+| `NeedElevation` | Windows 当前进程不是管理员，无法建虚拟网卡 | 以管理员身份重新打开 Cuhub |
 | `TunUnavailable` | 虚拟网卡驱动不可用（缺 WinTun） | 重新安装内核 |
 | `PortInUse` | 端口被占用 | 换端口（自动选下一个） |
 | `PeerNotFound` | 房间在线但找不到房主 | 重试 / 手动填地址 |

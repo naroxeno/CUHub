@@ -309,7 +309,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 > 实现状态（2026-11-17）：R2–R10 已落地并有单测；R1 按实现收窄；R11 条件未触发；双机联调与 Windows 实机未做。
 
 - **R1 (P1)** 联机页只做虚拟局域网；Steam 联机仍走游戏内方式，不提供模式切换；切页不丢已填房间码。
-- **R2 (P0)** 状态卡：Idle / WaitingPeer / Connected（虚拟 IP · 端口）/ Failed，另加两条前置提示——EasyTier 未就绪（下载说明 + 指定目录卡）、TUN 权限不足（常显「需要管理员权限」）。Starting / Stopping 由按钮 busy 文案表达。
+- **R2 (P0)** 状态卡：Idle / WaitingPeer / Connected（虚拟 IP · 端口）/ Failed，另加两条前置提示——EasyTier 未就绪（下载说明 + 指定目录卡）、TUN 权限不足（仅 Windows 常显「需要管理员权限」）。Starting / Stopping 由按钮 busy 文案表达。
 - **R3 (P0)** 首次使用下载 EasyTier 2.6.4（约 33 MB，sha256 校验），解压只取 core / cli / wintun.dll / Packet.dll；失败可再点一次重试（无断点续传）；可指定已装目录并持久化。
 - **R4 (P0)** 开房：生成 C1 房间码，大号字显示、可复制；端口默认 25565 可改；离开前二次确认。
 - **R5 (P0)** 加入：粘贴房间码（大小写、`-`、空格不敏感，前缀可省，room.rs 20 个单测覆盖）；发现轮询 1.5 s，约 60 s 仍无房主时提示「还没找到房主」；「手动填 IP:端口」退路未做（P2）。
@@ -317,7 +317,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **R7 (P0)** 错误文案：房间码错、权限不足、下载/网络、核心目录无效、启动失败、找不到房主、其它；不出现「内核」「RPC」「网络密钥」。`PortInUse` 与 `TunUnavailable` 未细分（P2）。
 - **R8 (P0)** `multiplayer.json`（0600，原子写）只存 `lastRoom{role,code}`、`corePath`、`relayOverride`；密钥只从房间码在内存派生，不落盘、不进日志。
 - **R9 (P0)** 同一时刻只允许一个隧道；重复开房或加入先停旧进程再起新的。
-- **R10 (P0)** 提权：不自提权。`platform::elevated()`（Windows `Shell32!IsUserAnAdmin`、Linux `CapEff` 第 12 位 `CAP_NET_ADMIN`、macOS 恒真）不足时状态卡常显提示「以管理员身份重新打开 Cuhub」，点击开房/加入直接报权限错，不弹 UAC、不循环重试。
+- **R10 (P0)** 提权：不自提权。Windows 用 `platform::elevated()`（`Shell32!IsUserAnAdmin`）判断当前进程，不足时状态卡常显提示「以管理员身份重新打开 Cuhub」，点击开房/加入直接报权限错；Linux/macOS 不做进程级预检查，由 EasyTier core 文件能力（如 `cap_net_admin+ep`）在 exec 时取得 TUN 权限。不弹 UAC、不循环重试。
 - **R11 (P1)** 桥（W1–W6 条件触发）：`mp.state` 扩展 `transport` / `virtual_ip` / `lan_port` / `room_code`，`mp.join` 接受这些字段；联机 mod 作者确认前保留复制粘贴兜底。
 - **R12 (P1)** 单测：房间码往返/校验/多命中、CLI JSON、参数生成、release 解压；本机双实例、双机同/异 NAT、杀内核清理仍待实测。
 - **S1 (P0)** 单文件自包含可执行（Windows exe + Linux）；内嵌：依赖目录、不兼容目录、发布说明（`Version {version}.txt`）、离线公告副本。
@@ -415,8 +415,8 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y2 (P0)** 数据：`Hub::sources()` 的 entries；每行显示清单显示名与 `owner/name` 小字，已装时附已安装版本（读不到版本时标 Installed）。
 - **Y3 (P0)** 匹配：用清单 matcher（guid / dll / name）与已装模组匹配；同一 entry 命中多个已装模组时按 guid > dll > name 取最优，与 `sources::best_match` 的优先级一致。
 - **Y4 (P0)** 搜索与过滤：按名称或仓库搜索；All / Installed / Not installed 三态；每页 50 行（`NEXUS_PAGE_SIZE` + `page_slice`）；搜索词、过滤与页码只在内存里，不写设置。
-- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成首次安装计划，成功即把计划交给既有的 PENDING UPDATE 面板；Apply 仍走 `apply_install`，Cancel 删 staging。依赖检查被阻断时不进 pending，改为显示依赖提示面板；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用。
-- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成更新计划后同样跑 G7，阻断时显示依赖提示。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进 pending 面板。
+- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成首次安装计划，成功即把计划交给既有的 PENDING UPDATE 面板；Apply 仍走 `apply_install`，Cancel 删 staging。依赖检查被阻断时不进 pending，改为显示依赖提示面板；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。
+- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成更新计划后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进 pending 面板。
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
 

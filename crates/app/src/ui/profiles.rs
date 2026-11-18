@@ -343,6 +343,14 @@ impl Ui {
         if self.profiles.is_busy() {
             return;
         }
+        if self.pending_install.get().is_some() {
+            self.profiles.error.set("notice.pending_first");
+            return;
+        }
+        if self.install_preparing() {
+            self.profiles.error.set("notice.busy");
+            return;
+        }
         let name = self.profiles.apply_name.get();
         if name.is_empty() {
             return;
@@ -478,6 +486,14 @@ impl Ui {
 
     pub(crate) fn adopt_confirm(&self) {
         if self.profiles.is_busy() {
+            return;
+        }
+        if self.pending_install.get().is_some() {
+            self.profiles.adopt_error.set("notice.pending_first");
+            return;
+        }
+        if self.install_preparing() {
+            self.profiles.adopt_error.set("notice.busy");
             return;
         }
         if self.profiles.adoptable.get() == 0 {

@@ -20,6 +20,11 @@ pub(crate) fn read_assembly_version(path: &Path) -> Option<String> {
     dotnet::read_dll(path).and_then(|evidence| evidence.assembly_version)
 }
 
+pub(crate) fn read_mod_version(path: &Path) -> Option<String> {
+    let evidence = dotnet::read_dll(path)?;
+    evidence.plugin_version.or(evidence.assembly_version)
+}
+
 pub(crate) fn read_dependencies(path: &Path) -> Vec<DependencyRequirement> {
     dotnet::read_dll(path)
         .map(|evidence| evidence.dependencies)

@@ -1455,6 +1455,10 @@ notice.release_found:
   en: "%{repo} has release %{tag}."
   zh-CN: "%{repo} 有发布版本 %{tag}。"
   ja: "%{repo} にリリース %{tag} があります。"
+notice.busy:
+  en: "Another mod operation is running. Wait for it to finish."
+  zh-CN: "另一个模组操作正在进行，请稍候。"
+  ja: "別の MOD 操作を実行中です。完了までお待ちください。"
 notice.change_busy:
   en: "Another enable or disable change is running."
   zh-CN: "另一个启用或禁用操作正在进行。"

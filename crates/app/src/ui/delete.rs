@@ -67,6 +67,14 @@ impl Ui {
     }
 
     fn start_delete(&self, target: DeleteTarget) {
+        if self.pending_install.get().is_some() {
+            self.notice.set(t!("notice.pending_first"));
+            return;
+        }
+        if self.install_preparing() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.delete_prompt.get().is_some() {
             return;
         }
@@ -121,6 +129,14 @@ impl Ui {
             return;
         };
         if self.delete_busy.get() {
+            return;
+        }
+        if self.pending_install.get().is_some() {
+            self.notice.set(t!("notice.pending_first"));
+            return;
+        }
+        if self.install_preparing() {
+            self.notice.set(t!("notice.busy"));
             return;
         }
         let label = prompt.target.label();

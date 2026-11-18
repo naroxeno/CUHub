@@ -1,6 +1,6 @@
 //! Mod list actions: toggles, source checks and pins, details and launch.
 
-use super::install::{DependencyPrompt, RemoteAttempt, prepare_update};
+use super::install::{DependencyPrompt, RemoteAttempt, accept_pending, prepare_update};
 use super::rows::CheckState;
 use super::rows::build_local_rows;
 use super::rows::failure_notice;
@@ -22,6 +22,14 @@ impl Ui {
     }
 
     pub fn set_mod_enabled(&self, key: String, enabled: bool) {
+        if self.pending_install.get().is_some() {
+            self.notice.set(t!("notice.pending_first"));
+            return;
+        }
+        if self.install_preparing() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.toggle_busy.get().is_some() || self.bulk_busy.get() {
             self.notice.set(t!("notice.change_busy"));
             return;
@@ -74,6 +82,14 @@ impl Ui {
     }
 
     pub fn set_all_mods_enabled(&self, enabled: bool) {
+        if self.pending_install.get().is_some() {
+            self.notice.set(t!("notice.pending_first"));
+            return;
+        }
+        if self.install_preparing() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.toggle_busy.get().is_some() || self.bulk_busy.get() {
             self.notice.set(t!("notice.change_busy"));
             return;
@@ -118,11 +134,19 @@ impl Ui {
         });
     }
 
+    pub fn install_preparing(&self) -> bool {
+        self.update_busy.get().is_some()
+            || self.remote_busy.get().is_some()
+            || self.apply_running.get()
+    }
+
     pub fn mod_files_busy(&self) -> bool {
         self.toggle_busy.get().is_some()
             || self.bulk_busy.get()
             || self.delete_busy.get()
             || self.delete_prompt.get().is_some()
+            || self.pending_install.get().is_some()
+            || self.install_preparing()
     }
 
     pub fn check_source(&self, key: String, repo: Repo) {
@@ -188,6 +212,14 @@ impl Ui {
             self.notice.set(t!("notice.pending_first"));
             return;
         }
+        if self.remote_busy.get().is_some()
+            || self.apply_running.get()
+            || self.dependency_prompt.get().is_some()
+            || self.profiles.is_busy()
+        {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         let row = self
             .local_rows
             .get()
@@ -230,10 +262,10 @@ impl Ui {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
                     let name = pending.mod_name.clone();
                     let files = pending.plan.files.len();
-                    ui.pending_install.set(Some(pending));
-                    ui.apply_status.set(String::new());
-                    ui.notice
-                        .set(t!("notice.update_ready", name = name, files = files));
+                    if accept_pending(&ui, pending) {
+                        ui.notice
+                            .set(t!("notice.update_ready", name = name, files = files));
+                    }
                 }
                 Ok(Ok(RemoteAttempt::Blocked(issues))) => {
                     ui.dependency_prompt.set(Some(DependencyPrompt {

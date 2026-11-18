@@ -10,12 +10,38 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Clone, PartialEq, Eq)]
+pub enum PendingNote {
+    NexusFallback { error: String },
+}
+
+impl PendingNote {
+    pub fn text(&self) -> String {
+        match self {
+            Self::NexusFallback { error } => {
+                t!("pending.nexus_fallback", error = error.clone())
+            }
+        }
+    }
+}
+
+pub(super) fn accept_pending(ui: &Ui, pending: PendingInstall) -> bool {
+    if ui.pending_install.get().is_some() {
+        ui.hub().discard_staging(&pending.staging);
+        ui.notice.set(t!("notice.pending_first"));
+        return false;
+    }
+    ui.pending_install.set(Some(pending));
+    ui.apply_status.set(String::new());
+    true
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct PendingInstall {
     pub mod_name: String,
     pub source: SourceKind,
     pub plan: UpgradePlan,
     pub staging: PathBuf,
-    pub notes: Vec<String>,
+    pub notes: Vec<PendingNote>,
     pub game_running: bool,
 }
 
@@ -90,7 +116,9 @@ pub(super) fn prepare_update(
                 Ok(download) => download.path,
                 Err(error) => match repo {
                     Some(repo) if pinned.is_none() => {
-                        notes.push(t!("pending.nexus_fallback", error = error));
+                        notes.push(PendingNote::NexusFallback {
+                            error: error.to_string(),
+                        });
                         source = SourceKind::Github;
                         download_github_archive(hub, repo, asset)?
                     }
@@ -282,7 +310,11 @@ impl Ui {
         let Some(prompt) = self.dependency_prompt.get() else {
             return;
         };
-        if self.remote_busy.get().is_some() || self.apply_running.get() {
+        if self.update_busy.get().is_some() || self.apply_running.get() || self.profiles.is_busy() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
+        if self.remote_busy.get().is_some() {
             return;
         }
         let entries: Vec<SourceEntry> = prompt
@@ -316,10 +348,10 @@ impl Ui {
             match result {
                 Ok(Ok(Some(RemoteAttempt::Ready(pending)))) => {
                     let name = pending.mod_name.clone();
-                    ui.dependency_prompt.set(None);
-                    ui.pending_install.set(Some(pending));
-                    ui.apply_status.set(String::new());
-                    ui.notice.set(t!("remote.ready", name = name));
+                    if accept_pending(&ui, pending) {
+                        ui.dependency_prompt.set(None);
+                        ui.notice.set(t!("remote.ready", name = name));
+                    }
                 }
                 Ok(Ok(Some(RemoteAttempt::Blocked(issues)))) => {
                     ui.dependency_prompt.set(Some(DependencyPrompt {
