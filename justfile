@@ -75,6 +75,7 @@ package-linux:
 package-windows:
     rm -rf dist/windows
     nsh package --target windows --out dist/windows
+    ./scripts/windows-installer.sh
 
 # macOS .app in dist/macos; needs a Mac, nsh links the AppKit runner against the SDK.
 package-macos:
