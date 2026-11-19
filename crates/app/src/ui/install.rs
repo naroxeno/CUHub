@@ -1,14 +1,15 @@
 //! Pending install staging, archive download and apply/discard.
 
 use super::state::Ui;
+use super::tasks::DownloadTracker;
 use cuhub_core::hub::{Hub, HubError, RemoteInstall};
 use cuhub_core::install::UpgradePlan;
 use cuhub_core::mods::{DependencyIssue, InstalledMod, IssueKind};
+use cuhub_core::network::DownloadProgress;
 use cuhub_core::packages::PackagePlan;
 use cuhub_core::sources::{Repo, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
-use std::time::Duration;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum PendingNote {
@@ -112,11 +113,14 @@ pub(super) fn prepare_update(
     let mut source = effective
         .unwrap_or_else(|| choose_update_source(hub, pinned, nexus_id.is_some(), repo.is_some()));
     let mut notes = Vec::new();
+    let mut tracker = DownloadTracker::start(item.name.clone());
     let archive = match source {
         SourceKind::Nexus => {
             let id =
                 nexus_id.ok_or_else(|| HubError::Update(String::from("mod has no Nexus id")))?;
-            match hub.download_nexus_latest(id) {
+            match hub.download_nexus_latest_cached_with_progress(id, &mut |progress| {
+                tracker.report(progress)
+            }) {
                 Ok(download) => download.path,
                 Err(error) => match repo {
                     Some(repo) if pinned.is_none() => {
@@ -124,7 +128,9 @@ pub(super) fn prepare_update(
                             error: error.to_string(),
                         });
                         source = SourceKind::Github;
-                        download_github_archive(hub, repo, asset)?
+                        download_github_archive(hub, repo, asset, &mut |progress| {
+                            tracker.report(progress)
+                        })?
                     }
                     _ => return Err(error),
                 },
@@ -133,7 +139,7 @@ pub(super) fn prepare_update(
         SourceKind::Github => {
             let repo =
                 repo.ok_or_else(|| HubError::Update(String::from("mod has no GitHub repository")))?;
-            download_github_archive(hub, repo, asset)?
+            download_github_archive(hub, repo, asset, &mut |progress| tracker.report(progress))?
         }
     };
     let staging = hub.staging_root();
@@ -195,9 +201,10 @@ fn download_github_archive(
     hub: &Hub,
     repo: &Repo,
     asset: Option<&str>,
+    progress: &mut dyn FnMut(DownloadProgress),
 ) -> Result<PathBuf, HubError> {
-    let destination = hub.app_data().join("Downloads");
-    hub.download_github_asset(repo, asset, &destination)
+    let destination = hub.download_cache();
+    hub.download_github_asset_with_progress(repo, asset, &destination, progress)
 }
 
 impl Ui {
@@ -218,7 +225,6 @@ impl Ui {
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
-            let mut game_wait_attempts = 0u32;
             loop {
                 if ui.apply_cancel.get() {
                     let staging = pending.staging.clone();
@@ -274,14 +280,13 @@ impl Ui {
                         break;
                     }
                     Ok(Err(HubError::GameRunning)) => {
-                        game_wait_attempts += 1;
-                        if game_wait_attempts >= 60 {
-                            ui.apply_status.set(String::new());
-                            ui.notice.set(t!("notice.game_still_running"));
-                            break;
-                        }
-                        ui.apply_status.set(t!("notice.waiting_for_game"));
-                        let _ = blocking(|| std::thread::sleep(Duration::from_secs(3))).await;
+                        ui.pending_install.set(Some(PendingInstall {
+                            game_running: true,
+                            ..pending.clone()
+                        }));
+                        ui.apply_status.set(String::new());
+                        ui.notice.set(t!("notice.game_still_running"));
+                        break;
                     }
                     Ok(Err(error)) => {
                         ui.apply_status.set(String::new());

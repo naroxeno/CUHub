@@ -335,6 +335,14 @@ remote.total:
   en: "%{count} mod(s)"
   zh-CN: "共 %{count} 个模组"
   ja: "%{count} 件"
+remote.refresh:
+  en: "Refresh list"
+  zh-CN: "刷新列表"
+  ja: "一覧を更新"
+remote.refreshing:
+  en: "Refreshing…"
+  zh-CN: "正在刷新…"
+  ja: "更新中…"
 remote.filter_all:
   en: "All"
   zh-CN: "全部"
@@ -452,9 +460,9 @@ local.enable_all:
   zh-CN: "全部启用"
   ja: "すべて有効化"
 local.managed_by_profile:
-  en: "Managed by profile"
-  zh-CN: "由档案管理"
-  ja: "プロファイル管理"
+  en: "In profile"
+  zh-CN: "档案内"
+  ja: "プロファイル内"
 notice.all_managed_by_profile:
   en: "Every mod in Plugins is managed by a profile. Switch profiles instead of deleting them here."
   zh-CN: "Plugins 里的模组都由档案管理，请切换档案，不要在这里删除。"
@@ -568,17 +576,29 @@ delete.scope_mod:
   zh-CN: "只删除该模组的来源路径，Plugins 中的其他条目保留。"
   ja: "このMODのソースパスのみ削除され、Plugins の他の項目は残ります。"
 delete.scope_all:
-  en: "Every top-level entry in Plugins is removed, including files that are not mods."
-  zh-CN: "Plugins 中的每个顶层条目都会被删除，包括不是模组的文件。"
-  ja: "Plugins の最上位エントリはすべて削除されます（MOD以外のファイルも含む）。"
+  en: "Every top-level entry in Plugins is removed, including files that are not mods. Active profile entries are removed too; store copies stay."
+  zh-CN: "Plugins 中的每个顶层条目都会被删除（包括非模组文件）；活动档案条目也会被移除，Store 副本保留。"
+  ja: "Plugins の最上位エントリはすべて削除されます（MOD以外のファイルも含む）。アクティブなプロファイルの項目も削除され、ストアのコピーは残ります。"
+delete.scope_profile:
+  en: "The mod is removed from the active profile and its deployed link is removed; the store copy stays."
+  zh-CN: "该模组会从活动档案移除并解除部署链接，Store 中的副本保留。"
+  ja: "MODはアクティブなプロファイルから削除され、配置リンクも解除されます。ストアのコピーは残ります。"
 delete.summary:
   en: "%{files} file(s) in %{paths} path(s) will be deleted."
   zh-CN: "将删除 %{paths} 个路径下的 %{files} 个文件。"
   ja: "%{paths} 個のパスにある %{files} 件のファイルを削除します。"
+delete.summary_profile:
+  en: "This mod's profile entry and deployed link will be removed. The store copy is kept."
+  zh-CN: "将移除该模组的档案条目和部署链接，Store 副本保留。"
+  ja: "このMODのプロファイル項目と配置リンクを削除します。ストアのコピーは残ります。"
 delete.irreversible:
   en: "This cannot be undone."
   zh-CN: "此操作无法撤销。"
   ja: "この操作は元に戻せません。"
+delete.profile_reversible:
+  en: "You can add the mod back to the profile from the store."
+  zh-CN: "可以随时从 Store 重新加入档案。"
+  ja: "ストアからいつでもプロファイルに戻せます。"
 delete.deleting:
   en: "Deleting…"
   zh-CN: "正在删除…"
@@ -1087,6 +1107,18 @@ notice.catalogue_worker_stopped:
   en: "The catalogue worker stopped."
   zh-CN: "目录工作线程已停止。"
   ja: "カタログのワーカーが停止しました。"
+notice.sources_refreshed:
+  en: "GitHub source list refreshed: %{count} entries."
+  zh-CN: "GitHub 源列表已刷新：%{count} 条条目。"
+  ja: "GitHub ソース一覧を更新しました: %{count} 件。"
+notice.sources_current:
+  en: "The GitHub source list is already current."
+  zh-CN: "GitHub 源列表已是最新。"
+  ja: "GitHub ソース一覧は既に最新です。"
+notice.sources_refresh_failed:
+  en: "Could not refresh the GitHub source list: %{error}"
+  zh-CN: "无法刷新 GitHub 源列表：%{error}"
+  ja: "GitHub ソース一覧を更新できませんでした: %{error}"
 notice.nexus_download_running:
   en: "A Nexus download is already running."
   zh-CN: "已有 Nexus 下载正在进行。"
@@ -1116,13 +1148,13 @@ notice.disabling:
   zh-CN: "正在禁用 %{name}…"
   ja: "%{name} を無効化中…"
 notice.enabled:
-  en: "Enabled %{name}: %{count} DLL file(s) renamed."
-  zh-CN: "已启用 %{name}：已重命名 %{count} 个 DLL 文件。"
-  ja: "%{name} を有効化しました: %{count} 件の DLL ファイルを変更。"
+  en: "Enabled %{name}: %{count} item(s) changed."
+  zh-CN: "已启用 %{name}：已更改 %{count} 项。"
+  ja: "%{name} を有効化しました: %{count} 件を変更。"
 notice.disabled:
-  en: "Disabled %{name}: %{count} DLL file(s) renamed."
-  zh-CN: "已禁用 %{name}：已重命名 %{count} 个 DLL 文件。"
-  ja: "%{name} を無効化しました: %{count} 件の DLL ファイルを変更。"
+  en: "Disabled %{name}: %{count} item(s) changed."
+  zh-CN: "已禁用 %{name}：已更改 %{count} 项。"
+  ja: "%{name} を無効化しました: %{count} 件を変更。"
 notice.enable_failed:
   en: "Could not enable %{name}: %{error}"
   zh-CN: "无法启用 %{name}：%{error}"
@@ -1148,13 +1180,13 @@ notice.disabling_all:
   zh-CN: "正在禁用所有模组…"
   ja: "すべてのMODを無効化中…"
 notice.enabled_all:
-  en: "Enabled all mods: %{count} DLL file(s) renamed."
-  zh-CN: "已启用所有模组：已重命名 %{count} 个 DLL 文件。"
-  ja: "すべてのMODを有効化しました: %{count} 件の DLL ファイルを変更。"
+  en: "Enabled all mods: %{count} item(s) changed."
+  zh-CN: "已启用所有模组：已更改 %{count} 项。"
+  ja: "すべてのMODを有効化しました: %{count} 件を変更。"
 notice.disabled_all:
-  en: "Disabled all mods: %{count} DLL file(s) renamed."
-  zh-CN: "已禁用所有模组：已重命名 %{count} 个 DLL 文件。"
-  ja: "すべてのMODを無効化しました: %{count} 件の DLL ファイルを変更。"
+  en: "Disabled all mods: %{count} item(s) changed."
+  zh-CN: "已禁用所有模组：已更改 %{count} 项。"
+  ja: "すべてのMODを無効化しました: %{count} 件を変更。"
 notice.enabled_all_skipped:
   en: "Enabled every other mod: %{count} DLL file(s) renamed. %{skipped} mod(s) are managed by a profile."
   zh-CN: "已启用其余模组：重命名了 %{count} 个 DLL 文件；%{skipped} 个模组由档案管理。"
@@ -1183,6 +1215,14 @@ notice.delete_scope:
   en: "%{label}: %{files} file(s) in %{paths} path(s) will be deleted."
   zh-CN: "%{label}：将删除 %{paths} 个路径下的 %{files} 个文件。"
   ja: "%{label}: %{paths} 個のパスにある %{files} 件のファイルを削除します。"
+notice.profile_remove:
+  en: "Removing %{label} from the active profile…"
+  zh-CN: "正在从活动档案移除 %{label}…"
+  ja: "アクティブなプロファイルから %{label} を削除中…"
+notice.profile_removed:
+  en: "Removed %{label} from the active profile; the store copy is kept."
+  zh-CN: "已从活动档案移除 %{label}，Store 副本保留。"
+  ja: "アクティブなプロファイルから %{label} を削除しました。ストアのコピーは残ります。"
 notice.list_failed:
   en: "Could not list %{label}: %{error}"
   zh-CN: "无法列出 %{label}：%{error}"
@@ -1908,3 +1948,124 @@ profiles.error_generic:
   en: "The operation failed. Check the game folder and the profile files."
   zh-CN: "操作失败，请检查游戏目录与档案文件。"
   ja: "操作に失敗しました。ゲームフォルダとプロファイルを確認してください。"
+
+task.button:
+  en: "Tasks"
+  zh-CN: "任务"
+  ja: "タスク"
+task.title:
+  en: "Task center"
+  zh-CN: "任务中心"
+  ja: "タスクセンター"
+task.close:
+  en: "Close"
+  zh-CN: "关闭"
+  ja: "閉じる"
+task.empty:
+  en: "No pending tasks."
+  zh-CN: "暂无待处理的任务。"
+  ja: "保留中のタスクはありません。"
+task.kind_install:
+  en: "Install"
+  zh-CN: "安装"
+  ja: "インストール"
+task.kind_dependency:
+  en: "Dependency"
+  zh-CN: "依赖"
+  ja: "依存関係"
+task.kind_bepinex:
+  en: "BepInEx"
+  zh-CN: "BepInEx"
+  ja: "BepInEx"
+task.kind_download:
+  en: "Download"
+  zh-CN: "下载"
+  ja: "ダウンロード"
+task.progress:
+  en: "%{percent}% · %{written} / %{total}"
+  zh-CN: "%{percent}% · %{written} / %{total}"
+  ja: "%{percent}% · %{written} / %{total}"
+task.progress_unknown:
+  en: "%{written} downloaded"
+  zh-CN: "已下载 %{written}"
+  ja: "%{written} ダウンロード済み"
+task.downloading:
+  en: "Downloading"
+  zh-CN: "下载中"
+  ja: "ダウンロード中"
+task.files_summary:
+  en: "%{files} files (%{replaced} replaced, %{created} added)"
+  zh-CN: "共 %{files} 个文件（替换 %{replaced}，新增 %{created}）"
+  ja: "%{files} ファイル（置換 %{replaced}、追加 %{created}）"
+task.version:
+  en: "Version %{version}"
+  zh-CN: "版本 %{version}"
+  ja: "バージョン %{version}"
+task.dependency_title:
+  en: "Missing dependencies"
+  zh-CN: "缺少依赖"
+  ja: "依存関係が不足しています"
+task.dependency_meta:
+  en: "%{count} requirements need attention"
+  zh-CN: "有 %{count} 项需要处理"
+  ja: "%{count} 件の対応が必要です"
+task.bepinex_title:
+  en: "BepInEx"
+  zh-CN: "BepInEx"
+  ja: "BepInEx"
+task.game_running:
+  en: "Close the game before applying."
+  zh-CN: "请先关闭游戏再应用。"
+  ja: "適用する前にゲームを終了してください。"
+task.kind_batch:
+  en: "Batch"
+  zh-CN: "批量"
+  ja: "一括"
+task.batch_title:
+  en: "Batch update"
+  zh-CN: "批量更新"
+  ja: "一括更新"
+task.batch_meta:
+  en: "%{selected} selected · %{updatable} updatable"
+  zh-CN: "已选 %{selected} · 可更新 %{updatable}"
+  ja: "選択 %{selected} · 更新可能 %{updatable}"
+task.batch_preflight:
+  en: "Checking dependencies %{index}/%{total}"
+  zh-CN: "检查依赖 %{index}/%{total}"
+  ja: "依存関係を確認中 %{index}/%{total}"
+task.batch_current:
+  en: "%{index}/%{total} · %{name}"
+  zh-CN: "%{index}/%{total} · %{name}"
+  ja: "%{index}/%{total} · %{name}"
+local.batch_selected:
+  en: "Update selected (%{count})"
+  zh-CN: "更新已选（%{count}）"
+  ja: "選択を更新（%{count}）"
+local.batch_all:
+  en: "Update all (%{count})"
+  zh-CN: "更新全部（%{count}）"
+  ja: "すべて更新（%{count}）"
+local.batch_select_all:
+  en: "Select updatable (%{count})"
+  zh-CN: "选中可更新项（%{count}）"
+  ja: "更新可能を選択（%{count}）"
+local.batch_clear:
+  en: "Clear selection"
+  zh-CN: "清除选择"
+  ja: "選択を解除"
+notice.batch_started:
+  en: "Updating %{count} mod(s)…"
+  zh-CN: "正在更新 %{count} 个模组…"
+  ja: "%{count} 件の MOD を更新中…"
+notice.batch_done:
+  en: "Batch update finished: %{ok} updated, %{failed} failed."
+  zh-CN: "批量更新完成：成功 %{ok} 个，失败 %{failed} 个。"
+  ja: "一括更新が完了しました: 成功 %{ok} 件、失敗 %{failed} 件。"
+notice.batch_aborted:
+  en: "Batch update stopped: %{error}"
+  zh-CN: "批量更新中止：%{error}"
+  ja: "一括更新を中止しました: %{error}"
+notice.batch_nothing:
+  en: "No updatable mods selected."
+  zh-CN: "没有选中可更新的模组。"
+  ja: "更新可能な MOD が選択されていません。"

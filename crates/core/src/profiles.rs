@@ -309,6 +309,26 @@ impl From<LinkError> for ProfileError {
     }
 }
 
+pub(crate) fn deployment_target(files: &[StoreFile], mod_id: &str, plugins_root: &Path) -> PathBuf {
+    match deployment(files) {
+        Deployment::File(name) => plugins_root.join(name),
+        Deployment::Directory => plugins_root.join(mod_id),
+    }
+}
+
+pub(crate) fn entry_target(
+    entry: &ProfileEntry,
+    store: &Store,
+    plugins_root: &Path,
+) -> Option<PathBuf> {
+    let manifest = store.read_entry(&entry.mod_id, &entry.version)?;
+    Some(deployment_target(
+        &manifest.files,
+        &entry.mod_id,
+        plugins_root,
+    ))
+}
+
 pub fn plan_apply(
     profile: &Profile,
     index: &LinkIndex,
@@ -338,10 +358,7 @@ pub fn plan_apply(
         let manifest = store
             .read_entry(&entry.mod_id, &entry.version)
             .ok_or_else(|| missing_version(&entry.mod_id, &entry.version))?;
-        let target = match deployment(&manifest.files) {
-            Deployment::File(name) => plugins_root.join(name),
-            Deployment::Directory => plugins_root.join(&entry.mod_id),
-        };
+        let target = deployment_target(&manifest.files, &entry.mod_id, plugins_root);
         if !targets.insert(target.clone()) {
             return Err(ProfileError::DuplicateTarget(target));
         }
@@ -443,12 +460,12 @@ fn apply_one(
     Ok(())
 }
 
-enum Deployment {
+pub(crate) enum Deployment {
     File(String),
     Directory,
 }
 
-fn deployment(files: &[StoreFile]) -> Deployment {
+pub(crate) fn deployment(files: &[StoreFile]) -> Deployment {
     let [file] = files else {
         return Deployment::Directory;
     };

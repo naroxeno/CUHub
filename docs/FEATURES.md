@@ -67,7 +67,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### A. 应用外壳与导航
 
-- **A1 (P0)** 左侧栏由 `shell/nav.rs` 的 `NAV` 表驱动：Hub Home（默认页）、模组组（Nexus Dashboard / Remote Mods / Local Mods / 模组档案，父节点只折叠/展开、不切页）、Multiplayer、Skins & Backups、Settings、About；折叠状态只在本次运行内保留（不落盘）。页面身份是稳定 id，不依赖索引；子页的页头与状态栏显示「模组 / <子页>」两段路径。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
+- **A1 (P0)** 左侧栏由 `shell/nav.rs` 的 `NAV` 表驱动：Hub Home（默认页）、模组组（Nexus Dashboard / Remote Mods / Local Mods / 模组档案，父节点只折叠/展开、不切页）、Multiplayer、Skins & Backups、Settings、About；折叠状态只在本次运行内保留（不落盘）。折叠/展开是一次 NSH 原生布局动画（`animate_layout` + `LayoutTransition::spring`）：宽度在 176px 与 44px 之间插值，响应 220ms、阻尼比 0.8，快速连点从当前帧重新收敛，不再用定时器阶梯跳变。页面身份是稳定 id，不依赖索引；子页的页头与状态栏显示「模组 / <子页>」两段路径。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
 - **A2 (P0)** 标题栏：无系统边框，自绘 40px HUD 条——左侧品牌块、CUHUB 与版本，中间状态点与 `///`，右侧最小化/最大化/关闭；空白区可拖动窗口，按钮区不拖动。启动游戏在侧栏页脚，反馈问题在 About 页。
 - **A3 (P0)** 底部状态栏：单一 status 文本，由各页面与外壳写入（“Game folder detected.”、“Asked Steam to launch Casualties Unknown.”、“Could not launch: …” 等）。
 - **A4 (P1)** 侧栏底部显示 `v{version}`；3 秒内点击 5 次打开开发者控制台（Debug 页/窗口）。这是隐藏入口，不走设置。
@@ -78,6 +78,8 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **A9 (P1)** 单实例行为：当前实现无单实例锁（不实现也可），但下载监视器必须只跑一份。
 - **A10 (P1)** 设置向导：首次启动（`setupCompleted` 为 false 且游戏路径为空）打开六步向导——欢迎 → 游戏目录 → BepInEx（只读）→ 下载目录 → 外观 → 完成；顶部显示 Step n/6，底部 Back / Next / Skip，完成页按钮为 Finish。每步 Next 即时保存，`setupCompleted` 只在 Finish / Skip 时写入；Esc 等同 Skip，不二次确认。设置页可随时重新打开（P9）。
 - **A11 (P1)** 关于页：产品名与版本、项目源码、反馈问题、许可证全文三个外链；链接只接受 HTTPS，经 Hub 交给系统浏览器打开；页面注明非官方且与 Nexus Mods、游戏开发者无隶属关系。
+- **A12 (P0)** 任务中心：右下角常驻浮动按钮打开右侧抽屉（`sheet`，右侧，Esc / 点遮罩 / 滑动关闭），抽屉内容独立滚动。抽屉里按当前状态即时渲染 Win10 风格卡片：安装/更新（`pending_install`，标题为模组名、副标题为版本，行内给来源与目标根、替换与新增文件数、通知与冲突、游戏运行中提示；按钮 Apply / Cancel）、依赖（`dependency_prompt`，逐条 Missing / Outdated，按钮 Install missing / Cancel）、BepInEx（`bepinex_pending`，由 Settings 的 Install / Repair 生成，按钮 Install 或 Replace / Cancel）、下载（每份进行中的下载一张卡，真实字节进度条 + 百分比，缺 Content-Length 时改为脉冲条且只显示已下载字节）。抽屉默认关闭，新任务只让按钮上的角标脉冲并显示计数，不自动打开。失败只写状态行与日志，不保留失败卡片。游戏运行中被阻断的卡片不自动重试，必须由用户在关闭游戏后重新点击 Apply。页面内的 pending / 依赖面板与 Settings 的 BepInEx pending 区块已删除；设置向导的 BepInEx 浮层与删除确认弹窗保持原样。
+- **A13 (P0)** 批量更新：本地页只有可更新（`can_update`）的行带复选框，表头另有 Select updatable (N) / Clear selection 切换；选择按 `source_key` 保存，行刷新时清掉失效项。任务中心的批量卡片给出 Update selected (N) / Update all (M)，计数现算。点按钮后先逐项预检依赖（GitHub 源用 `remote_install_issues`，纯 Nexus 项用既有 prepare 路径），任一项 Missing / Outdated 就整批不开始，只弹一张聚合依赖卡列出全部阻塞；依赖解决后重新点击才开跑。干净的一批在 worker 里顺序执行：预检 → 应用前重查依赖 → 应用，卡片显示当前项 index/total；单项失败只写日志与最终摘要并继续下一项，不保留失败卡片。单条更新行为不变。
 
 ### B. 游戏目录识别
 
@@ -131,10 +133,10 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E3 (P0)** 版本证据展示：“Assembly x | BepInEx y | Modified t”，没有证据时 “No version evidence found”。
 - **E4 (P0)** 更新判定（与元数据比对）：0.0.0.0 视为占位符不算过期；只要任一新于元数据即 “up to date”；文件修改时间 ≥ 元数据 `LatestFileModifiedUtc` 也算 up to date；全部新于全部期望值才算 out of date。被禁用的模组不报更新。
 - **E5 (P0)** 状态文案（逐字复刻）：Disabled — re-enable… / placeholder 提示 / Up to date: X 1.2 matches Y 1.2 / installed newer than live metadata / modified date matches / No comparable update data was found. / Out of date: 1.0 is below 1.3。
-- **E6 (P0)** 禁用/启用：把该模组所有 DLL 在 `.dll` 与 `.dll.disabled` 间改名；目标已存在则报错 “Cannot rename 'X' because 'Y' already exists.” 由 `Links.json` 托管的档案部署条目不参与改名，Hub 返回 `ManagedByProfile`，行内只显示「由档案管理」。
+- **E6 (P0)** 禁用/启用：散装条目把该模组所有 DLL 在 `.dll` 与 `.dll.disabled` 间改名，目标已存在则报错 “Cannot rename 'X' because 'Y' already exists.”；活动档案条目改为把档案条目的 `enabled` 置 false/true 并重新应用档案，不改文件。档案条目行内标注「档案内」。
 - **E7 (P0)** 禁用态视觉：整行文字 danger 红、左缘 2px danger 竖条，动作按钮显示 Enable。
-- **E8 (P0)** 批量：Disable all / Enable all（递归匹配两种扩展名）；Delete all（删空 Plugins，破坏性确认，tooltip 写明不动受保护资源与设置）。批量和 Delete all 都跳过 `Links.json` 托管的条目，并在提示里报告跳过数量。
-- **E9 (P0)** 单项删除：按来源路径删除（目录或文件）；档案部署的条目拒绝删除，只能通过切换/修改档案移除。
+- **E8 (P0)** 批量：Disable all / Enable all（递归匹配两种扩展名；活动档案条目同步改 `enabled` 并应用）；Delete all（删空 Plugins，破坏性确认，tooltip 写明不动受保护资源与设置；同时清空活动档案条目，Store 副本保留）。
+- **E9 (P0)** 单项删除：散装条目按来源路径删除（目录或文件）；活动档案条目从档案移除并重新应用（解链，Store 副本保留）。
 - **E10 (P0)** 三列布局：每列可从 8 种视图任选 —— Enabled Mods / Disabled Mods / Sharecode Requested Mods / Missing Dependencies / Update Available / Incompatibility / Known Bugs / Needs Attention；默认 启用 / 禁用 / 分享码请求。
 - **E11 (P1)** 第三列（分享码）可手动隐藏/显示（开关持久化）；隐藏时网格第三列宽度归零。
 - **E12 (P1)** 本地搜索框：匹配名称、GUID、依赖标签。
@@ -142,9 +144,9 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E14 (P1)** 行内动作按上下文出现：Toggle（Enable/Disable）、DependencyActionLabel（Download / Open Download）、Ignore（依赖）、Out of date（打开 Nexus Files 页或来源页）、ShareCodeActionLabel（Open Download / Search Nexus）、Ignore（分享码）、Delete；来源为 GitHub 时“Out of date”打开 release 页。
 - **E15 (P1)** 未匹配元数据的模组：名称用文件名去扩展，版本取第一个未禁用 DLL，“Not listed in the community catalogue, so update status is not checked.”。
 - **E16 (P2)** 版本证据缺失、GUID 缺失的模组仍要能显示与操作，不能因缺数据整页失败。
-- **E17 (P1)** 匹配算法：DLL 名与元数据 `DllNames` 忽略大小写求交；优先“归一化名 == DLL 茎名”，其次 `DllNames` 只有一项的，最后按 `DllNames` 数量升序（避免同名不同模组串台，例如自带 CUCoreLib.dll 的模组）。
+- **E17 (P1)** 匹配算法：DLL 名与元数据 `DllNames` 先去掉 `.dll`/`.dll.disabled` 后缀，再忽略大小写求交；优先“归一化名 == DLL 茎名”，其次 `DllNames` 只有一项的，最后按 `DllNames` 数量升序（避免同名不同模组串台，例如自带 CUCoreLib.dll 的模组）。活动档案条目带 `github:` source 时，先用清单显示名匹配元数据，并要求该元数据仍包含条目的 `match.dll`，避免整包被更小的候选抢走。
 
-实现状态（2026-11-19）：core 已落地 E1 扫描、E2 的主要字段、E3 版本证据、E4 更新判定、E5 状态文案、E6 禁用/启用、E8 的批量禁用/启用与 Delete all（均跳过档案托管条目）、E9 单项删除、E15 未收录模组、E17 匹配；E6、E7、E8、E9 的界面已接，托管条目显示「由档案管理」；分享码请求、已知 bug 数据、E10–E14 的界面仍未做。
+实现状态（2026-11-19）：core 已落地 E1 扫描、E2 的主要字段、E3 版本证据、E4 更新判定、E5 状态文案、E6 禁用/启用（含活动档案条目）、E8 的批量禁用/启用与 Delete all（含活动档案条目）、E9 单项删除、E15 未收录模组、E17 匹配；E6、E7、E8、E9 的界面已接，档案条目显示「档案内」且可启停/删除；分享码请求、已知 bug 数据、E10–E14 的界面仍未做。
 
 ### F. 压缩包安装（安装计划）
 
@@ -159,8 +161,9 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **F9 (P0)** 路径安全：拒绝绝对路径、`..`、盘符、符号链接穿越；任何写入目标必须 `is_inside(Plugins|游戏根|CustomSprites)`。
 - **F10 (P1)** 安装完成后通知本地模组列表刷新（缓存失效）。
 - **F11 (P1)** 安装失败要区分“解包失败 / 计划不支持 / 写盘失败”，并保持 Plugins 不被半成品污染（先 staging 校验，再落盘）。
+- **F12 (P1)** 包内重复插件：安装或更新时，包内 DLL 若与已安装的另一个模组 GUID 相同、且目标不是该模组自身目录，跳过该 DLL 并在计划警告里说明，避免整包自带的 CUCoreLib 与独立安装重复。
 
-实现状态（2026-11-15）：`install` 模块已实现 zip/7z/rar staging、BepInEx/plugins 与 Mod 布局、归属冲突、备份/替换/回滚；Hub/UI 与来源下载未接。
+实现状态（2026-11-19）：`install` 模块已实现 zip/7z/rar staging、BepInEx/plugins 与 Mod 布局、归属冲突、备份/替换/回滚；Hub 的 `prepare_package_update` / `apply_package` 已接 Store、活动档案与 Links，并在计划阶段跳过包内与已装模组同 GUID 的 DLL（F12）。
 
 ### G. 依赖 / 兼容 / 已知 bug 数据
 
@@ -276,7 +279,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **O7 (P0)** 列表与表格：1x 行高 24px，行间 1px `border_dim`；hover 行底色 `surface_raised`；选中行文字 `accent`；列表头 `text_muted` 全大写拉丁或中文短词；滚动条 4px 滑块 `text_dim`，无箭头、无圆角。
 - **O8 (P0)** 状态呈现：徽标与状态文本只用颜色 + 卡片左缘 2px 同色竖条，不铺大色块；禁用行整体 `danger`。
 - **O9 (P1)** 图标：16×16 单色 1-bit 像素图集，运行时按 token 着色；不使用矢量图标与字体图标（上游 0.0.9-pre.2 引入的 material icons 不复刻）。
-- **O10 (P1)** 动效：允许一次性入场（淡入/位移，≤450ms）、载入中指示（≤20Hz，只重绘指示本身）与低帧率脉冲（≤10Hz）；不做颜色与布局补间。保留按下 1px 位移、hover 反色。Animated RGB、色相旋转、20FPS 全量重绘全部取消。
+- **O10 (P1)** 动效：允许一次性入场（淡入/位移，≤450ms）、载入中指示（≤20Hz，只重绘指示本身）与低帧率脉冲（≤10Hz）；不做颜色补间，也不做手写阶梯/定时器补间；结构性布局变化只走 NSH 原生布局动画（`animate_layout`），目前仅侧栏折叠 176px ↔ 44px 一条，默认近临界 spring，`reduced motion` 下直接到终态。保留按下 1px 位移、hover 反色。Animated RGB、色相旋转、20FPS 全量重绘全部取消。
 - **O11 (P1)** tooltip 规范（沿用上游语义）：纯文本标签不弹；只有按钮与被截断文本可 hover；空白 tooltip 抑制；批量／破坏性按钮必须写清作用范围。样式为黑底 1px 白框、最多两行。
 - **O12 (P2)** 高对比模式：`bg #FFFFFF` / `text #000000` / `accent #007A33` / `warn #7A6A00` / `danger #B30000` / `link #005A7A`，其余 token 同步反转，供弱视与强光环境。
 - **O13 (P2)** 不复刻：四色派生（`Mix`／`Shift`）、WCAG 运行时自动改色、色轮取色器、四个自定义预设槽、Animated RGB、10–20 字号滑块、圆角卡片与柔和阴影、白色 tooltip 底。
@@ -354,7 +357,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 - **U1 (P2)** 优先级：用户来源表 > 目录可选字段（`github` / `url`）> 元数据里的 Nexus id > 无来源（只显示本地信息，不给更新判定）。
 - **U2 (P2)** 三种来源：`nexus`（内置，files.json 选文件）、`github`（内置，`releases/latest` 取 tag 与资产）、`custom`（用户写正则）。
-- **U3 (P2)** **只有 GitHub 内置版本解析**：`tag_name` 去掉前缀 `v` 后按 S4 规则与本地 assembly／BepInEx 版本比较；资产由用户给的正则挑，没给就只提供 release 页链接。用户点 `Update` 时把匹配到的资产下到下载收件箱，再由收件箱的确认流程决定是否安装；不点则只给链接，绝不后台下载。（实现偏差：2026-11-15 的单模组升级在计划确认后直接安装，不经过收件箱；收件箱仍未实现。同日补：release 只发裸 DLL 也可升级，单 DLL 模组即使 release 改了文件名（`QoL Unknown.dll` → `QoL.Unknown.dll`）也替换唯一已装 DLL 并给 warning；未列入清单的 GitHub 模组在 release 版本更高时显示 Update。）
+- **U3 (P2)** **只有 GitHub 内置版本解析**：`tag_name` 去掉前缀 `v` 后按 S4 规则与本地 assembly／BepInEx 版本比较（两段 tag 如 v1.1 补成 1.1.0；四段仍拒绝）；资产由用户给的正则挑，没给就只提供 release 页链接。用户点 `Update` 时把匹配到的资产下到下载收件箱，再由收件箱的确认流程决定是否安装；不点则只给链接，绝不后台下载。（实现偏差：2026-11-15 的单模组升级在计划确认后直接安装，不经过收件箱；收件箱仍未实现。同日补：release 只发裸 DLL 也可升级，单 DLL 模组即使 release 改了文件名（`QoL Unknown.dll` → `QoL.Unknown.dll`）也替换唯一已装 DLL 并给 warning；未列入清单的 GitHub 模组在 release 版本更高时显示 Update。）
 - **U4 (P2)** 自定义来源：`page` URL + `version` 正则（捕获组 1 = 版本）+ 可选 `download` 正则（捕获组 1 = 下载地址，相对地址按 page 解析）。正则用 `regex`，线性时间，允许用户写坏但不会卡死。
 - **U5 (P2)** 抓取约束：只 GET、只 https、只带本应用 UA，不带 cookie 与任何凭据，不跟随到 `file:`/`data:`，响应上限 2 MB，超时 15 s，重定向最多 3 次。
 - **U6 (P2)** 自定义来源一律拒绝 `nexusmods.com` 及其子域，提示改用 `nexus` 类型——既不抓 Nexus，也不伪装成别的东西。
@@ -369,7 +372,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 社区目录是从 Nexus 生成的，作者只在 GitHub 发版的模组常常不在里面。清单是项目单独维护的公开仓库：`sources.json` 人工维护条目，`releases.json` 由 Actions 预生成；客户端只读，不抓网页、不代提交。V1/V2 是清单的维护面与开关面，清单的读取与匹配随 GitHub 源本体落地。
 
-实现状态（2026-11-15）：GitHub 清单读取、匹配、pin 与手动 Check 已落地（见 `docs/core/sources/overview.md`）；release 结果不缓存。GitHub 资产下载与单模组升级已接：`OutOfDate` 行可 Update，下载归档后先展示计划再 Apply，游戏运行中排队；未做一键升级、收件箱中间层与 `Open release`；裸 DLL release 与「生效源为 GitHub 且 release 版本更高即显示 Update」已接；单 DLL 模组 release 改名时替换唯一已装 DLL 并给 warning。V1/V2 的编辑器、源开关仍在待办。清单暂读本地 `<AppData>/Sources/manifest.json`，远程清单仓库待定。
+实现状态（2026-11-15）：GitHub 清单读取、匹配、pin 与手动 Check 已落地（见 `docs/core/sources/overview.md`）；release 结果不缓存。GitHub 资产下载与单模组升级已接：`OutOfDate` 行可 Update，下载归档后先展示计划再 Apply，游戏运行时保持卡片阻塞、关游戏后需重新点 Apply；批量更新见 A13；未做收件箱中间层与 `Open release`；裸 DLL release 与「生效源为 GitHub 且 release 版本更高即显示 Update」已接；单 DLL 模组 release 改名时替换唯一已装 DLL 并给 warning。V1/V2 的编辑器与源开关仍在待办；Remote Mods 页已有手动刷新列表按钮（force=true，绕过 ETag），刷新成功后同时重建本地行，来源判定不会停留在旧清单。清单读取已接远程（2026-11-19）：默认从 `naroxeno/CUHub-Store` 的 `main` 根 `manifest.json` 条件拉取，缓存 6 小时，启动时后台刷新，缓存缺失才回退本地 `<AppData>/Sources/manifest.json`；2026-11-19 已上传 26 条清单并验证 raw 可读；本机清单仍仅 2 条，作为离线兜底。
 
 - **V1 (P2)** 清单 schema 编辑器：Settings → Mod sources → Edit manifest 打开，表单与原始 JSON 双视图，切换视图前先校验；表单含 `repo`（`owner/name`）、`name`、`match.guid` / `match.dll` / `match.name`（均多值）、可选 `asset.include` / `asset.exclude` 与 `notes`，`id` 从 `repo` 派生并去重。保存前跑与运行时同一套校验（`schemaVersion`、`owner/name` 形状、`match` 至少一项、正则可编译），错误定位到条目与字段，只拒绝坏条目、不整表报废。结果写成草稿 `appdata/GithubSourcesDraft.json`（粘贴上限 1 MB），不写远端仓库、不写游戏目录；另给 Copy JSON / Save as… 导出，由人自己提 PR。删除条目与覆盖导入要确认，且只影响草稿。编辑器内可对已安装模组做一次只读试匹配，列出每个条目命中的 DLL/GUID（不发网络请求）。
 - **V2 (P2)** Settings 的 Mod 源管理：设置页新增 MOD SOURCES 区块，列出 Nexus 目录（只读、常开）、GitHub 清单（开关 / URL / Last synced / Refresh now / Clear cache）、用户来源表（U8 落地前显示为未配置）；顶部只读显示当前生效的优先级顺序，本版不做拖拽排序。关掉清单只影响解析、不删缓存；URL 必须 https，否则就地拒绝且不保存；写入只碰设置与缓存，不碰游戏目录。
@@ -397,30 +400,30 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 模组要加载，游戏目录里必须先有 BepInEx。此前这一步交给用户自己下载解压，界面只提示“未检测到 BepInEx”；X 把「下载 → 校验 → 计划 → 确认 → 应用」接进来，让装完模组的人不会卡在运行时缺失。BepInEx 本体不是模组：它有自己的版本线、自己的文件归属（core、doorstop 注入器）和必须与可执行文件同级的文件，所以不复用模组安装的归属规则，也不允许被普通模组覆盖。
 
 - **X1 (P0)** 版本选择：默认 BepInEx 5 LTS 最新版（5.4.23.6），可切到 6（Mono，标注 experimental）。两条发行版各自 pin 死版本、文件名、URL 与 sha256，不查询更新、不跟随“最新”。理由：5 与 6 的资产布局与文件清单不同，自动追新版会在上游改结构时静默装错。
-- **X2 (P0)** 下载与校验：落 `<AppData>/Downloads`，按 pin 的 sha256 校验；不符就删掉重下一次，仍不符即失败，不进入解包。校验和是下载完整性的唯一证据，哈希不符的包不进游戏目录。
+- **X2 (P0)** 下载与校验：落 `<AppData>/Cache/Downloads/<stamp>-<pid>`，按 pin 的 sha256 校验；不符就删掉重下一次，仍不符即失败，不进入解包。校验和是下载完整性的唯一证据，哈希不符的包不进游戏目录。
 - **X3 (P0)** 两段式：准备阶段只下载、解包到 staging 并生成计划；界面列文件数、Replace/Create、目标根、warnings 与 conflicts，用户确认后才写入；取消删除 staging。破坏性操作必须先给出范围并确认。
 - **X4 (P0)** 白名单：只安装 `BepInEx/` 下除 `config`、`plugins`、`patchers` 及其子树之外的文件，以及游戏根的 `.doorstop_version`、`doorstop_config.ini`、`changelog.txt`、`winhttp.dll`；归档其余文件跳过并记 warning。原因：三棵子树是用户数据；doorstop 必须与可执行文件同级才能注入；上游包里的示例插件与工具不能顺手进游戏目录。
 - **X5 (P0)** Fresh 与 Repair：未安装走 Fresh，目标已存在一律 conflict（防止误覆盖别的安装）；已安装或不完整走 Repair，只替换白名单内的既有普通文件，symlink 与目录仍是 conflict，`BepInEx/config` 与 `BepInEx/plugins` 永远保留。Repair 前有二次确认，说明替换范围与备份位置。两种模式完成后都确保 `BepInEx/plugins` 存在，作为后续模组安装的落点。
 - **X6 (P0)** IL2CPP：游戏根存在 `GameAssembly.dll` 时直接拒绝——BepInEx 5 与 6 Mono 都不加载；状态行写明原因并禁用按钮，不给“试一下再说”的入口。
 - **X7 (P0)** 运行中拒绝：准备与应用前都查游戏进程，运行中返回 `GameRunning` 并提示先关游戏；Repair 有备份，但不在游戏运行时写文件。
-- **X8 (P1)** 入口：Settings 的 BepInEx 区块（状态、版本选择、Install/Repair、计划确认与取消）；Local Mods 空态的「安装 BepInEx」按钮（已完整安装或 IL2CPP 时不显示；没有游戏目录时引导到 Settings，不 panic）。
+- **X8 (P1)** 入口：Settings 的 BepInEx 区块（状态、版本选择、Install/Repair；计划确认与取消在右侧任务中心的 BepInEx 卡里）；Local Mods 空态的「安装 BepInEx」按钮（已完整安装或 IL2CPP 时不显示；没有游戏目录时引导到 Settings，不 panic）。
 
-实现状态（2026-11-15）：core 的 `install::bepinex` 与 `Hub::{bepinex_status, prepare_bepinex, finish_bepinex}` 已落地，8 个单测覆盖白名单、发行版 pin、路径越界、校验、检测、IL2CPP、Fresh 冲突与 Repair；UI 已接 Settings 区块、Repair 确认弹层、计划确认块与 Local Mods 空态按钮。修复的备份写入 `<AppData>/Backups`（与模组安装同一条备份链），界面不承诺备份在游戏目录内。未做：升级/降级到另一条版本线、卸载、6 的 IL2CPP 支持。
+实现状态（2026-11-19）：core 的 `install::bepinex` 与 `Hub::{bepinex_status, prepare_bepinex, finish_bepinex}` 已落地，8 个单测覆盖白名单、发行版 pin、路径越界、校验、检测、IL2CPP、Fresh 冲突与 Repair；UI 已接 Settings 区块、Repair 确认弹层、任务中心 BepInEx 卡与 Local Mods 空态按钮。修复的备份写入 `<AppData>/Backups`（与模组安装同一条备份链），界面不承诺备份在游戏目录内。未做：升级/降级到另一条版本线、卸载、6 的 IL2CPP 支持。
 
 ### Y. 远程模组页（P1）
 
-V 的清单只定义文件与校验，界面里没有入口，用户看不到清单里有什么，也不知道哪些已经装了。Y 把清单变成只读列表：浏览、搜索、过滤；已装的行直接按清单更新，未装的行直接走首次安装。页面不联网、不抓 GitHub、不改清单，数据全部来自 core 启动时装载的 `<AppData>/Sources/manifest.json`。
+V 的清单只定义文件与校验，界面里没有入口，用户看不到清单里有什么，也不知道哪些已经装了。Y 把清单变成只读列表：浏览、搜索、过滤；已装的行直接按清单更新，未装的行直接走首次安装。页面不联网、不抓 GitHub、不改清单，数据来自 core 启动时装载的清单：优先远程缓存，缺失时回退 `<AppData>/Sources/manifest.json`。
 
 - **Y1 (P0)** 入口与索引：侧栏「模组」树的第二项（页面索引 1）；页头与状态栏显示「模组 / 远程模组」。清单文件不存在时只显示一行说明与一行清单路径小字。
 - **Y2 (P0)** 数据：`Hub::sources()` 的 entries；每行显示清单显示名与 `owner/name` 小字，已装时附已安装版本（读不到版本时标 Installed）。
 - **Y3 (P0)** 匹配：用清单 matcher（guid / dll / name）与已装模组匹配；同一 entry 命中多个已装模组时按 guid > dll > name 取最优，与 `sources::best_match` 的优先级一致。
 - **Y4 (P0)** 搜索与过滤：按名称或仓库搜索；All / Installed / Not installed 三态；每页 50 行（`NEXUS_PAGE_SIZE` + `page_slice`）；搜索词、过滤与页码只在内存里，不写设置。
-- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成 `PackagePlan`，成功即交给 PENDING UPDATE 面板；Apply 走 `Hub::apply_package`，载荷先进 Store，再写入活动档案并按档案部署。依赖检查被阻断时不进 pending，改为显示依赖提示面板；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。旧 `apply_install` 只保留给 BepInEx 与回退。
-- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成 `PackagePlan` 后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级；由 `Links.json` 托管的条目允许更新：新版本进 Store 后替换活动档案里的同 `modId` 条目，并重排链接，不再以 `ManagedByProfile` 拒绝。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进 pending 面板。
+- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成 `PackagePlan`，成功即交给任务中心（A12）的安装卡；卡片里的 Apply 走 `Hub::apply_package`，载荷先进 Store，再写入活动档案并按档案部署。依赖检查被阻断时不进 pending，改为显示任务中心的依赖卡；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。旧 `apply_install` 只保留给 BepInEx 与回退。
+- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成 `PackagePlan` 后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级；由 `Links.json` 托管的条目允许更新：新版本进 Store 后替换活动档案里的同 `modId` 条目，并重排链接，不再以 `ManagedByProfile` 拒绝。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进任务中心的安装卡。
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
 
-实现状态（2026-11-19）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，pending 面板与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。未做：清单重载（core 无 reload 接口，改清单需重启）、远端 release 版本预检（按钮不判断是否有新版）、清单下发（清单目前需手工放到 `<AppData>/Sources/manifest.json`）。
+实现状态（2026-11-19）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。未做：远端 release 版本预检（按钮不判断是否有新版）。清单已改为启动拉取 `naroxeno/CUHub-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。
 
 边界：只读清单，不在应用内编辑或抓取；不重托管模组、不伪造下载 URL；游戏进程检查、路径越界与目标已存在由 core 拒绝，界面只展示错误。
 
@@ -460,6 +463,7 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
   ProtectedFiles.json
   ProtectedFiles/...             # 受保护资源副本
   Backups/yyyy-MM-dd_HH-mm-ss/...
+  Cache/Downloads/<stamp>-<pid>/<asset 原名>  # 自动下载缓存，保留上游文件名
   ImportedDownloads/yyyy-MM-dd_HH-mm-ss_<name>
   IconCache/<sha256 前 32>.img
   Logs/Log yyyy-MM-dd_HH-mm-ss.log

@@ -6,7 +6,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::network::{Fetch, Network, NetworkError};
+use crate::network::{DownloadProgress, Fetch, Network, NetworkError};
 use crate::nexus_auth::{KeyStoreError, NexusKeyStore};
 
 const API_BASE: &str = "https://api.nexusmods.com/v1/games/scavprototype";
@@ -177,6 +177,15 @@ impl Nexus {
         mod_id: &str,
         destination_dir: &Path,
     ) -> Result<NexusDownload, NexusError> {
+        self.download_latest_with_progress(mod_id, destination_dir, &mut |_| {})
+    }
+
+    pub fn download_latest_with_progress(
+        &self,
+        mod_id: &str,
+        destination_dir: &Path,
+        progress: &mut dyn FnMut(DownloadProgress),
+    ) -> Result<NexusDownload, NexusError> {
         let files = self.fetch_files(mod_id)?;
         let file = select_file(&files).ok_or(NexusError::NoFile)?;
         let key = self.api_key()?;
@@ -197,11 +206,12 @@ impl Nexus {
             .ok_or(NexusError::NoFileName)?;
         let file_name = sanitize_file_name(raw_name).ok_or(NexusError::NoFileName)?;
         let destination = unique_destination(destination_dir, &file_name);
-        let bytes = self.network.download_with_timeout(
+        let bytes = self.network.download_with_timeout_progress(
             &link,
             &destination,
             MAX_DOWNLOAD_BYTES,
             DOWNLOAD_TIMEOUT,
+            progress,
         )?;
         Ok(NexusDownload {
             path: destination,

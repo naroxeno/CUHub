@@ -110,7 +110,7 @@ impl LocalModRow {
         self.item
             .installed_version
             .as_deref()
-            .and_then(HubVersion::parse)
+            .and_then(HubVersion::parse_external)
             .is_some_and(|installed| installed < *release)
     }
 }
@@ -149,7 +149,7 @@ pub(super) fn build_local_rows(
                 check,
                 pinned,
             });
-            let managed = hub.links().get(&item.source_path).is_some();
+            let managed = hub.is_managed_path(&item.source_path);
             LocalModRow {
                 key: format!(
                     "{key}|{}|{}|{}|{managed}",
@@ -181,7 +181,7 @@ fn build_source_row(input: SourceInput<'_>) -> SourceRow {
         .item
         .expected_version
         .as_deref()
-        .and_then(HubVersion::parse);
+        .and_then(HubVersion::parse_external);
     let resolution = sources::resolve_mod(input.entries, &local, github, nexus, input.pinned);
     let Some(matched) = resolution.matched else {
         let text = match input.pinned {

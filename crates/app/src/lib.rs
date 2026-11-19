@@ -42,6 +42,8 @@ pub fn App() -> impl IntoElement {
                 .child(view().flex_col().flex_1().child(shell::content(&ui))),
         )
         .child(shell::statusline(&ui))
+        .child(shell::task_center(&ui))
+        .child(shell::task_drawer(&ui))
         .child(pages::delete_overlay(&ui))
         .child(pages::bepinex_overlay(&ui))
         .child(shell::dev_overlay(&ui))

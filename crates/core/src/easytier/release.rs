@@ -8,7 +8,7 @@ use std::time::Duration;
 use crate::install::{HashError, verify_sha256};
 
 use super::detect::{self, Detection};
-use crate::network::{Network, NetworkError};
+use crate::network::{DownloadProgress, Network, NetworkError};
 
 pub const VERSION: &str = "2.6.4";
 
@@ -57,13 +57,22 @@ pub(crate) fn cache_dir(app_data: &Path) -> PathBuf {
 }
 
 pub fn ensure_archive(network: &Network, app_data: &Path) -> Result<PathBuf, ReleaseError> {
-    ensure_asset(network, &cache_dir(app_data), &platform_asset()?)
+    ensure_archive_with_progress(network, app_data, &mut |_| {})
+}
+
+pub fn ensure_archive_with_progress(
+    network: &Network,
+    app_data: &Path,
+    progress: &mut dyn FnMut(DownloadProgress),
+) -> Result<PathBuf, ReleaseError> {
+    ensure_asset(network, &cache_dir(app_data), &platform_asset()?, progress)
 }
 
 fn ensure_asset(
     network: &Network,
     directory: &Path,
     asset: &Asset,
+    progress: &mut dyn FnMut(DownloadProgress),
 ) -> Result<PathBuf, ReleaseError> {
     fs::create_dir_all(directory).map_err(|source| ReleaseError::Directory {
         path: directory.to_path_buf(),
@@ -81,7 +90,7 @@ fn ensure_asset(
     }
     let url = asset.url();
     network
-        .download_with_timeout(&url, &archive, asset.size, DOWNLOAD_TIMEOUT)
+        .download_with_timeout_progress(&url, &archive, asset.size, DOWNLOAD_TIMEOUT, progress)
         .map_err(|source| ReleaseError::Download {
             url: url.clone(),
             path: archive.clone(),
@@ -99,7 +108,15 @@ fn archive_matches(path: &Path, asset: &Asset) -> bool {
 }
 
 pub fn ensure_installed(network: &Network, app_data: &Path) -> Result<Detection, ReleaseError> {
-    let archive = ensure_archive(network, app_data)?;
+    ensure_installed_with_progress(network, app_data, &mut |_| {})
+}
+
+pub fn ensure_installed_with_progress(
+    network: &Network,
+    app_data: &Path,
+    progress: &mut dyn FnMut(DownloadProgress),
+) -> Result<Detection, ReleaseError> {
+    let archive = ensure_archive_with_progress(network, app_data, progress)?;
     let root = cache_dir(app_data);
     extract(&archive, &root).map_err(|source| ReleaseError::Extract {
         path: archive.clone(),
@@ -291,7 +308,10 @@ mod tests {
         let archive = directory.join(asset.file_name);
         fs::write(&archive, TEST_PAYLOAD).unwrap();
         let network = Network::new().unwrap();
-        assert_eq!(ensure_asset(&network, &directory, &asset).unwrap(), archive);
+        assert_eq!(
+            ensure_asset(&network, &directory, &asset, &mut |_| {}).unwrap(),
+            archive
+        );
         let _ = fs::remove_dir_all(directory);
     }
 

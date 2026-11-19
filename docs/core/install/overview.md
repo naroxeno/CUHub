@@ -68,7 +68,7 @@
 
 ## 接线
 
-普通模组的统一链路：`download_nexus_latest` 或 `download_github_asset` 把归档放到 `<AppData>/Downloads`；`Hub::prepare_package_update` / `prepare_remote_install` 解包或复制到 `<AppData>/Staging/<nanos>-<pid>`，调用 `packages::plan_package` 生成 `PackagePlan`；UI 的 pending 面板展示文件数、目标与警告，用户点 Apply 后 `Hub::apply_package` 入库、写活动档案、按档案部署。取消或计划失败时删 staging。
+普通模组的统一链路：GitHub 自动下载走 `download_github_asset`，Nexus 自动安装走 `download_nexus_latest_cached`，归档都落到 `<AppData>/Cache/Downloads/<stamp>-<pid>` 并保留上游原名；Nexus 页面的手动下载仍落用户的 `download_path`，不参与缓存。`Hub::prepare_package_update` / `prepare_remote_install` 解包或复制到 `<AppData>/Staging/<nanos>-<pid>`，调用 `packages::plan_package` 生成 `PackagePlan`；UI 的 pending 面板展示文件数、目标与警告，用户点 Apply 后 `Hub::apply_package` 入库、写活动档案、按档案部署。取消或计划失败时删 staging。`finish_package` 在生成最终 `files` 前按插件 GUID 去重：包内 DLL 若与已安装的另一个模组同 GUID、且目标不是该模组自身目录，就跳过并在计划警告里说明，避免 CT 这类整包自带的 CUCoreLib 与独立安装重复。
 
 旧的 `plan_download` + `apply_install` 链路只用于 BepInEx 与回退：`plan_download` 解包后生成 `UpgradePlan`，`apply_install` 在游戏未运行时备份并逐文件替换。两者不再处理普通模组的远程安装/更新。
 
@@ -76,8 +76,8 @@
 
 `apply_install` 先查游戏进程：运行中返回 `GameRunning`，UI 每 3 秒重试，最多 60 次（约 3 分钟）；超时后停止重试并提示游戏仍在运行。取消只在下一次重试前生效，已经开始的写入会完成；不会留下半套文件。写入前把所有 Replace 备份到 `<AppData>/Backups/<UTC 时间戳>`，逐文件临时文件 + rename，失败按逆序回滚。备份目录保留供手工恢复；本版没有恢复界面。
 
-BepInEx 本体复用同一条链路：`Hub::prepare_bepinex` 下载到 `<AppData>/Downloads`、按 pin 的 sha256 校验、解包到 staging 再生成计划；用户确认后 `apply_install`，最后 `finish_bepinex` 建 `BepInEx/plugins`。取消删除 staging，备份同样落在 `<AppData>/Backups`。
+BepInEx 本体复用同一条链路：`Hub::prepare_bepinex` 下载到 `<AppData>/Cache/Downloads/<stamp>-<pid>`、按 pin 的 sha256 校验、解包到 staging 再生成计划；用户确认后 `apply_install`，最后 `finish_bepinex` 建 `BepInEx/plugins`。取消删除 staging，备份同样落在 `<AppData>/Backups`。
 
-远程首次安装走 `Hub::prepare_remote_install(entry)`：先查游戏进程并确认 plugins 存在，按清单的 `repo`/`asset` 下载到 `<AppData>/Downloads`，再 staging 并生成 `PackagePlan`。返回的 `RemoteInstall { name, staging, package }` 交给 pending 面板，确认后 `Hub::apply_package`；下载之后的任何失败都会删掉 staging。`plan_first_install` 仅供旧链路与测试使用。
+远程首次安装走 `Hub::prepare_remote_install(entry)`：先查游戏进程并确认 plugins 存在，按清单的 `repo`/`asset` 下载到 `<AppData>/Cache/Downloads/<stamp>-<pid>`，再 staging 并生成 `PackagePlan`。返回的 `RemoteInstall { name, staging, package }` 交给 pending 面板，确认后 `Hub::apply_package`；下载之后的任何失败都会删掉 staging。`plan_first_install` 仅供旧链路与测试使用。
 
 不做：一键升级、后台自动安装、release 页链接、把归档送进收件箱再确认。Update 在 `OutOfDate`、或生效源为 GitHub 且 release 版本高于已装版本时出现；禁用模组与无法确定来源的行不给，Nexus Standard 的 403 仍按失败展示。

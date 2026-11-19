@@ -11,6 +11,7 @@ use cuhub_core::github::CheckFailure;
 use cuhub_core::hub::CheckOutcome;
 use cuhub_core::sources::{Repo, SourceKind};
 use nsh_core::prelude::*;
+use std::collections::BTreeSet;
 
 impl Ui {
     pub fn rebuild_local_rows(&self) {
@@ -18,6 +19,16 @@ impl Ui {
             let hub = self.hub();
             build_local_rows(&hub, &self.mods.get(), &self.checks.get())
         };
+        let valid: BTreeSet<String> = rows
+            .iter()
+            .filter(|row| row.can_update())
+            .map(|row| row.source_key.clone())
+            .collect();
+        let selection = self.batch_selection.get();
+        let pruned = super::batch::prune(&selection, &valid);
+        if pruned != selection {
+            self.batch_selection.set(pruned);
+        }
         self.local_rows.set(rows);
     }
 
@@ -55,7 +66,7 @@ impl Ui {
         let ui = self.clone();
         self.spawn_worker(async move {
             let result = blocking(move || {
-                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let mut hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 hub.set_mod_enabled(&item, enabled)
             })
             .await;
@@ -98,12 +109,6 @@ impl Ui {
             self.notice.set(t!("notice.no_mods_to_change"));
             return;
         }
-        let skipped = self
-            .local_rows
-            .get()
-            .iter()
-            .filter(|row| row.managed)
-            .count();
         self.bulk_busy.set(true);
         self.notice.set(if enabled {
             t!("notice.enabling_all")
@@ -114,7 +119,7 @@ impl Ui {
         let ui = self.clone();
         self.spawn_worker(async move {
             let result = blocking(move || {
-                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let mut hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 hub.set_all_mods_enabled(enabled)
             })
             .await;
@@ -122,21 +127,7 @@ impl Ui {
             match result {
                 Ok(Ok(count)) => {
                     ui.refresh_mods();
-                    ui.notice.set(if skipped > 0 {
-                        if enabled {
-                            t!(
-                                "notice.enabled_all_skipped",
-                                count = count,
-                                skipped = skipped
-                            )
-                        } else {
-                            t!(
-                                "notice.disabled_all_skipped",
-                                count = count,
-                                skipped = skipped
-                            )
-                        }
-                    } else if enabled {
+                    ui.notice.set(if enabled {
                         t!("notice.enabled_all", count = count)
                     } else {
                         t!("notice.disabled_all", count = count)
@@ -158,6 +149,7 @@ impl Ui {
         self.update_busy.get().is_some()
             || self.remote_busy.get().is_some()
             || self.apply_running.get()
+            || self.batch_progress.get().is_some()
     }
 
     pub fn mod_files_busy(&self) -> bool {
@@ -234,6 +226,7 @@ impl Ui {
         }
         if self.remote_busy.get().is_some()
             || self.apply_running.get()
+            || self.batch_progress.get().is_some()
             || self.dependency_prompt.get().is_some()
             || self.profiles.is_busy()
         {

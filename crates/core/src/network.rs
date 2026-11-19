@@ -17,6 +17,7 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MAX_REDIRECTS: usize = 3;
 pub const DEFAULT_MAX_BODY_BYTES: u64 = 8 * 1024 * 1024;
+pub const DOWNLOAD_CHUNK_BYTES: usize = 32 * 1024;
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -107,7 +108,7 @@ impl Network {
         destination: &Path,
         max_bytes: u64,
     ) -> Result<u64, NetworkError> {
-        self.download_with_timeout(url, destination, max_bytes, REQUEST_TIMEOUT)
+        self.download_with_progress(url, destination, max_bytes, &mut |_| {})
     }
 
     pub fn download_with_timeout(
@@ -116,6 +117,27 @@ impl Network {
         destination: &Path,
         max_bytes: u64,
         timeout: Duration,
+    ) -> Result<u64, NetworkError> {
+        self.download_with_timeout_progress(url, destination, max_bytes, timeout, &mut |_| {})
+    }
+
+    pub fn download_with_progress(
+        &self,
+        url: &str,
+        destination: &Path,
+        max_bytes: u64,
+        progress: &mut dyn FnMut(DownloadProgress),
+    ) -> Result<u64, NetworkError> {
+        self.download_with_timeout_progress(url, destination, max_bytes, REQUEST_TIMEOUT, progress)
+    }
+
+    pub fn download_with_timeout_progress(
+        &self,
+        url: &str,
+        destination: &Path,
+        max_bytes: u64,
+        timeout: Duration,
+        progress: &mut dyn FnMut(DownloadProgress),
     ) -> Result<u64, NetworkError> {
         let url = validate_url(url)?;
         if destination.exists() {
@@ -138,11 +160,14 @@ impl Network {
                 });
             }
             reject_oversized(&response, max_bytes, &url)?;
-            let written = io::copy(&mut response.take(max_bytes.saturating_add(1)), &mut file)
-                .map_err(|source| NetworkError::Read {
-                    url: url.to_string(),
-                    source,
-                })?;
+            let total = declared_length(&response);
+            let written = copy_with_progress(
+                &mut response.take(max_bytes.saturating_add(1)),
+                &mut file,
+                &url,
+                total,
+                progress,
+            )?;
             if written > max_bytes {
                 return Err(NetworkError::TooLarge {
                     url: url.to_string(),
@@ -181,6 +206,12 @@ impl Network {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DownloadProgress {
+    pub written: u64,
+    pub total: Option<u64>,
 }
 
 #[derive(Debug)]
@@ -318,13 +349,16 @@ fn header_string(response: &Response, name: reqwest::header::HeaderName) -> Opti
         .map(str::to_owned)
 }
 
-fn reject_oversized(response: &Response, max_bytes: u64, url: &Url) -> Result<(), NetworkError> {
-    let declared = response
+fn declared_length(response: &Response) -> Option<u64> {
+    response
         .headers()
         .get(CONTENT_LENGTH)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok());
-    if let Some(length) = declared
+        .and_then(|value| value.parse::<u64>().ok())
+}
+
+fn reject_oversized(response: &Response, max_bytes: u64, url: &Url) -> Result<(), NetworkError> {
+    if let Some(length) = declared_length(response)
         && length > max_bytes
     {
         return Err(NetworkError::TooLarge {
@@ -333,6 +367,36 @@ fn reject_oversized(response: &Response, max_bytes: u64, url: &Url) -> Result<()
         });
     }
     Ok(())
+}
+
+fn copy_with_progress(
+    reader: &mut impl Read,
+    writer: &mut impl Write,
+    url: &Url,
+    total: Option<u64>,
+    progress: &mut dyn FnMut(DownloadProgress),
+) -> Result<u64, NetworkError> {
+    let mut buffer = vec![0u8; DOWNLOAD_CHUNK_BYTES];
+    let mut written = 0u64;
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|source| NetworkError::Read {
+                url: url.to_string(),
+                source,
+            })?;
+        if read == 0 {
+            return Ok(written);
+        }
+        writer
+            .write_all(&buffer[..read])
+            .map_err(|source| NetworkError::Read {
+                url: url.to_string(),
+                source,
+            })?;
+        written += read as u64;
+        progress(DownloadProgress { written, total });
+    }
 }
 
 fn read_limited(reader: impl Read, max_bytes: u64, url: &Url) -> Result<Vec<u8>, NetworkError> {
@@ -432,6 +496,109 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, NetworkError::DestinationExists(ref path) if path == &destination));
         assert_eq!(fs::read(&destination).unwrap(), b"old");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    struct Chunked {
+        data: Vec<u8>,
+        offset: usize,
+        chunk: usize,
+    }
+
+    impl Read for Chunked {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let end = (self.offset + self.chunk)
+                .min(self.data.len())
+                .min(self.offset + buffer.len());
+            let count = end.saturating_sub(self.offset);
+            buffer[..count].copy_from_slice(&self.data[self.offset..end]);
+            self.offset = end;
+            Ok(count)
+        }
+    }
+
+    fn chunked(data: &[u8], chunk: usize) -> Chunked {
+        Chunked {
+            data: data.to_vec(),
+            offset: 0,
+            chunk,
+        }
+    }
+
+    #[test]
+    fn reports_progress_after_each_chunk_and_keeps_the_body() {
+        let url = Url::parse("https://example.com/a").unwrap();
+        let mut reader = chunked(b"0123456789abcdef", 5);
+        let mut output = Vec::new();
+        let mut seen = Vec::new();
+        let written =
+            copy_with_progress(&mut reader, &mut output, &url, Some(16), &mut |progress| {
+                seen.push(progress)
+            })
+            .unwrap();
+        assert_eq!(written, 16);
+        assert_eq!(output, b"0123456789abcdef");
+        assert_eq!(
+            seen.iter()
+                .map(|progress| progress.written)
+                .collect::<Vec<_>>(),
+            vec![5, 10, 15, 16]
+        );
+        assert!(seen.iter().all(|progress| progress.total == Some(16)));
+    }
+
+    #[test]
+    fn reports_no_total_when_content_length_is_missing() {
+        let url = Url::parse("https://example.com/a").unwrap();
+        let mut reader = chunked(b"abcd", 2);
+        let mut output = Vec::new();
+        let mut totals = Vec::new();
+        copy_with_progress(&mut reader, &mut output, &url, None, &mut |progress| {
+            totals.push(progress.total)
+        })
+        .unwrap();
+        assert_eq!(totals, vec![None, None]);
+        assert_eq!(output, b"abcd");
+    }
+
+    #[test]
+    fn progress_downloads_keep_the_destination_and_url_checks() {
+        let directory = crate::test_support::temp_dir("network-progress-checks");
+        let destination = directory.join("archive.zip");
+        fs::write(&destination, b"old").unwrap();
+        let network = Network::new().unwrap();
+        let mut calls = 0;
+        let error = network
+            .download_with_progress(
+                "https://example.com/archive.zip",
+                &destination,
+                1024,
+                &mut |_| calls += 1,
+            )
+            .unwrap_err();
+        assert!(matches!(error, NetworkError::DestinationExists(ref path) if path == &destination));
+        assert_eq!(calls, 0);
+        let missing = directory.join("missing.zip");
+        let error = network
+            .download_with_progress("not a url", &missing, 1024, &mut |_| calls += 1)
+            .unwrap_err();
+        assert!(matches!(error, NetworkError::InvalidUrl(_)));
+        assert!(!missing.exists());
+        assert_eq!(fs::read(&destination).unwrap(), b"old");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn downloads_without_a_callback_keep_the_old_checks() {
+        let directory = crate::test_support::temp_dir("network-legacy-checks");
+        let destination = directory.join("archive.zip");
+        let network = Network::new().unwrap();
+        let error = network
+            .download_with_timeout("http://example.com/a", &destination, 1024, REQUEST_TIMEOUT)
+            .unwrap_err();
+        assert!(matches!(error, NetworkError::InsecureUrl(_)));
+        assert!(!destination.exists());
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 0);
         fs::remove_dir_all(directory).unwrap();
     }
 }

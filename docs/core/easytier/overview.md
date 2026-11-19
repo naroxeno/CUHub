@@ -4,7 +4,7 @@ EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它�
 
 ## 文件边界
 
-- `release.rs`：版本 pin `2.6.4`、各平台资产名/大小/sha256、下载缓存 `<appdata>/Tools/easytier/<version>/`。
+- `release.rs`：版本 pin `2.6.4`、各平台资产名/大小/sha256、下载缓存 `<appdata>/Tools/easytier/<version>/`。`ensure_archive_with_progress` / `ensure_installed_with_progress` 透传 `network` 的下载进度，旧的 `ensure_archive` / `ensure_installed` 以空回调委托。
 - `detect.rs`：探测托管目录或用户指定目录；Windows 必需 4 个文件（`easytier-core.exe`、`easytier-cli.exe`、`wintun.dll`、`Packet.dll`），其它平台 2 个。只读磁盘、不跑进程。
 - `ports.rs`：按「本地回环 + 指定协议」申请空闲端口，用于 RPC。
 - `argument.rs`：参数拼装；房间码只在这里派生成网络名/密钥，不落日志。
@@ -16,7 +16,7 @@ EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它�
 ## 边界与失败模式
 
 - 提权：不自提权。Windows 在 `Hub::start_tunnel` 先查 `platform::elevated()`（管理员令牌），不足直接 `HubError::Elevation`；Linux 不做进程级预检查，TUN 权限由 core 文件的 `cap_net_admin+ep` 在 exec 时授予，失败表现为 core 退出。
-- 内核缺失：先托管目录，再用户指定目录，最后按 release 下载；解压只取必需文件名，扁平写入缓存目录，缺一个即失败。
+- 内核缺失：先托管目录，再用户指定目录，最后按 release 下载；解压只取必需文件名，扁平写入缓存目录，缺一个即失败。进度只覆盖压缩包传输：缓存命中且 sha256 一致时不会发请求，也就没有回调；解压与校验阶段同样没有进度。
 - 用户指定目录不完整时只记日志后回退下载，不删除用户文件。
 - 隧道全程同一时刻只允许一个；重建前先停旧进程。
 - 日志里房间码只出现网络名前 4 位与省略号；密钥段不落地。

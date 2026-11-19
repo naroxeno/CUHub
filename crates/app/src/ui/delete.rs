@@ -23,6 +23,7 @@ impl DeleteTarget {
 pub struct DeletePrompt {
     pub target: DeleteTarget,
     pub scope: DeleteScope,
+    pub managed: bool,
 }
 
 impl DeletePrompt {
@@ -40,7 +41,26 @@ impl DeletePrompt {
         }
     }
 
+    pub fn summary_key(&self) -> &'static str {
+        if self.managed {
+            "delete.summary_profile"
+        } else {
+            "delete.summary"
+        }
+    }
+
+    pub fn irreversible_key(&self) -> &'static str {
+        if self.managed {
+            "delete.profile_reversible"
+        } else {
+            "delete.irreversible"
+        }
+    }
+
     pub fn scope_note_key(&self) -> &'static str {
+        if self.managed {
+            return "delete.scope_profile";
+        }
         match &self.target {
             DeleteTarget::Mod(_) => "delete.scope_mod",
             DeleteTarget::All => "delete.scope_all",
@@ -63,10 +83,6 @@ impl Ui {
     }
 
     pub fn request_delete_all(&self) {
-        if !self.mods.get().is_empty() && self.local_rows.get().iter().all(|row| row.managed) {
-            self.notice.set(t!("notice.all_managed_by_profile"));
-            return;
-        }
         self.start_delete(DeleteTarget::All);
     }
 
@@ -96,26 +112,39 @@ impl Ui {
             let scope_target = target.clone();
             let result = blocking(move || {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                match &scope_target {
+                let managed = match &scope_target {
+                    DeleteTarget::Mod(item) => hub.is_managed_path(&item.source_path),
+                    DeleteTarget::All => false,
+                };
+                let scope = match &scope_target {
                     DeleteTarget::Mod(item) => hub.delete_scope(item),
                     DeleteTarget::All => hub.delete_all_scope(),
-                }
+                }?;
+                Ok::<_, cuhub_core::hub::HubError>((managed, scope))
             })
             .await;
             ui.delete_busy.set(false);
             match result {
-                Ok(Ok(scope)) => {
+                Ok(Ok((managed, scope))) => {
                     if scope.roots.is_empty() {
                         ui.notice.set(t!("notice.plugins_empty"));
                         return;
                     }
-                    ui.notice.set(t!(
-                        "notice.delete_scope",
-                        label = label,
-                        files = scope.files,
-                        paths = scope.roots.len()
-                    ));
-                    ui.delete_prompt.set(Some(DeletePrompt { target, scope }));
+                    if managed {
+                        ui.notice.set(t!("notice.profile_remove", label = label));
+                    } else {
+                        ui.notice.set(t!(
+                            "notice.delete_scope",
+                            label = label,
+                            files = scope.files,
+                            paths = scope.roots.len()
+                        ));
+                    }
+                    ui.delete_prompt.set(Some(DeletePrompt {
+                        target,
+                        scope,
+                        managed,
+                    }));
                 }
                 Ok(Err(error)) => {
                     ui.notice
@@ -144,6 +173,7 @@ impl Ui {
             return;
         }
         let label = prompt.target.label();
+        let managed = prompt.managed;
         let failure = match &prompt.target {
             DeleteTarget::Mod(item) => t!(
                 "notice.delete_mod_failed",
@@ -159,7 +189,7 @@ impl Ui {
         self.spawn_worker(async move {
             let target = prompt.target.clone();
             let result = blocking(move || {
-                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let mut hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 match &target {
                     DeleteTarget::Mod(item) => hub.delete_mod(item),
                     DeleteTarget::All => hub.delete_all_mods(),
@@ -171,7 +201,11 @@ impl Ui {
             match result {
                 Ok(Ok(count)) => {
                     ui.refresh_mods();
-                    ui.notice.set(t!("notice.deleted", count = count));
+                    ui.notice.set(if managed {
+                        t!("notice.profile_removed", label = label)
+                    } else {
+                        t!("notice.deleted", count = count)
+                    });
                 }
                 Ok(Err(error)) => {
                     ui.notice

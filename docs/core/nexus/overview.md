@@ -10,12 +10,13 @@ Nexus Mods 官方 API v1 的窄客户端：读取 mod 的文件列表、选择�
 - `has_key()` / `save_key(key)` / `clear_key()`：转给 key store。
 - `validate_key() -> Result<NexusAccount, NexusError>`：GET `/v1/users/validate.json`，返回用户名与 `is_premium`。只用于诊断，不改变下载权限。app 的 Test key 在后台线程调用它，界面不会卡住。
 - `fetch_files(mod_id) -> Result<Vec<NexusFile>, NexusError>`：GET `/v1/games/scavprototype/mods/{id}/files.json`。响应可以是数组，也可以是带 `files` 数组的对象。
-- `download_latest(mod_id, destination_dir) -> Result<NexusDownload, NexusError>`：
+- `download_latest(mod_id, destination_dir) -> Result<NexusDownload, NexusError>`（`download_latest_with_progress` 多一个进度回调，其余步骤完全相同）：
   1. 先取文件列表；`category_id` 为 1（MAIN）或 2（UPDATE）的条目中按 `uploaded_timestamp`、再按 `file_id` 选最新；没有主/更新分类时退回所有分类。
   2. GET `/v1/games/scavprototype/mods/{id}/files/{fileId}/download_link.json`，取数组或对象里的 `URI` / `uri`。
   3. 文件名优先 `file_name`，其次 `name`，最后从 URL 路径取；净化 Windows 非法字符、路径分隔符、控制字符、首尾点、设备名，并限制长度。
   4. 目标重名时生成 `name (2).ext` 这类新名字，不覆盖已有文件。
   5. 用 5 分钟超时下载，单文件上限 1 GiB。
+- `download_latest_with_progress` 把 `network` 的 `DownloadProgress` 原样透传给调用方：两次 API 请求阶段没有进度，回调只覆盖文件落盘阶段。
 - `NexusDownload` 返回落盘路径、文件名、文件 id 与字节数。
 
 ## 请求与安全

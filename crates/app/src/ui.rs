@@ -1,5 +1,6 @@
 //! Zoom-aware pixel primitives, motion helpers and the app's hub-backed state.
 
+pub mod batch;
 mod bepinex;
 mod delete;
 mod fx;
@@ -11,7 +12,9 @@ mod nexus;
 mod profiles;
 mod remote;
 mod rows;
+mod sources;
 mod state;
+mod tasks;
 mod widgets;
 
 #[allow(unused_imports)]
@@ -25,4 +28,5 @@ pub use profiles::*;
 pub use remote::*;
 pub use rows::*;
 pub use state::*;
+pub use tasks::*;
 pub use widgets::*;

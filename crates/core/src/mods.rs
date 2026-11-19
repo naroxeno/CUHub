@@ -267,8 +267,7 @@ pub fn scan(
         .iter()
         .filter_map(|path| build_mod(path, metadata))
         .collect::<Vec<_>>();
-    annotate_dependencies(&mut mods, catalogs, ignored_dependencies);
-    mods.sort_by_key(|item| item.name.to_lowercase());
+    annotate(&mut mods, catalogs, ignored_dependencies);
     Ok(mods)
 }
 
@@ -561,20 +560,59 @@ fn walk_directory(directory: &Path, depth: usize, dlls: &mut Vec<PathBuf>) {
     }
 }
 
-fn build_mod(path: &Path, metadata: &[MetadataMod]) -> Option<InstalledMod> {
+pub(crate) fn build_mod(path: &Path, metadata: &[MetadataMod]) -> Option<InstalledMod> {
+    build_mod_with_preferred(path, metadata, &[], None)
+}
+
+pub(crate) fn build_mod_with_preferred(
+    path: &Path,
+    metadata: &[MetadataMod],
+    preferred_stems: &[String],
+    preferred_name: Option<&str>,
+) -> Option<InstalledMod> {
     let dlls = collect_dlls(path);
     if dlls.is_empty() {
         return None;
     }
     let disabled = dlls.iter().all(|dll| is_disabled_path(dll));
-    let first_stem = dlls.iter().find_map(|dll| dll_stem(dll));
-    let matched = dlls.iter().find_map(|dll| {
-        let stem = dll_stem(dll)?;
-        metadata_for(&stem, metadata)
-    });
+    let primary = preferred_stems
+        .iter()
+        .find_map(|preferred| {
+            let wanted = normalize(preferred);
+            dlls.iter()
+                .find(|dll| dll_stem(dll).is_some_and(|stem| normalize(&stem) == wanted))
+        })
+        .or_else(|| dlls.iter().find(|dll| !is_disabled_path(dll)))
+        .or_else(|| dlls.first());
+    let primary_stem = primary.and_then(|dll| dll_stem(dll));
+    let first_stem = primary_stem
+        .clone()
+        .or_else(|| dlls.iter().find_map(|dll| dll_stem(dll)));
+    let matched = preferred_name
+        .and_then(|name| metadata_for_name(name, metadata))
+        .filter(|item| {
+            primary_stem.as_deref().is_none_or(|stem| {
+                let wanted = normalize(stem);
+                item.dll_names
+                    .iter()
+                    .any(|name| normalize_dll_name(name) == wanted)
+            })
+        })
+        .or_else(|| {
+            primary_stem
+                .as_deref()
+                .and_then(|stem| metadata_for(stem, metadata))
+        })
+        .or_else(|| {
+            dlls.iter().find_map(|dll| {
+                let stem = dll_stem(dll)?;
+                metadata_for(&stem, metadata)
+            })
+        });
 
     let name = matched
         .map(|item| item.name.clone())
+        .or_else(|| primary_stem.clone())
         .or_else(|| {
             dlls.iter()
                 .find(|dll| !is_disabled_path(dll))
@@ -593,7 +631,7 @@ fn build_mod(path: &Path, metadata: &[MetadataMod]) -> Option<InstalledMod> {
     let expected_version = matched
         .map(|item| item.version.clone())
         .filter(|value| !value.trim().is_empty());
-    let evidence = dll_evidence(&dlls);
+    let evidence = dll_evidence(&dlls, primary);
     let installed_version = evidence
         .plugin_version
         .clone()
@@ -639,13 +677,27 @@ fn build_mod(path: &Path, metadata: &[MetadataMod]) -> Option<InstalledMod> {
     })
 }
 
-fn dll_evidence(dlls: &[PathBuf]) -> dotnet::DllEvidence {
+fn dll_evidence(dlls: &[PathBuf], primary: Option<&PathBuf>) -> dotnet::DllEvidence {
+    let primary_index = primary.and_then(|primary| dlls.iter().position(|dll| dll == primary));
+    let mut order = Vec::with_capacity(dlls.len());
+    if let Some(index) = primary_index {
+        order.push(index);
+    }
+    order.extend(
+        dlls.iter()
+            .enumerate()
+            .filter(|(index, dll)| Some(*index) != primary_index && !is_disabled_path(dll))
+            .map(|(index, _)| index),
+    );
+    order.extend(
+        dlls.iter()
+            .enumerate()
+            .filter(|(index, dll)| Some(*index) != primary_index && is_disabled_path(dll))
+            .map(|(index, _)| index),
+    );
     let mut evidence = dotnet::DllEvidence::default();
-    for dll in dlls
-        .iter()
-        .filter(|dll| !is_disabled_path(dll))
-        .chain(dlls.iter().filter(|dll| is_disabled_path(dll)))
-    {
+    for index in order {
+        let dll = &dlls[index];
         let Some(found) = dotnet::read_dll(dll) else {
             continue;
         };
@@ -737,7 +789,7 @@ fn metadata_for<'a>(stem: &str, metadata: &'a [MetadataMod]) -> Option<&'a Metad
         let dll_match = item
             .dll_names
             .iter()
-            .any(|name| normalize(name) == normalized);
+            .any(|name| normalize_dll_name(name) == normalized);
         if !name_match && !dll_match {
             continue;
         }
@@ -755,12 +807,42 @@ fn metadata_for<'a>(stem: &str, metadata: &'a [MetadataMod]) -> Option<&'a Metad
     best.map(|(_, item)| item)
 }
 
+fn metadata_for_name<'a>(name: &str, metadata: &'a [MetadataMod]) -> Option<&'a MetadataMod> {
+    let normalized = normalize(name);
+    metadata
+        .iter()
+        .find(|item| normalize(&item.name) == normalized)
+}
+
+fn normalize_dll_name(value: &str) -> String {
+    let mut stem = value.trim();
+    for suffix in [DISABLED_SUFFIX, DLL_SUFFIX] {
+        let lower = stem.to_ascii_lowercase();
+        if !lower.ends_with(suffix) {
+            continue;
+        }
+        if let Some(prefix) = stem.get(..stem.len() - suffix.len()) {
+            stem = prefix;
+        }
+    }
+    normalize(stem)
+}
+
 fn normalize(value: &str) -> String {
     value
         .chars()
         .filter(|character| character.is_alphanumeric())
         .flat_map(char::to_lowercase)
         .collect()
+}
+
+pub(crate) fn annotate(
+    mods: &mut [InstalledMod],
+    catalogs: &Catalogs,
+    ignored_dependencies: &[String],
+) {
+    annotate_dependencies(mods, catalogs, ignored_dependencies);
+    mods.sort_by_key(|item| item.name.to_lowercase());
 }
 
 fn annotate_dependencies(
@@ -839,6 +921,41 @@ mod tests {
         let loose = mods.iter().find(|item| item.name == "Loose").unwrap();
         assert!(!loose.disabled);
         assert_eq!(loose.expected_version.as_deref(), Some("1.0"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn preferred_dll_wins_over_alphabetical_order() {
+        let dir = temp_dir("mods-preferred-dll");
+        let pack = dir.join("Casualties-Together");
+        fs::create_dir_all(pack.join("Together")).unwrap();
+        fs::write(pack.join("CUCoreLib.dll"), b"x").unwrap();
+        fs::write(pack.join("Together").join("CasualtiesMP.dll"), b"x").unwrap();
+
+        let metadata = catalogue(
+            r#"[
+                {"Id":"1","Name":"CUCoreLib","Version":"1.1","DllNames":["CUCoreLib.dll"]},
+                {"Id":"2","Name":"Casualties Together","Version":"5.5.3","DllNames":["CasualtiesMP.dll"]},
+                {"Id":"3","Name":"CasualtiesMP","Version":"9.9","DllNames":["CasualtiesMP.dll"]}
+            ]"#,
+        );
+        let default = build_mod(&pack, &metadata).unwrap();
+        assert_eq!(default.name, "CUCoreLib");
+
+        let ambiguous =
+            build_mod_with_preferred(&pack, &metadata, &[String::from("CasualtiesMP")], None)
+                .unwrap();
+        assert_eq!(ambiguous.expected_version.as_deref(), Some("9.9"));
+
+        let preferred = build_mod_with_preferred(
+            &pack,
+            &metadata,
+            &[String::from("CasualtiesMP")],
+            Some("Casualties Together"),
+        )
+        .unwrap();
+        assert_eq!(preferred.name, "Casualties Together");
+        assert_eq!(preferred.expected_version.as_deref(), Some("5.5.3"));
         let _ = fs::remove_dir_all(dir);
     }
 

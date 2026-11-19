@@ -1,6 +1,6 @@
 # GitHub 源 · overview
 
-职责：把外部维护的清单（仓库列表）解析成可校验条目，并判断它匹配哪个已安装模组。不联网、不写盘；取数与缓存归上层。
+职责：把外部维护的清单（仓库列表）解析成可校验条目，判断它匹配哪个已安装模组，并保存清单缓存。解析与缓存不联网；HTTP 拉取只在 `Hub`（经 `core::network`）。
 
 输入：清单 JSON 文本。输出：`SourceManifest`（entries + skipped）。
 
@@ -45,10 +45,12 @@ depends 只声明「装这条之前还需要什么」：name 与 guid 至少一�
 
 合并层（resolve）：`best_match` 在所有命中里取 MatchKind 最高的（Guid > Dll > Name），同级并列取清单里靠前的那条。`resolve_mod` 把「命中的条目 + GitHub 版本（可缺）+ Nexus 版本（可缺）+ pin」合成 `ModResolution`：只有命中条目才有 GitHub 选项；Nexus 选项只在版本已知时出现；生效源规则同上。全是纯函数，不联网。
 
-本地清单：`manifest_path(app_data)` = `<AppData>/Sources/manifest.json`，`load_manifest_optional` 缺文件返回 None（等于没有 GitHub 源），坏 JSON 报错。远程 URL 拉取以后再接，本地文件保留为调试入口。
+本地清单：`manifest_path(app_data)` = `<AppData>/Sources/manifest.json`，`load_manifest_optional` 缺文件返回 None（等于没有 GitHub 源），坏 JSON 报错。本地文件保留为调试入口。
+
+远程清单（2026-11-19 已接）：默认 URL `https://raw.githubusercontent.com/naroxeno/CUHub-Store/main/manifest.json`，缓存 `<AppData>/GithubSourcesCache.json`，TTL 6 小时，条件请求带 ETag / Last-Modified。`Hub::open` 先读缓存，缓存缺失才回退本地清单；拉取失败保留当前缓存与内存清单。Remote Mods 页的「刷新列表」按钮调用 `Ui::refresh_sources_now()`，以 `force=true` 绕过 ETag，结果写状态行 notice。
 
 已定（2026-11-15）：release 结果不缓存，每次 Check 真请求，同一行在飞行中连点只算一次（去重放 UI 的 check 状态）；失败提示一句结论 + 可展开详情；限流要显示「约 X 分钟」得扩 network::Fetch 带响应头，暂不扩，先显示「稍后再试」。
 
 UI 接线（2026-11-15）：Hub 打开时读本地清单与 pin（`Hub::sources` / `source_choice` / `pin_source` / `clear_source_pin` / `check_release`）。Local Mods 每行第三行显示 GitHub 仓库、命中依据、check 结果与生效源；未命中显示 not listed；Check 按钮只对命中条目出现。check 结果只存在 UI 内存（不落盘），同一行在飞行中隐藏 Check 按钮。prerelease 与 name 兜底用黄色文字；失败在行内给 summary，notice 给 summary + detail。命中且有多个来源（或已 pin）时出现 Pin 按钮；按钮文字显示当前状态（auto / GitHub / Nexus），点击按 auto → GitHub → Nexus → auto 循环，写盘失败在 notice 报错。pin 只改生效源判定，不发网络请求。
 
-未决：清单 URL/路径——远程清单仓库还没建，目前只读本地 `<AppData>/Sources/manifest.json`。
+清单路径已定（2026-11-19）：`naroxeno/CUHub-Store` 的 `main` 分支根 `manifest.json`。`SourceCache` 校验 schemaVersion、URL 与大小上限；`Hub::sources_needs_refresh` 判断过期、`Hub::refresh_sources` 刷新。2026-11-19 已上传 26 条清单，raw 可读（`main` 根 `manifest.json`）。

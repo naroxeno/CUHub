@@ -24,17 +24,17 @@ use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
 use crate::mods::{self, DependencyIssue, InstalledMod, ModsError};
 use crate::multiplayer::{MultiplayerState, RoomRole, TunnelState};
-use crate::network::{self, Fetch, Network, NetworkError};
+use crate::network::{self, DownloadProgress, Fetch, Network, NetworkError};
 use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
 use crate::nexus_auth::{GithubTokenStore, KeyStoreError};
 use crate::packages::{self, PackageContext, PackageError, PackagePlan, PackageReport};
 use crate::paths::{self, PathError};
 use crate::platform;
-use crate::profiles::{self, ApplyOp, ApplyReport, ProfileError, ProfileStore};
+use crate::profiles::{self, ApplyOp, ApplyReport, ProfileEntry, ProfileError, ProfileStore};
 use crate::room::{RoomCode, RoomError};
 use crate::settings::{Settings, SettingsStore};
 use crate::source_choice::{ChoiceError, SourceChoices};
-use crate::sources::{self, Repo, SourceKind, SourceManifest};
+use crate::sources::{self, DEFAULT_MANIFEST_URL, Repo, SourceCache, SourceKind, SourceManifest};
 use crate::steam;
 use crate::store::Store;
 use crate::version::HubVersion;
@@ -77,6 +77,7 @@ pub enum HubError {
     NetworkUnavailable,
     Source(ChoiceError),
     Sources(sources::LoadError),
+    SourceCache(sources::SourceCacheError),
     Dependencies(Vec<DependencyIssue>),
     Install(String),
     Plan(String),
@@ -156,6 +157,7 @@ impl std::fmt::Display for HubError {
             }
             Self::Source(error) => error.fmt(formatter),
             Self::Sources(error) => error.fmt(formatter),
+            Self::SourceCache(error) => error.fmt(formatter),
             Self::Dependencies(issues) => {
                 let labels = issues
                     .iter()
@@ -195,6 +197,7 @@ impl std::error::Error for HubError {
             Self::NoGameFolder | Self::UnexpectedContent | Self::NetworkUnavailable => None,
             Self::Source(error) => Some(error),
             Self::Sources(error) => Some(error),
+            Self::SourceCache(error) => Some(error),
             Self::Path(error) => Some(error),
             Self::Mods(error) => Some(error),
             Self::Profile(error) => Some(error),
@@ -283,6 +286,12 @@ impl From<sources::LoadError> for HubError {
     }
 }
 
+impl From<sources::SourceCacheError> for HubError {
+    fn from(error: sources::SourceCacheError) -> Self {
+        Self::SourceCache(error)
+    }
+}
+
 impl From<serde_json::Error> for HubError {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
@@ -317,6 +326,12 @@ impl From<PackageError> for HubError {
 pub enum MetadataRefresh {
     NotModified,
     Updated(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourcesRefresh {
+    NotModified,
+    Updated { count: usize, skipped: usize },
 }
 
 #[derive(Debug, Clone)]
@@ -378,6 +393,7 @@ pub struct Hub {
     nexus: Option<Nexus>,
     github_tokens: GithubTokenStore,
     sources: Option<SourceManifest>,
+    sources_cache: SourceCache,
     source_choices: SourceChoices,
     store: Store,
     links: LinkIndex,
@@ -434,12 +450,22 @@ impl Hub {
             HubConfigService::new(network.clone(), app_data.clone(), channel)
         });
 
-        let sources = match sources::load_manifest_optional(&sources::manifest_path(&app_data)) {
-            Ok(manifest) => manifest,
-            Err(error) => {
-                logs.error("Sources", &io::Error::other(error.to_string()));
-                None
+        let sources_cache = SourceCache::new(&app_data);
+        let sources = match sources_cache.load() {
+            Some(cached) => {
+                logs.info(&format!(
+                    "Loaded {} cached GitHub source entries.",
+                    cached.manifest.entries.len()
+                ));
+                Some(cached.manifest)
             }
+            None => match sources::load_manifest_optional(&sources::manifest_path(&app_data)) {
+                Ok(manifest) => manifest,
+                Err(error) => {
+                    logs.error("Sources", &io::Error::other(error.to_string()));
+                    None
+                }
+            },
         };
         let source_choices = match SourceChoices::load(&app_data) {
             Ok(choices) => choices,
@@ -468,6 +494,7 @@ impl Hub {
             nexus,
             github_tokens,
             sources,
+            sources_cache,
             source_choices,
             store,
             links,
@@ -482,6 +509,10 @@ impl Hub {
 
     pub fn app_data(&self) -> &Path {
         &self.app_data
+    }
+
+    pub fn download_cache(&self) -> PathBuf {
+        self.app_data.join("Cache").join("Downloads")
     }
 
     pub fn settings(&self) -> &Settings {
@@ -586,6 +617,23 @@ impl Hub {
 
     pub fn core_ready(&self) -> easytier::Status {
         easytier::detect_managed(&self.app_data).status
+    }
+
+    pub fn prepare_easytier_with_progress(
+        &self,
+        progress: &mut dyn FnMut(DownloadProgress),
+    ) -> Result<easytier::Status, HubError> {
+        let ready = match self.multiplayer.core_path.clone() {
+            Some(path) => easytier::detect_custom(&path).status == easytier::Status::Complete,
+            None => self.core_ready() == easytier::Status::Complete,
+        };
+        if ready {
+            return Ok(easytier::Status::Complete);
+        }
+        let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
+        let detection = easytier::ensure_installed_with_progress(network, &self.app_data, progress)
+            .map_err(HubError::EasyTier)?;
+        Ok(detection.status)
     }
 
     pub fn can_create_tunnel(&self) -> bool {
@@ -911,12 +959,51 @@ impl Hub {
     }
 
     pub fn download_nexus_latest(&self, mod_id: &str) -> Result<NexusDownload, HubError> {
+        self.download_nexus_latest_with_progress(mod_id, &mut |_| {})
+    }
+
+    pub fn download_nexus_latest_with_progress(
+        &self,
+        mod_id: &str,
+        progress: &mut dyn FnMut(DownloadProgress),
+    ) -> Result<NexusDownload, HubError> {
         let destination = if self.settings.download_path.trim().is_empty() {
             platform::downloads_dir()
         } else {
             PathBuf::from(self.settings.download_path.trim())
         };
-        let download = self.nexus()?.download_latest(mod_id, &destination)?;
+        let download =
+            self.nexus()?
+                .download_latest_with_progress(mod_id, &destination, progress)?;
+        self.logs.activity(
+            "Nexus",
+            &format!(
+                "Downloaded {} for mod {mod_id} to {}.",
+                download.file_name,
+                download.path.display()
+            ),
+        );
+        Ok(download)
+    }
+
+    pub fn download_nexus_latest_cached(&self, mod_id: &str) -> Result<NexusDownload, HubError> {
+        self.download_nexus_latest_cached_with_progress(mod_id, &mut |_| {})
+    }
+
+    pub fn download_nexus_latest_cached_with_progress(
+        &self,
+        mod_id: &str,
+        progress: &mut dyn FnMut(DownloadProgress),
+    ) -> Result<NexusDownload, HubError> {
+        let nexus = self.nexus()?;
+        let destination = unique_download_dir(&self.download_cache())?;
+        let download = match nexus.download_latest_with_progress(mod_id, &destination, progress) {
+            Ok(download) => download,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&destination);
+                return Err(HubError::Nexus(error));
+            }
+        };
         self.logs.activity(
             "Nexus",
             &format!(
@@ -940,12 +1027,20 @@ impl Hub {
         let Some(plugins) = mods::find_plugins_dir(&root) else {
             return Ok(Vec::new());
         };
-        let mods = mods::scan(
+        let mut mods = mods::scan(
             &plugins,
             &self.metadata,
             &self.catalogs,
             &self.settings.ignored_dependency_names,
         )?;
+        self.apply_profile_identity(&plugins, &mut mods);
+        let disabled = self.disabled_profile_mods(&plugins, &mods);
+        mods.extend(disabled);
+        mods::annotate(
+            &mut mods,
+            &self.catalogs,
+            &self.settings.ignored_dependency_names,
+        );
         self.logs.activity(
             "Mods",
             &format!("Scanned {} mod(s) in {}.", mods.len(), plugins.display()),
@@ -953,8 +1048,23 @@ impl Hub {
         Ok(mods)
     }
 
-    pub fn set_mod_enabled(&self, item: &InstalledMod, enabled: bool) -> Result<usize, HubError> {
-        if self.is_managed(item) {
+    pub fn is_managed_path(&self, path: &Path) -> bool {
+        self.links.get(path).is_some()
+            || self
+                .profile_targets()
+                .iter()
+                .any(|target| target.as_path() == path)
+    }
+
+    pub fn set_mod_enabled(
+        &mut self,
+        item: &InstalledMod,
+        enabled: bool,
+    ) -> Result<usize, HubError> {
+        if self.profile_entry_index(&item.source_path).is_some() {
+            return self.set_profile_entry_enabled(item, enabled);
+        }
+        if self.links.get(&item.source_path).is_some() {
             return Err(HubError::ManagedByProfile);
         }
         let plugins = self.plugins_dir()?;
@@ -972,13 +1082,29 @@ impl Hub {
         Ok(changed)
     }
 
-    pub fn set_all_mods_enabled(&self, enabled: bool) -> Result<usize, HubError> {
+    pub fn set_all_mods_enabled(&mut self, enabled: bool) -> Result<usize, HubError> {
+        self.ensure_game_closed()?;
         let plugins = self.plugins_dir()?;
-        let changed = mods::set_all_enabled_except(&plugins, enabled, &self.managed_targets())?;
+        let mut changed = 0;
+        if let Some((name, mut profile)) = self.active_profile() {
+            let mut dirty = false;
+            for entry in &mut profile.entries {
+                if entry.enabled != enabled {
+                    entry.enabled = enabled;
+                    dirty = true;
+                    changed += 1;
+                }
+            }
+            if dirty {
+                self.profiles.save(&profile).map_err(HubError::Io)?;
+                self.apply_profile(&name)?;
+            }
+        }
+        changed += mods::set_all_enabled_except(&plugins, enabled, &self.managed_targets())?;
         self.logs.activity(
             "Mods",
             &format!(
-                "{} {changed} DLL file(s) in {}.",
+                "{} {changed} item(s) in {}.",
                 if enabled { "Enabled" } else { "Disabled" },
                 plugins.display()
             ),
@@ -987,15 +1113,15 @@ impl Hub {
     }
 
     pub fn delete_scope(&self, item: &InstalledMod) -> Result<mods::DeleteScope, HubError> {
-        if self.is_managed(item) {
-            return Err(HubError::ManagedByProfile);
-        }
         let plugins = self.plugins_dir()?;
         Ok(mods::delete_scope(&plugins, item)?)
     }
 
-    pub fn delete_mod(&self, item: &InstalledMod) -> Result<usize, HubError> {
-        if self.is_managed(item) {
+    pub fn delete_mod(&mut self, item: &InstalledMod) -> Result<usize, HubError> {
+        if self.profile_entry_index(&item.source_path).is_some() {
+            return self.remove_profile_entry(item);
+        }
+        if self.links.get(&item.source_path).is_some() {
             return Err(HubError::ManagedByProfile);
         }
         self.ensure_game_closed()?;
@@ -1015,32 +1141,204 @@ impl Hub {
 
     pub fn delete_all_scope(&self) -> Result<mods::DeleteScope, HubError> {
         let plugins = self.plugins_dir()?;
-        Ok(mods::delete_all_scope_except(
-            &plugins,
-            &self.managed_targets(),
-        )?)
+        Ok(mods::delete_all_scope(&plugins)?)
     }
 
-    pub fn delete_all_mods(&self) -> Result<usize, HubError> {
+    pub fn delete_all_mods(&mut self) -> Result<usize, HubError> {
         self.ensure_game_closed()?;
         let plugins = self.plugins_dir()?;
-        let removed = mods::delete_all_except(&plugins, &self.managed_targets())?;
+        let mut changed = 0;
+        if let Some((name, mut profile)) = self.active_profile() {
+            if !profile.entries.is_empty() {
+                changed += profile.entries.len();
+                profile.entries.clear();
+                self.profiles.save(&profile).map_err(HubError::Io)?;
+                self.apply_profile(&name)?;
+            }
+        }
+        changed += mods::delete_all_except(&plugins, &self.managed_targets())?;
         self.logs.activity(
             "Mods",
-            &format!("Deleted {removed} file(s) from {}.", plugins.display()),
+            &format!("Deleted {changed} item(s) from {}.", plugins.display()),
         );
-        Ok(removed)
+        Ok(changed)
     }
 
-    fn is_managed(&self, item: &InstalledMod) -> bool {
-        self.links.get(&item.source_path).is_some()
+    fn set_profile_entry_enabled(
+        &mut self,
+        item: &InstalledMod,
+        enabled: bool,
+    ) -> Result<usize, HubError> {
+        self.ensure_game_closed()?;
+        let Some((name, mut profile, index)) = self.profile_entry_index(&item.source_path) else {
+            return Err(HubError::ManagedByProfile);
+        };
+        if profile.entries[index].enabled == enabled {
+            return Ok(0);
+        }
+        profile.entries[index].enabled = enabled;
+        self.profiles.save(&profile).map_err(HubError::Io)?;
+        self.apply_profile(&name)?;
+        self.logs.activity(
+            "Profiles",
+            &format!(
+                "{} {} in profile {name}.",
+                if enabled { "Enabled" } else { "Disabled" },
+                item.name
+            ),
+        );
+        Ok(1)
+    }
+
+    fn remove_profile_entry(&mut self, item: &InstalledMod) -> Result<usize, HubError> {
+        self.ensure_game_closed()?;
+        let Some((name, mut profile, index)) = self.profile_entry_index(&item.source_path) else {
+            return Err(HubError::ManagedByProfile);
+        };
+        profile.entries.remove(index);
+        self.profiles.save(&profile).map_err(HubError::Io)?;
+        self.apply_profile(&name)?;
+        self.logs.activity(
+            "Profiles",
+            &format!("Removed {} from profile {name}.", item.name),
+        );
+        Ok(1)
+    }
+
+    fn disabled_profile_mods(&self, plugins: &Path, scanned: &[InstalledMod]) -> Vec<InstalledMod> {
+        let Some((_, profile)) = self.active_profile() else {
+            return Vec::new();
+        };
+        let mut added = Vec::new();
+        for entry in profile.entries.iter().filter(|entry| !entry.enabled) {
+            let Some(payload) = self.store.resolve(&entry.mod_id, &entry.version) else {
+                continue;
+            };
+            let Some(manifest) = self.store.read_entry(&entry.mod_id, &entry.version) else {
+                continue;
+            };
+            let target = profiles::deployment_target(&manifest.files, &entry.mod_id, plugins);
+            if scanned
+                .iter()
+                .chain(added.iter())
+                .any(|item| item.source_path == target)
+            {
+                continue;
+            }
+            let source = self.source_entry_for(entry);
+            let preferred = source
+                .map(|source| source.matcher.dll.as_slice())
+                .unwrap_or(&[]);
+            let built = mods::build_mod_with_preferred(
+                &payload,
+                &self.metadata,
+                preferred,
+                source.map(|source| source.name.as_str()),
+            );
+            let Some(mut item) = built else {
+                continue;
+            };
+            if let Some(source) = source {
+                item.name = source.name.clone();
+            }
+            let deployment = profiles::deployment(&manifest.files);
+            item.source_path = target.clone();
+            item.dll_paths = match deployment {
+                profiles::Deployment::File(_) => vec![target.clone()],
+                profiles::Deployment::Directory => item
+                    .dll_paths
+                    .iter()
+                    .map(|dll| target.join(dll.strip_prefix(&payload).unwrap_or(dll)))
+                    .collect(),
+            };
+            item.disabled = true;
+            item.status = mods::ModStatus::Disabled;
+            added.push(item);
+        }
+        added
+    }
+
+    fn apply_profile_identity(&self, plugins: &Path, mods: &mut [InstalledMod]) {
+        let Some((_, profile)) = self.active_profile() else {
+            return;
+        };
+        for entry in profile.entries.iter().filter(|entry| entry.enabled) {
+            let Some(source) = self.source_entry_for(entry) else {
+                continue;
+            };
+            if source.matcher.dll.is_empty() {
+                continue;
+            }
+            let Some(target) = profiles::entry_target(entry, &self.store, plugins) else {
+                continue;
+            };
+            let Some(index) = mods.iter().position(|item| item.source_path == target) else {
+                continue;
+            };
+            let built = mods::build_mod_with_preferred(
+                &target,
+                &self.metadata,
+                &source.matcher.dll,
+                Some(source.name.as_str()),
+            );
+            let Some(mut item) = built else {
+                continue;
+            };
+            item.name = source.name.clone();
+            mods[index] = item;
+        }
+    }
+
+    fn source_entry_for(&self, entry: &ProfileEntry) -> Option<&sources::SourceEntry> {
+        let slug = entry.source.as_deref()?.strip_prefix("github:")?;
+        self.sources
+            .as_ref()?
+            .entries
+            .iter()
+            .find(|item| item.repo.slug().eq_ignore_ascii_case(slug))
+    }
+
+    fn active_profile(&self) -> Option<(String, profiles::Profile)> {
+        let name = self.profiles.active()?;
+        let profile = self.profiles.load(&name)?;
+        Some((name, profile))
+    }
+
+    fn profile_targets(&self) -> Vec<PathBuf> {
+        let Some((_, profile)) = self.active_profile() else {
+            return Vec::new();
+        };
+        let Ok(plugins) = self.plugins_dir() else {
+            return Vec::new();
+        };
+        profile
+            .entries
+            .iter()
+            .filter_map(|entry| profiles::entry_target(entry, &self.store, &plugins))
+            .collect()
+    }
+
+    fn profile_entry_index(&self, path: &Path) -> Option<(String, profiles::Profile, usize)> {
+        let (name, profile) = self.active_profile()?;
+        let plugins = self.plugins_dir().ok()?;
+        let index = profile.entries.iter().position(|entry| {
+            profiles::entry_target(entry, &self.store, &plugins).as_deref() == Some(path)
+        })?;
+        Some((name, profile, index))
     }
 
     fn managed_targets(&self) -> Vec<PathBuf> {
-        self.links
+        let mut targets: Vec<PathBuf> = self
+            .links
             .entries()
             .map(|(target, _)| PathBuf::from(target))
-            .collect()
+            .collect();
+        for target in self.profile_targets() {
+            if !targets.contains(&target) {
+                targets.push(target);
+            }
+        }
+        targets
     }
 
     fn ensure_game_closed(&self) -> Result<(), HubError> {
@@ -1150,6 +1448,62 @@ impl Hub {
 
     pub fn sources(&self) -> Option<&SourceManifest> {
         self.sources.as_ref()
+    }
+
+    pub fn sources_needs_refresh(&self) -> bool {
+        self.sources_cache.is_stale()
+    }
+
+    pub fn refresh_sources(&mut self, force: bool) -> Result<SourcesRefresh, HubError> {
+        let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
+        let cached = if force {
+            None
+        } else {
+            self.sources_cache.load()
+        };
+        let (etag, last_modified) = cached
+            .as_ref()
+            .map(|cached| (cached.etag.as_deref(), cached.last_modified.as_deref()))
+            .unwrap_or((None, None));
+        match network.get(
+            DEFAULT_MANIFEST_URL,
+            etag,
+            last_modified,
+            network::DEFAULT_MAX_BODY_BYTES,
+        )? {
+            Fetch::NotModified => {
+                let cached = cached.ok_or(HubError::UnexpectedContent)?;
+                let count = cached.manifest.entries.len();
+                self.sources = Some(cached.manifest);
+                self.logs.activity(
+                    "Sources",
+                    &format!("GitHub source manifest is current ({count} entries)."),
+                );
+                Ok(SourcesRefresh::NotModified)
+            }
+            Fetch::Fetched {
+                body,
+                etag,
+                last_modified,
+            } => {
+                let raw = String::from_utf8(body).map_err(|_| HubError::UnexpectedContent)?;
+                let manifest = SourceManifest::parse(&raw)
+                    .map_err(|error| HubError::Sources(sources::LoadError::Manifest(error)))?;
+                let count = manifest.entries.len();
+                let skipped = manifest.skipped.len();
+                self.sources_cache
+                    .store(&raw, etag, last_modified)
+                    .map_err(HubError::SourceCache)?;
+                self.sources = Some(manifest);
+                self.logs.activity(
+                    "Sources",
+                    &format!(
+                        "GitHub source manifest refreshed with {count} entries ({skipped} skipped)."
+                    ),
+                );
+                Ok(SourcesRefresh::Updated { count, skipped })
+            }
+        }
     }
 
     pub fn source_choice(&self, key: &str) -> Option<SourceKind> {
@@ -1272,28 +1626,41 @@ impl Hub {
     ) -> Result<PackagePlan, HubError> {
         let payload =
             install::plan_package(staged).map_err(|error| HubError::Plan(error.to_string()))?;
+        let plugins = self.plugins_dir()?;
+        let installed_mods = self.scan_mods()?;
+        let (mod_id, target, previous) =
+            self.package_target(&payload, installed, name, &plugins)?;
+        let mut warnings = Vec::new();
+        let files = Self::package_files_without_duplicates(
+            &payload,
+            &installed_mods,
+            &target,
+            &mut warnings,
+        );
+        if files.is_empty() {
+            return Err(HubError::Plan(String::from(
+                "the package only contains plugins that are already installed",
+            )));
+        }
         let mut requirements = requirements;
         let mut staged_dlls = Vec::new();
-        for file in &payload.files {
+        for file in &files {
             if !install::is_dll_file(&file.relative) {
                 continue;
             }
             requirements.extend(mods::read_dependencies(&file.staged));
             staged_dlls.push(file.staged.clone());
         }
-        let installed_mods = self.scan_mods()?;
         let issues = self.package_dependency_issues(requirements, &staged_dlls, &installed_mods);
         if !issues.is_empty() {
             return Err(HubError::Dependencies(issues));
         }
-        let detected = payload
-            .files
+        let detected = files
             .iter()
             .filter(|file| install::is_dll_file(&file.relative))
             .filter_map(|file| mods::read_mod_version(&file.staged))
-            .filter_map(|value| HubVersion::parse(&value))
+            .filter_map(|value| HubVersion::parse_external(value.as_str()))
             .max();
-        let mut warnings = Vec::new();
         let (version, detected) = match detected {
             Some(version) => (version.original().to_string(), Some(version)),
             None => {
@@ -1309,7 +1676,7 @@ impl Hub {
             && let Some(installed_version) = installed
                 .installed_version
                 .as_deref()
-                .and_then(HubVersion::parse)
+                .and_then(HubVersion::parse_external)
             && detected < &installed_version
         {
             return Err(HubError::Update(format!(
@@ -1318,9 +1685,6 @@ impl Hub {
                 installed_version.original()
             )));
         }
-        let plugins = self.plugins_dir()?;
-        let (mod_id, target, previous) =
-            self.package_target(&payload, installed, name, &plugins)?;
         Ok(PackagePlan {
             mod_id,
             version,
@@ -1328,10 +1692,49 @@ impl Hub {
             target,
             previous,
             staging: staged.staging_root.clone(),
-            files: payload.files,
+            files,
             single: payload.single,
             warnings,
         })
+    }
+
+    fn package_files_without_duplicates(
+        payload: &install::PackagePayload,
+        installed: &[InstalledMod],
+        target: &Path,
+        warnings: &mut Vec<String>,
+    ) -> Vec<install::PackageFile> {
+        if payload.single {
+            return payload.files.clone();
+        }
+        let mut files = Vec::with_capacity(payload.files.len());
+        for file in &payload.files {
+            if !install::is_dll_file(&file.relative) {
+                files.push(file.clone());
+                continue;
+            }
+            let Some((_, Some(guid))) = mods::read_identity(&file.staged) else {
+                files.push(file.clone());
+                continue;
+            };
+            let Some(existing) = installed.iter().find(|item| {
+                !item.disabled
+                    && item.source_path != target
+                    && item
+                        .guid
+                        .as_deref()
+                        .is_some_and(|installed| installed.eq_ignore_ascii_case(&guid))
+            }) else {
+                files.push(file.clone());
+                continue;
+            };
+            warnings.push(format!(
+                "skipped bundled {} because {} is already installed",
+                file.relative.display(),
+                existing.name
+            ));
+        }
+        files
     }
 
     fn package_target(
@@ -1443,7 +1846,7 @@ impl Hub {
         installed: &InstalledMod,
         staging: &Path,
     ) -> Result<UpgradePlan, HubError> {
-        if self.is_managed(installed) {
+        if self.is_managed_path(&installed.source_path) {
             return Err(HubError::ManagedByProfile);
         }
         let plugins = self.plugins_dir()?;
@@ -1491,8 +1894,8 @@ impl Hub {
             if !install::is_dll_file(&file.staged) {
                 continue;
             }
-            if let Some(version) =
-                mods::read_mod_version(&file.staged).and_then(|value| HubVersion::parse(&value))
+            if let Some(version) = mods::read_mod_version(&file.staged)
+                .and_then(|value| HubVersion::parse_external(&value))
                 && staged_version
                     .as_ref()
                     .is_none_or(|current| &version > current)
@@ -1505,7 +1908,7 @@ impl Hub {
         if let Some(installed_version) = installed
             .installed_version
             .as_deref()
-            .and_then(HubVersion::parse)
+            .and_then(HubVersion::parse_external)
             && let Some(staged_version) = staged_version.as_ref()
             && staged_version < &installed_version
         {
@@ -1568,10 +1971,19 @@ impl Hub {
         flavor: install::Flavor,
         mode: install::Mode,
     ) -> Result<BepInExInstall, HubError> {
+        self.prepare_bepinex_with_progress(flavor, mode, &mut |_| {})
+    }
+
+    pub fn prepare_bepinex_with_progress(
+        &self,
+        flavor: install::Flavor,
+        mode: install::Mode,
+        progress: &mut dyn FnMut(DownloadProgress),
+    ) -> Result<BepInExInstall, HubError> {
         let root = self.game_folder().ok_or(HubError::NoGameFolder)?;
         self.ensure_game_closed()?;
         let release = install::release_for(flavor);
-        let downloads = self.app_data.join("Downloads");
+        let downloads = self.download_cache();
         fs::create_dir_all(&downloads).map_err(HubError::Io)?;
         let archive = downloads.join(release.file_name);
         let verified =
@@ -1580,11 +1992,12 @@ impl Hub {
             let _ = fs::remove_file(&archive);
             let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
             network
-                .download_with_timeout(
+                .download_with_timeout_progress(
                     release.url,
                     &archive,
                     install::MAX_ARCHIVE_BYTES,
                     Duration::from_secs(300),
+                    progress,
                 )
                 .map_err(HubError::Network)?;
             install::verify_sha256(&archive, release.sha256)
@@ -1660,7 +2073,7 @@ impl Hub {
         if !issues.is_empty() {
             return Err(HubError::Dependencies(issues));
         }
-        let downloads = self.app_data.join("Downloads");
+        let downloads = self.download_cache();
         let archive =
             self.download_github_asset(&entry.repo, entry.asset.as_deref(), &downloads)?;
         let staging = self.staging_root();
@@ -1693,6 +2106,16 @@ impl Hub {
         requested: Option<&str>,
         destination: &Path,
     ) -> Result<PathBuf, HubError> {
+        self.download_github_asset_with_progress(repo, requested, destination, &mut |_| {})
+    }
+
+    pub fn download_github_asset_with_progress(
+        &self,
+        repo: &Repo,
+        requested: Option<&str>,
+        destination: &Path,
+        progress: &mut dyn FnMut(DownloadProgress),
+    ) -> Result<PathBuf, HubError> {
         let release = match self.check_release(repo)? {
             CheckOutcome::Release(release) => release,
             CheckOutcome::Failure(failure) => return Err(HubError::Github(failure.summary())),
@@ -1705,17 +2128,19 @@ impl Hub {
         })?;
         let name = safe_asset_name(&asset.name)
             .ok_or_else(|| HubError::Github(String::from("release asset has an unsafe name")))?;
-        fs::create_dir_all(destination).map_err(HubError::Io)?;
-        let target = unique_destination(destination, &name);
         let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
-        network
-            .download_with_timeout(
-                &asset.download_url,
-                &target,
-                install::MAX_ARCHIVE_BYTES,
-                Duration::from_secs(300),
-            )
-            .map_err(HubError::Network)?;
+        let target_dir = unique_download_dir(destination)?;
+        let target = target_dir.join(&name);
+        if let Err(error) = network.download_with_timeout_progress(
+            &asset.download_url,
+            &target,
+            install::MAX_ARCHIVE_BYTES,
+            Duration::from_secs(300),
+            progress,
+        ) {
+            let _ = fs::remove_dir_all(&target_dir);
+            return Err(HubError::Network(error));
+        }
         self.logs.activity(
             "GitHub",
             &format!("Downloaded {} to {}.", asset.name, target.display()),
@@ -1773,27 +2198,30 @@ fn safe_asset_name(name: &str) -> Option<String> {
     }
 }
 
-fn unique_destination(directory: &Path, name: &str) -> PathBuf {
-    let candidate = directory.join(name);
-    if !candidate.exists() {
-        return candidate;
-    }
-    let stem = Path::new(name)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("update");
-    let extension = Path::new(name).extension().and_then(|value| value.to_str());
-    for index in 1..1000 {
-        let candidate_name = match extension {
-            Some(extension) => format!("{stem}-{index}.{extension}"),
-            None => format!("{stem}-{index}"),
+fn unique_download_dir(directory: &Path) -> Result<PathBuf, HubError> {
+    fs::create_dir_all(directory).map_err(HubError::Io)?;
+    let stamp = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let pid = std::process::id();
+    for attempt in 0..1000 {
+        let name = if attempt == 0 {
+            format!("{stamp}-{pid}")
+        } else {
+            format!("{stamp}-{pid}-{attempt}")
         };
-        let candidate = directory.join(candidate_name);
-        if !candidate.exists() {
-            return candidate;
+        let candidate = directory.join(name);
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(HubError::Io(error)),
         }
     }
-    directory.join(format!("{stem}-{}.archive", std::process::id()))
+    Err(HubError::Io(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!(
+            "could not create a unique download directory under {}",
+            directory.display()
+        ),
+    )))
 }
 
 fn fetch_release(
@@ -1847,5 +2275,23 @@ fn check_failure(error: &NetworkError) -> CheckFailure {
         other => CheckFailure::Network {
             detail: other.to_string(),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::temp_dir;
+
+    #[test]
+    fn unique_download_directories_do_not_collide() {
+        let root = temp_dir("download-cache");
+        let first = unique_download_dir(&root).unwrap();
+        let second = unique_download_dir(&root).unwrap();
+        assert!(first.is_dir());
+        assert!(second.is_dir());
+        assert_ne!(first, second);
+        assert_eq!(first.parent(), Some(root.as_path()));
+        let _ = fs::remove_dir_all(root);
     }
 }

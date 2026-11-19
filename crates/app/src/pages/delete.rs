@@ -20,6 +20,10 @@ pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
             let title_name = prompt.target.label();
             let action_key = prompt.action_key();
             let note_key = prompt.scope_note_key();
+            let summary_key = prompt.summary_key();
+            let irreversible_key = prompt.irreversible_key();
+            let managed = prompt.managed;
+            let irreversible_color = if managed { TEXT_MUTED } else { DANGER };
             let files = prompt.scope.files;
             let root_count = prompt.scope.roots.len();
             let mut list = view().flex_col();
@@ -66,13 +70,24 @@ pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
                 .flex_col()
                 .gap(scaled(&z, 8.0))
                 .child(pix(
-                    move || t!("delete.summary", files = files, paths = root_count),
+                    move || {
+                        if managed {
+                            t!(summary_key)
+                        } else {
+                            t!(summary_key, files = files, paths = root_count)
+                        }
+                    },
                     12.0,
                     TEXT,
                     &z,
                 ))
                 .child(pix(move || t!(note_key), 10.0, TEXT_MUTED, &z))
-                .child(pix(move || t!("delete.irreversible"), 10.0, DANGER, &z))
+                .child(pix(
+                    move || t!(irreversible_key),
+                    10.0,
+                    irreversible_color,
+                    &z,
+                ))
                 .child(scroll().w_full().max_h(scaled(&z, 132.0)).child(list))
                 .child(
                     view()

@@ -1,10 +1,10 @@
 //! Local mods page: rows, bulk actions and empty state.
 
-use super::bepinex::{bepinex_missing, bepinex_pending_block, bepinex_progress, start_bepinex};
-use super::shared::pending_panel;
+use super::bepinex::{bepinex_missing, bepinex_progress, start_bepinex};
 use crate::i18n;
 use crate::palette::*;
 use crate::shell::nav;
+use crate::ui::batch::batch_checkbox;
 use crate::ui::{LocalModRow, Ui, button, danger_button, panel, pix, rise_in, scaled, spinner};
 use cuhub_core::mods::ModStatus;
 use nsh_core::prelude::*;
@@ -15,14 +15,12 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let empty = ui.clone();
     let empty_ui = ui.clone();
     let empty_z = z;
-    let pending = ui.pending_install;
-    let pending_z = z;
-    let pending_ui = ui.clone();
     let refresh = ui.clone();
     let bulk_state = ui.clone();
     let bulk_locked = ui.clone();
     let bulk_free = ui.clone();
     let bulk_z = z;
+    let select_ui = ui.clone();
     let refresh_watch = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
@@ -67,6 +65,7 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                                     )
                                     .otherwise(move || mod_bulk_buttons(&bulk_z, &bulk_free, true)),
                                 )
+                                .child(batch_select_button(&z, &select_ui))
                                 .child(
                                     when(
                                         move || refresh_watch.mod_files_busy(),
@@ -94,10 +93,6 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                 .child(when(
                     move || empty.mods.get().is_empty(),
                     move || empty_state(&empty_z, &empty_ui),
-                ))
-                .child(when(
-                    move || pending.get().is_some(),
-                    move || pending_panel(&pending_z, &pending_ui),
                 ))
                 .child(table_header(&z))
                 .child(rows),
@@ -141,13 +136,51 @@ fn mod_bulk_buttons(z: &Signal<u8>, ui: &Ui, enabled: bool) -> View {
         ))
 }
 
+fn batch_select_button(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
+    let z = *z;
+    let watch = ui.clone();
+    let clear = ui.clone();
+    let select = ui.clone();
+    when(
+        move || crate::ui::batch::all_updatable_selected(&watch),
+        move || {
+            let clear = clear.clone();
+            button(
+                &z,
+                move || t!("local.batch_clear"),
+                true,
+                move || {
+                    clear.clear_batch_selection();
+                },
+            )
+        },
+    )
+    .otherwise({
+        let select = select.clone();
+        move || {
+            let select = select.clone();
+            let label = select.clone();
+            button(
+                &z,
+                move || {
+                    t!(
+                        "local.batch_select_all",
+                        count = crate::ui::batch::updatable_count(&label)
+                    )
+                },
+                true,
+                move || select.select_updatable(),
+            )
+        }
+    })
+}
+
 fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
     let z = *z;
     let detect = ui.clone();
     let installable = ui.clone();
     let start = ui.clone();
     let progress = ui.clone();
-    let pending = ui.clone();
     view()
         .flex_col()
         .gap(scaled(&z, 8.0))
@@ -183,16 +216,10 @@ fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
                 )),
         )
         .child(bepinex_progress(&z, &progress))
-        .child(when(
-            move || pending.bepinex_pending.get().is_some(),
-            move || {
-                let block = pending.clone();
-                bepinex_pending_block(&z, &block)
-            },
-        ))
 }
 
 fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
+    let zs = z;
     let z = *z;
     let item = &row.item;
     let disabled = item.disabled;
@@ -223,6 +250,15 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     let conflicts = item.incompatible_with.join(", ");
     let has_missing = !item.missing_dependencies.is_empty();
     let has_conflicts = !item.incompatible_with.is_empty();
+    let mut name_cell = view()
+        .flex_row()
+        .items_center()
+        .gap(scaled(&z, 6.0))
+        .w(percentage(0.38));
+    if update_ready {
+        name_cell = name_cell.child(batch_checkbox(zs, ui, row.source_key.clone(), true));
+    }
+    name_cell = name_cell.child(pix(item.name.clone(), 12.0, name_color, &z));
     view()
         .flex_col()
         .border_b(scaled(&z, 1.0))
@@ -236,12 +272,7 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                 .items_center()
                 .h(scaled(&z, 24.0))
                 .px(scaled(&z, 6.0))
-                .child(view().w(percentage(0.38)).child(pix(
-                    item.name.clone(),
-                    12.0,
-                    name_color,
-                    &z,
-                )))
+                .child(name_cell)
                 .child(view().w(percentage(0.18)).child(pix(
                     item.version_label(),
                     11.0,
@@ -355,63 +386,62 @@ fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     }
     if row.managed {
         line = line.child(pix(t!("local.managed_by_profile"), 10.0, TEXT_MUTED, z));
-    } else {
-        let toggle_ui = ui.clone();
-        let toggle_key = row.source_key.clone();
-        let enable = row.item.disabled;
-        let toggle_label_key = if enable {
-            "common.enable"
-        } else {
-            "common.disable"
-        };
-        let toggle_z = *z;
-        let toggle_watch = ui.clone();
-        line = line.child(
-            when(
-                move || toggle_watch.mod_files_busy(),
-                move || button(&toggle_z, move || t!(toggle_label_key), false, || {}),
-            )
-            .otherwise({
-                let toggle_ui = toggle_ui.clone();
-                move || {
-                    let toggle_ui = toggle_ui.clone();
-                    let toggle_key = toggle_key.clone();
-                    button(
-                        &toggle_z,
-                        move || t!(toggle_label_key),
-                        true,
-                        move || {
-                            toggle_ui.set_mod_enabled(toggle_key.clone(), enable);
-                        },
-                    )
-                }
-            }),
-        );
-        let delete_watch = ui.clone();
-        let delete_z = *z;
-        line = line.child(
-            when(
-                move || delete_watch.mod_files_busy(),
-                move || danger_button(&delete_z, move || t!("common.delete"), false, || {}),
-            )
-            .otherwise({
-                let delete_ui = ui.clone();
-                let delete_key = row.source_key.clone();
-                move || {
-                    let delete_ui = delete_ui.clone();
-                    let delete_key = delete_key.clone();
-                    danger_button(
-                        &delete_z,
-                        move || t!("common.delete"),
-                        true,
-                        move || {
-                            delete_ui.request_delete_mod(delete_key.clone());
-                        },
-                    )
-                }
-            }),
-        );
     }
+    let toggle_ui = ui.clone();
+    let toggle_key = row.source_key.clone();
+    let enable = row.item.disabled;
+    let toggle_label_key = if enable {
+        "common.enable"
+    } else {
+        "common.disable"
+    };
+    let toggle_z = *z;
+    let toggle_watch = ui.clone();
+    line = line.child(
+        when(
+            move || toggle_watch.mod_files_busy(),
+            move || button(&toggle_z, move || t!(toggle_label_key), false, || {}),
+        )
+        .otherwise({
+            let toggle_ui = toggle_ui.clone();
+            move || {
+                let toggle_ui = toggle_ui.clone();
+                let toggle_key = toggle_key.clone();
+                button(
+                    &toggle_z,
+                    move || t!(toggle_label_key),
+                    true,
+                    move || {
+                        toggle_ui.set_mod_enabled(toggle_key.clone(), enable);
+                    },
+                )
+            }
+        }),
+    );
+    let delete_watch = ui.clone();
+    let delete_z = *z;
+    line = line.child(
+        when(
+            move || delete_watch.mod_files_busy(),
+            move || danger_button(&delete_z, move || t!("common.delete"), false, || {}),
+        )
+        .otherwise({
+            let delete_ui = ui.clone();
+            let delete_key = row.source_key.clone();
+            move || {
+                let delete_ui = delete_ui.clone();
+                let delete_key = delete_key.clone();
+                danger_button(
+                    &delete_z,
+                    move || t!("common.delete"),
+                    true,
+                    move || {
+                        delete_ui.request_delete_mod(delete_key.clone());
+                    },
+                )
+            }
+        }),
+    );
     line
 }
 

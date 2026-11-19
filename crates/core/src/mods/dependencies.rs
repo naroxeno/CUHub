@@ -196,6 +196,9 @@ fn parse_version(value: &str) -> Option<HubVersion> {
     if let Some(version) = HubVersion::parse(value) {
         return Some(version);
     }
+    if let Some(version) = HubVersion::parse_external(value) {
+        return Some(version);
+    }
     let clean = value.split('+').next()?.trim();
     let (numeric, prerelease) = match clean.split_once('-') {
         Some((numeric, prerelease)) => (numeric, Some(prerelease)),

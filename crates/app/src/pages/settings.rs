@@ -2,7 +2,7 @@
 
 use super::bepinex::{
     bepinex_actions, bepinex_flavor_button, bepinex_flavor_conflict, bepinex_installed_flavor,
-    bepinex_pending_block, bepinex_progress, bepinex_status_line,
+    bepinex_progress, bepinex_status_line,
 };
 use crate::i18n;
 use crate::palette::*;
@@ -92,8 +92,6 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
     let check_token = ui.clone();
     let token_draft = ui.github_token_draft;
     let wizard = ui.clone();
-    let bepinex_watch = ui.clone();
-    let bepinex_ui = ui.clone();
     let bepinex_conflict = ui.clone();
     let bepinex_conflict_text = ui.clone();
     view()
@@ -173,10 +171,6 @@ pub fn settings(ui: &Ui) -> impl IntoElement {
                 ))
                 .child(bepinex_actions(&z, ui))
                 .child(bepinex_progress(&z, ui))
-                .child(when(
-                    move || bepinex_watch.bepinex_pending.get().is_some(),
-                    move || bepinex_pending_block(&bepinex_ui.zoom, &bepinex_ui),
-                ))
                 .child(pix(
                     move || t!("settings.interface_scale"),
                     12.0,

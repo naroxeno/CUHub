@@ -1,7 +1,7 @@
 //! Sidebar: wide labeled tree with group headers, narrow icon rail, fold toggle and footer.
 
 use nsh_core::prelude::*;
-use std::time::Duration;
+use nsh_core::{LayoutAnimation, LayoutTransition};
 
 use super::nav::{self, NavEntry, NavKind};
 use crate::palette::*;
@@ -9,48 +9,34 @@ use crate::ui::{PRESS_SHIFT, STATE_MS, Ui, pix, pix_c, scaled};
 
 const WIDE_RAIL: f32 = 176.0;
 const NARROW_RAIL: f32 = 44.0;
-const FOLD_STEPS: u32 = 8;
-const FOLD_STEP_MS: u64 = 12;
+const FOLD_RESPONSE_MS: f32 = 220.0;
+const FOLD_DAMPING: f32 = 0.8;
+
+fn rail_width(folded: bool) -> f32 {
+    if folded { NARROW_RAIL } else { WIDE_RAIL }
+}
+
+fn fold_animation() -> LayoutAnimation {
+    LayoutAnimation {
+        update: Some(LayoutTransition::spring(
+            Spring::new(FOLD_RESPONSE_MS).damping_ratio(FOLD_DAMPING),
+        )),
+        ..LayoutAnimation::default()
+    }
+}
 
 pub fn sidebar(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
-    let folded = ui.nav_collapsed.get_untracked();
-    let width = signal(if folded { NARROW_RAIL } else { WIDE_RAIL });
-    let generation = signal(0u32);
-    let watcher = ui.clone();
-    effect(move || {
-        let target = if watcher.nav_collapsed.get() {
-            NARROW_RAIL
-        } else {
-            WIDE_RAIL
-        };
-        let from = width.get_untracked();
-        if (from - target).abs() < 0.5 {
-            return;
-        }
-        let run = generation.get_untracked() + 1;
-        generation.set(run);
-        for step in 1..=FOLD_STEPS {
-            let width = width;
-            let generation = generation;
-            let value = from + (target - from) * (step as f32 / FOLD_STEPS as f32);
-            drop(set_timeout(
-                Duration::from_millis(FOLD_STEP_MS * step as u64),
-                move || {
-                    if generation.get_untracked() == run {
-                        width.set(value);
-                    }
-                },
-            ));
-        }
-    });
+    let width = ui.clone();
     let wide = ui.clone();
     let narrow = ui.clone();
     let wide_box = ui.clone();
     let narrow_box = ui.clone();
     view()
         .flex_col()
-        .w(move || scaled(&z, width.get())())
+        .w(move || scaled(&z, rail_width(width.nav_collapsed.get()))())
+        .h_full()
+        .min_h(px(0.0))
         .overflow_hidden()
         .child(when(
             move || !wide_box.nav_collapsed.get(),
@@ -102,7 +88,7 @@ fn wide_rail(ui: Ui) -> impl IntoElement {
     let z = ui.zoom;
     let mut list = view()
         .flex_col()
-        .flex_1()
+        .w_full()
         .child(fold_toggle(ui.clone(), false));
     let mut previous: Option<&'static str> = None;
     for entry in nav::NAV.iter() {
@@ -128,10 +114,12 @@ fn wide_rail(ui: Ui) -> impl IntoElement {
     view()
         .flex_col()
         .w_full()
+        .flex_1()
+        .min_h(px(0.0))
         .bg(rgb(SURFACE))
         .border_r(scaled(&z, 1.0))
         .border_r_color(rgb(BORDER))
-        .child(list)
+        .child(scroll().flex_1().min_h(px(0.0)).scrollbar(true).child(list))
         .child(footer(ui, false))
 }
 
@@ -139,7 +127,7 @@ fn narrow_rail(ui: Ui) -> impl IntoElement {
     let z = ui.zoom;
     let mut list = view()
         .flex_col()
-        .flex_1()
+        .w_full()
         .child(fold_toggle(ui.clone(), true));
     let mut previous: Option<&'static str> = None;
     for entry in nav::NAV.iter() {
@@ -152,10 +140,12 @@ fn narrow_rail(ui: Ui) -> impl IntoElement {
     view()
         .flex_col()
         .w_full()
+        .flex_1()
+        .min_h(px(0.0))
         .bg(rgb(SURFACE))
         .border_r(scaled(&z, 1.0))
         .border_r_color(rgb(BORDER))
-        .child(list)
+        .child(scroll().flex_1().min_h(px(0.0)).scrollbar(true).child(list))
         .child(footer(ui, true))
 }
 
@@ -172,6 +162,7 @@ fn fold_toggle(ui: Ui, narrow: bool) -> impl IntoElement {
         .hover(|s| s.bg(rgb(SURFACE_RAISED)))
         .active(|s| s.bg(rgb(BORDER_DIM)))
         .on_press(move || {
+            animate_layout(fold_animation());
             let folded = press.nav_collapsed.get();
             press.nav_collapsed.set(!folded);
         })

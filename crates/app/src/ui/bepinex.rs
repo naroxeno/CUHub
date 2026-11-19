@@ -1,6 +1,7 @@
 //! BepInEx status, install and uninstall flow.
 
 use super::state::Ui;
+use super::tasks::DownloadTracker;
 use cuhub_core::hub::HubError;
 use cuhub_core::install::{Flavor, Mode};
 use nsh_core::prelude::*;
@@ -48,12 +49,16 @@ impl Ui {
         self.bepinex_busy.set(true);
         self.bepinex_status_text.set(t!("notice.bepinex_preparing"));
         let flavor = self.bepinex_flavor.get();
+        let label = t!("task.bepinex_title");
         let hub = Arc::clone(&self.hub);
         let ui = self.clone();
         self.spawn_worker(async move {
             let result = blocking(move || {
+                let mut tracker = DownloadTracker::start(label);
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                hub.prepare_bepinex(flavor, mode)
+                hub.prepare_bepinex_with_progress(flavor, mode, &mut |progress| {
+                    tracker.report(progress)
+                })
             })
             .await;
             match result {

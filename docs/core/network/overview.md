@@ -14,6 +14,7 @@ core 里唯一允许发起 HTTP 的模块。app 不联网，也不调用 nsh 的
 - download(url, destination, max_bytes) -> 写入字节数；download_with_timeout 允许调用方覆盖单次超时（Nexus 文件下载用 5 分钟）：
   - 先写同目录的隐藏临时文件，成功后 rename 到 destination；中途失败删除临时文件。
   - destination 已存在时直接报错，不覆盖。
+- download_with_progress / download_with_timeout_progress 是同一流程的带进度版本：按 32 KiB 分块读取，每写完一块回调一次 `DownloadProgress { written, total }`。`written` 是已落盘字节数（逐块增长），`total` 取响应头 Content-Length，服务器不给时为 None。旧的两个下载方法保留原签名，内部以空回调委托给带进度版本。
 - HttpState 由调用方（metadata、hubconfig）持久化；本模块只收发头部。
 - is_https_url(value)：给需要校验远端链接的调用方用的只读判断，规则与请求地址一致（https、无凭据）。
 
@@ -30,9 +31,10 @@ core 里唯一允许发起 HTTP 的模块。app 不联网，也不调用 nsh 的
 - 不做认证、不保存 Nexus key；需要认证头的调用方（nexus）通过 get_with_headers 显式传入，key 由 nexus_auth 读取。
 - `Network` 的 API 是阻塞的；调用方（Hub / worker）负责把它放到阻塞池或后台线程，UI 线程不得直接调用。
 - download 的临时文件与目标在同一文件系统，保证 rename 原子；Windows 上 rename 不覆盖已存在目标，因此先检查 destination.exists()。
+- 进度回调在发起下载的阻塞线程上同步执行，一块一次；它不改变超时、大小上限与临时文件语义，失败时不会再补发收尾回调，也不能据此判断成功。回调里不要做阻塞 IO 或长时间持锁，否则直接拖慢传输。
 - 网络错误不吞：InvalidUrl / InsecureUrl / UrlHasCredentials / Request / HttpStatus / TooLarge / DestinationExists / Io / Read。
 - 本模块不读取设置、不决定缓存策略、不选择下载目录；这些属于调用方。
 
 ## 常量出处
 
-超时与 UA 见 docs/FEATURES.md U8 与上游 UniversalMetadataService.cs / HubConfigService.cs；重定向上限与 https 校验见 docs/FEATURES.md U8。
+超时与 UA 见 docs/FEATURES.md U8 与上游 UniversalMetadataService.cs / HubConfigService.cs；重定向上限与 https 校验见 docs/FEATURES.md U8。分块 32 KiB（`DOWNLOAD_CHUNK_BYTES`）只决定回调频率，不改变传输语义。

@@ -12,6 +12,7 @@ use super::rows::build_local_rows;
 use super::rows::build_nexus_rows;
 use super::rows::nexus_page_count;
 use super::rows::page_slice;
+use super::tasks::DownloadTrack;
 use crate::i18n;
 use crate::setup::Setup;
 use crate::shell::nav;
@@ -22,13 +23,15 @@ use cuhub_core::mods::InstalledMod;
 use cuhub_core::settings::Settings;
 use nsh_core::RevealOptions;
 use nsh_core::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::future::Future;
 use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
+
+use super::batch::BatchProgress;
 
 const STORE_PROBE_FILE: &str = ".cuhub-write-check";
 
@@ -60,6 +63,7 @@ pub struct Ui {
     pub remote_query: Signal<String>,
     pub remote_filter: Signal<RemoteFilter>,
     pub sources_ready: Signal<bool>,
+    pub sources_refreshing: Signal<bool>,
     pub announcement: Signal<Option<String>>,
     pub remote_busy: Signal<Option<String>>,
     pub pending_install: Signal<Option<PendingInstall>>,
@@ -72,6 +76,10 @@ pub struct Ui {
     pub apply_running: Signal<bool>,
     pub apply_cancel: Signal<bool>,
     pub apply_status: Signal<String>,
+    pub task_open: Signal<bool>,
+    pub downloads: Signal<Vec<DownloadTrack>>,
+    pub batch_selection: Signal<BTreeSet<String>>,
+    pub batch_progress: Signal<Option<BatchProgress>>,
     pub bepinex: Signal<Option<BepInExStatus>>,
     pub bepinex_flavor: Signal<Flavor>,
     pub bepinex_busy: Signal<bool>,
@@ -176,6 +184,7 @@ impl Ui {
             remote_query: signal(String::new()),
             remote_filter: signal(RemoteFilter::All),
             sources_ready: signal(has_sources),
+            sources_refreshing: signal(false),
             announcement: signal(announcement),
             remote_busy: signal(None::<String>),
             pending_install: signal(None::<PendingInstall>),
@@ -188,6 +197,10 @@ impl Ui {
             apply_running: signal(false),
             apply_cancel: signal(false),
             apply_status: signal(String::new()),
+            task_open: signal(false),
+            downloads: signal(Vec::new()),
+            batch_selection: signal(BTreeSet::new()),
+            batch_progress: signal(None::<BatchProgress>),
             bepinex: signal(bepinex),
             bepinex_flavor: signal(Flavor::Lts),
             bepinex_busy: signal(false),
@@ -233,7 +246,15 @@ impl Ui {
         if needs_refresh {
             self.refresh_metadata(false);
         }
+        let needs_sources = {
+            let hub = self.hub();
+            hub.sources_needs_refresh()
+        };
+        if needs_sources {
+            self.refresh_sources();
+        }
         self.profiles_refresh();
+        self.watch_downloads();
     }
 
     pub fn open_link(&self, url: &str) {

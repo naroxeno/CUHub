@@ -14,6 +14,14 @@ pub struct HubVersion {
 
 impl HubVersion {
     pub fn parse(value: &str) -> Option<Self> {
+        Self::parse_inner(value, false)
+    }
+
+    pub fn parse_external(value: &str) -> Option<Self> {
+        Self::parse_inner(value, true)
+    }
+
+    fn parse_inner(value: &str, pad_patch: bool) -> Option<Self> {
         let clean = value.split('+').next()?.trim();
         let rest = clean
             .strip_prefix('v')
@@ -34,7 +42,11 @@ impl HubVersion {
         let mut parts = numeric.split('.');
         let major = parse_component(parts.next()?)?;
         let minor = parse_component(parts.next()?)?;
-        let patch = parse_component(parts.next()?)?;
+        let patch = match parts.next() {
+            Some(part) => parse_component(part)?,
+            None if pad_patch => 0,
+            None => return None,
+        };
         if parts.next().is_some() {
             return None;
         }
@@ -166,6 +178,21 @@ mod tests {
             version(" 1.0.0 ").prerelease(),
             None,
             "surrounding whitespace is trimmed"
+        );
+    }
+
+    #[test]
+    fn external_versions_accept_two_components() {
+        let parsed = HubVersion::parse_external("v1.1").expect("external version");
+        assert_eq!((parsed.major(), parsed.minor(), parsed.patch()), (1, 1, 0));
+        assert_eq!(parsed.original(), "1.1");
+        assert!(HubVersion::parse("v1.1").is_none());
+        assert!(HubVersion::parse_external("1").is_none());
+        assert_eq!(
+            HubVersion::parse_external("1.2.3")
+                .expect("external version")
+                .patch(),
+            3
         );
     }
 

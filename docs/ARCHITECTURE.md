@@ -82,10 +82,10 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 | `links` | 部署账本 `Links.json`：目录/文件链接、退化拷贝、解链；不递归删游戏目录 |
 | `profiles` | 档案 `Profile` / `ProfileStore`：清单、活动档案、`plan_apply` / `apply_plan` |
 | `adopt` | 把散装模组导入 Store、备份原文件、建链接；迁移不自动执行 |
-| `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除；托管条目跳过文件级操作 |
+| `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除；不解档案，档案托管由 Hub 在调用前处理 |
 | `catalogs` | 依赖与不兼容目录（内嵌 + `Data/` 覆盖） |
 | `modlist` | `CUH1:` 编解码、缺失项匹配 |
-| `sources` | 来源解析与优先级：`nexus` / `github` / `custom`（用户正则） |
+| `sources` | 来源解析与优先级：`nexus` / `github` / `custom`（用户正则）；清单缓存与刷新状态 |
 | `sources::table` | `sources.json` 与 `Data/sources.json` 的读取校验、`CUPK1:` 整合包编解码 |
 | `protect` / `backup` | 受保护资源与整目录备份的创建、还原、移除 |
 | `skins` | 槽位发现、精灵查找、骨骼合成（像素精确） |

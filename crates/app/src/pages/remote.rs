@@ -1,10 +1,10 @@
 //! Remote (Nexus) list page: filters, rows, pager and empty state.
 
-use super::shared::{dependency_panel, pending_panel};
 use crate::palette::*;
 use crate::shell::nav;
 use crate::ui::{
     RemoteFilter, RemoteRow, Ui, button, nexus_page_count, panel, pix, pix_c, rise_in, scaled,
+    spinner,
 };
 use nsh_base::input;
 use nsh_core::prelude::*;
@@ -13,12 +13,6 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let count = ui.clone();
     let search = ui.clone();
-    let pending = ui.pending_install;
-    let pending_z = z;
-    let pending_ui = ui.clone();
-    let dependency = ui.dependency_prompt;
-    let dependency_z = z;
-    let dependency_ui = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
     let pager_ui = ui.clone();
@@ -53,7 +47,8 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
                             .text_color(rgb(TEXT))
                             .on_change(move |text: &str| search.set_remote_query(text.to_owned())),
                     )
-                    .child(remote_filters(&z, ui)),
+                    .child(remote_filters(&z, ui))
+                    .child(remote_refresh(&z, ui)),
             )
             .child(pix(
                 move || t!("remote.total", count = count.remote_total.get()),
@@ -78,16 +73,8 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
                 move || remote_pager(&z, &pager_ui),
             ));
     } else {
-        body = body.child(remote_manifest_hint(&z, &manifest_path));
+        body = body.child(remote_manifest_hint(&z, &manifest_path, ui));
     }
-    body = body.child(when(
-        move || dependency.get().is_some(),
-        move || dependency_panel(&dependency_z, &dependency_ui),
-    ));
-    body = body.child(when(
-        move || pending.get().is_some(),
-        move || pending_panel(&pending_z, &pending_ui),
-    ));
     view()
         .flex_col()
         .flex_1()
@@ -311,7 +298,35 @@ fn remote_empty(z: &Signal<u8>, ui: &Ui) -> View {
     ))
 }
 
-fn remote_manifest_hint(z: &Signal<u8>, path: &str) -> View {
+fn remote_refresh(z: &Signal<u8>, ui: &Ui) -> View {
+    let z = *z;
+    let refresh = ui.clone();
+    let refreshing = ui.sources_refreshing;
+    view().child(
+        when(
+            move || refreshing.get(),
+            move || {
+                view()
+                    .flex_row()
+                    .items_center()
+                    .gap(scaled(&z, 6.0))
+                    .child(spinner(&z))
+                    .child(pix(move || t!("remote.refreshing"), 11.0, WARN, &z))
+            },
+        )
+        .otherwise(move || {
+            let refresh = refresh.clone();
+            button(
+                &z,
+                move || t!("remote.refresh"),
+                true,
+                move || refresh.refresh_sources_now(),
+            )
+        }),
+    )
+}
+
+fn remote_manifest_hint(z: &Signal<u8>, path: &str, ui: &Ui) -> View {
     let z = *z;
     let path = path.to_owned();
     view()
@@ -330,4 +345,5 @@ fn remote_manifest_hint(z: &Signal<u8>, path: &str) -> View {
             TEXT_DIM,
             &z,
         ))
+        .child(remote_refresh(&z, ui))
 }

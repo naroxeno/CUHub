@@ -4,3 +4,4 @@
 /dist/
 /mods/**/bin/
 /mods/**/obj/
+.agent-teams/

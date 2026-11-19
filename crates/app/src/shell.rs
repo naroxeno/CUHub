@@ -5,12 +5,15 @@ mod frame_edges;
 pub mod nav;
 mod sidebar;
 mod statusline;
+mod task_cards;
+mod task_center;
 mod title_bar;
 
 pub use dev::dev_overlay;
 pub use frame_edges::frame_edges;
 pub use sidebar::sidebar;
 pub use statusline::statusline;
+pub use task_center::{task_center, task_drawer};
 pub use title_bar::title_bar;
 
 use nsh_core::prelude::*;

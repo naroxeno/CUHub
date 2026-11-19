@@ -126,7 +126,7 @@ fn release_info(payload: ReleasePayload) -> Result<ReleaseInfo, ReleaseError> {
     if tag.is_empty() {
         return Err(ReleaseError::MissingTag);
     }
-    let version = HubVersion::parse(tag).ok_or_else(|| ReleaseError::Version {
+    let version = HubVersion::parse_external(tag).ok_or_else(|| ReleaseError::Version {
         tag: tag.to_owned(),
     })?;
     let published_at = match payload.published_at {
@@ -267,6 +267,16 @@ mod tests {
             parse_release(text),
             Err(ReleaseError::Version { .. })
         ));
+    }
+
+    #[test]
+    fn two_segment_tag_is_accepted() {
+        let release = parse_release(r#"{"tag_name":"v1.1"}"#).expect("parse");
+        assert_eq!(
+            release.version,
+            HubVersion::parse_external("1.1").expect("version")
+        );
+        assert_eq!(release.version.original(), "1.1");
     }
 
     #[test]

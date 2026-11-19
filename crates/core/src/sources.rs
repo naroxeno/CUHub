@@ -1,4 +1,7 @@
-//! GitHub release sources: manifest parsing, validation and local matching. No network here.
+//! GitHub release sources: manifest parsing, validation, matching and cache state. No network here.
+
+mod cache;
+pub use cache::{CachedSources, DEFAULT_MANIFEST_URL, SourceCache, SourceCacheError};
 
 use std::error::Error;
 use std::fmt;
