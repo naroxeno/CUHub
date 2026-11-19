@@ -44,7 +44,7 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 - UI 只在主线程；`core` 不知道主线程是谁，也不主动推 UI，只返回结果或发事件。
 - 阻塞工作（解压、哈希、PNG 合成、.NET 元数据、目录全扫）走阻塞任务池，不占 UI 线程。
 - 文件监视（`notify`）跑在自己的线程，只做「判定完成 → 投递事件」，不碰界面。
-- 桥（`bridge`）有独立监听线程与每连接读线程：只做「解帧 → 校验 → 投递」，不落盘、不读设置；命令执行回到 `Hub` 的既有路径。
+- 桥（`bridge`）由 app 按游戏进程状态启停，有独立监听线程与每连接读线程：只做「解帧 → 校验 → 投递」，不落盘、不读设置；命令执行回到 `Hub` 的既有路径。
 - 后台线程不碰 UI 状态：`core` 只返回结果或经 `crossbeam` 通道发事件；`app` 在主线程用 nsh 的 `run_on_main_thread` 或主循环轮询把事件写进 signal。`spawn` 的 future 本身跑在引擎线程，可以直接写 signal。
 
 ## 5. 外部系统边界
@@ -57,7 +57,7 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 | `api.github.com` | 已安装模组的 release tag 与资产名 | 未认证 60 次/小时；6 小时缓存 + ETag；只取 tag/资产名，不自动安装 |
 | 用户来源表里的任意 https 页面 | 自定义来源的版本与下载地址提取 | 只 GET、不带凭据、响应上限 2 MB、拒绝 `nexusmods.com`，失败只报错不重试风暴 |
 | Steam | 启动游戏（`steam://rungameid`）、库与 appid 发现 | 必须走 Steam，直接跑 exe 在 Proton 下不加载 BepInEx |
-| 游戏进程（Wine/Proton、CrossOver、Windows 原生） | 桥：运行时状态、受限命令 | 只听 `127.0.0.1` + token；游戏侧输入按不可信处理；凭据不得过桥 |
+| 游戏进程（Wine/Proton、CrossOver、Windows 原生） | 桥：运行时状态、受限命令 | 只听 `127.0.0.1:41297`；token 只防误连；游戏侧输入按不可信处理；凭据不得过桥 |
 | 游戏目录 `BepInEx/Plugins`、`CustomSprites` | 安装、开关、删除、备份、皮肤 | 所有写入先解析真实大小写再校验在允许根内 |
 | 系统桌面 | 打开 URL/文件夹、剪贴板 | scheme 白名单 http/https/steam |
 
@@ -91,7 +91,7 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 | `skins` | 槽位发现、精灵查找、骨骼合成（像素精确） |
 | `steam` | 库扫描、VDF 解析、appid 反查 |
 | `launch` | 经 `steam://` 启动游戏与 `steam -applaunch` 回退；不直接跑 exe |
-| `bridge` | 回环桥：监听、握手、帧协议、命令白名单与权限、rendezvous 文件；宿主 MVP |
+| `bridge` | 回环桥：监听 `127.0.0.1:41297`、握手、帧协议、命令白名单与权限、状态快照；宿主由 app 按游戏进程启停 |
 | `easytier` | 联机内核：版本 pin、下载校验缓存、安装探测、进程控制、房间码、房主发现、隧道 |
 | `room` | C1 房间码编解码、`cuhub-host-<port>` 发现 |
 | `multiplayer` | `multiplayer.json`：角色、房间码、EasyTier 目录、中继覆盖；0600 原子写 |

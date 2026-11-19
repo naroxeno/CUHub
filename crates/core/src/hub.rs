@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 
-use crate::adopt::{self, AdoptError, AdoptPlan, AdoptReport};
+use crate::adopt::{self, AdoptError, AdoptItem, AdoptPlan, AdoptReport};
 use crate::catalogs::{Catalogs, DependencyRequirement};
 use crate::easytier::{
     self, DEFAULT_RELAYS, EasyTierMember, ReleaseError, Role, Tunnel, TunnelConfig, TunnelError,
@@ -42,7 +42,7 @@ use crate::version::HubVersion;
 use crate::bridge::server::{BridgeError, BridgeServer};
 
 mod bridge_host;
-pub use bridge_host::HubEvent;
+pub use bridge_host::{BridgeInstallReport, BridgeInstallStatus, BridgeSnapshot, HubEvent};
 
 #[derive(Debug)]
 pub enum HubError {
@@ -403,6 +403,7 @@ pub struct Hub {
     room: Option<RoomCode>,
     tunnel_started: Option<Instant>,
     bridge: Option<BridgeServer>,
+    bridge_seen_game: bool,
 }
 
 impl Hub {
@@ -504,6 +505,7 @@ impl Hub {
             room: None,
             tunnel_started: None,
             bridge: None,
+            bridge_seen_game: false,
         }
     }
 
@@ -597,13 +599,70 @@ impl Hub {
         self.ensure_game_closed()?;
         let game_root = self.game_folder().ok_or(HubError::NoGameFolder)?;
         let backup_root = self.backup_root();
-        let report =
-            adopt::apply_adopt(plan, &self.store, &mut self.links, &game_root, &backup_root)?;
+        let outcome =
+            adopt::apply_adopt(plan, &self.store, &mut self.links, &game_root, &backup_root);
+        let adopted = match &outcome {
+            Ok(report) => report.adopted.clone(),
+            Err(AdoptError::Adopt { report, .. }) => report.adopted.clone(),
+            Err(_) => Vec::new(),
+        };
+        let checkpoint = self.adopt_checkpoint(&adopted);
+        let report = match outcome {
+            Ok(report) => report,
+            Err(error) => return Err(HubError::from(error)),
+        };
         self.logs.activity(
             "Adopt",
             &format!("Adopted {} mod(s) into the store.", report.adopted.len()),
         );
+        if let Some(name) = checkpoint? {
+            self.logs.activity(
+                "Adopt",
+                &format!("Saved profile {name} after adopting mods."),
+            );
+        }
         Ok(report)
+    }
+
+    fn adopt_checkpoint(&mut self, adopted: &[AdoptItem]) -> Result<Option<String>, HubError> {
+        if adopted.is_empty() {
+            return Ok(None);
+        }
+        let active = self.active_profile();
+        let entries = adopted
+            .iter()
+            .map(|item| ProfileEntry {
+                mod_id: item.mod_id.clone(),
+                version: item.version.clone(),
+                enabled: true,
+                source: None,
+                link: self.links.get(&item.target).map(|link| link.kind),
+            })
+            .collect();
+        let name = self.adopt_profile_name();
+        let profile = profiles::checkpoint(
+            name.clone(),
+            active.as_ref().map(|(_, profile)| profile),
+            &self.links,
+            entries,
+        );
+        self.profiles.save(&profile).map_err(HubError::Io)?;
+        Ok(Some(name))
+    }
+
+    fn adopt_profile_name(&self) -> String {
+        let stamp = Utc::now().format("adopt_%Y%m%d-%H%M%S").to_string();
+        if self.profiles.load(&stamp).is_none() {
+            return stamp;
+        }
+        let mut counter = 2u32;
+        loop {
+            let candidate = format!("{stamp}-{counter}");
+            if self.profiles.load(&candidate).is_none() {
+                return candidate;
+            }
+            counter += 1;
+        }
     }
 
     pub fn multiplayer_state(&self) -> &MultiplayerState {
@@ -2126,6 +2185,10 @@ impl Hub {
                 None => String::from("release has no zip, 7z, rar or DLL asset"),
             })
         })?;
+        let fallback = match requested {
+            Some(name) if !asset.name.eq_ignore_ascii_case(name) => Some(name),
+            _ => None,
+        };
         let name = safe_asset_name(&asset.name)
             .ok_or_else(|| HubError::Github(String::from("release asset has an unsafe name")))?;
         let network = self.network.as_ref().ok_or(HubError::NetworkUnavailable)?;
@@ -2145,6 +2208,12 @@ impl Hub {
             "GitHub",
             &format!("Downloaded {} to {}.", asset.name, target.display()),
         );
+        if let Some(name) = fallback {
+            self.logs.activity(
+                "GitHub",
+                &format!("Pinned asset {name} is missing; used {}.", asset.name),
+            );
+        }
         Ok(target)
     }
 
@@ -2161,12 +2230,52 @@ fn select_github_asset<'a>(
     assets: &'a [ReleaseAsset],
     requested: Option<&str>,
 ) -> Option<&'a ReleaseAsset> {
-    if let Some(name) = requested {
-        return assets
-            .iter()
-            .find(|asset| asset.name.eq_ignore_ascii_case(name));
+    let Some(name) = requested else {
+        return assets.iter().find(|asset| is_installable_name(&asset.name));
+    };
+    if let Some(asset) = assets
+        .iter()
+        .find(|asset| asset.name.eq_ignore_ascii_case(name))
+    {
+        return Some(asset);
     }
-    assets.iter().find(|asset| is_installable_name(&asset.name))
+    let shape = asset_shape(name);
+    let mut matches = assets
+        .iter()
+        .filter(|asset| is_installable_name(&asset.name) && asset_shape(&asset.name) == shape);
+    let first = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(first)
+}
+
+fn asset_shape(name: &str) -> String {
+    let mut shape = String::with_capacity(name.len());
+    let mut chars = name.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if !ch.is_ascii_digit() {
+            shape.push(ch.to_ascii_lowercase());
+            continue;
+        }
+        shape.push('#');
+        while let Some(next) = chars.peek().copied() {
+            if next.is_ascii_digit() {
+                chars.next();
+                continue;
+            }
+            if next == '.' {
+                let mut lookahead = chars.clone();
+                lookahead.next();
+                if matches!(lookahead.peek(), Some(next) if next.is_ascii_digit()) {
+                    chars.next();
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+    shape
 }
 
 fn is_installable_name(name: &str) -> bool {
@@ -2293,5 +2402,54 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(first.parent(), Some(root.as_path()));
         let _ = fs::remove_dir_all(root);
+    }
+
+    fn release_asset(name: &str) -> ReleaseAsset {
+        ReleaseAsset {
+            name: name.to_string(),
+            download_url: format!("https://example.invalid/{name}"),
+            size: 0,
+        }
+    }
+
+    #[test]
+    fn prefers_the_exact_asset_by_name() {
+        let assets = vec![
+            release_asset("Mod-1.1.0.zip"),
+            release_asset("Mod-1.0.0.zip"),
+        ];
+        let selected = select_github_asset(&assets, Some("Mod-1.0.0.zip")).unwrap();
+        assert_eq!(selected.name.as_str(), "Mod-1.0.0.zip");
+    }
+
+    #[test]
+    fn falls_back_to_a_single_version_renamed_asset() {
+        let assets = vec![release_asset(
+            "MPMod_5.5.4_fullgame1.0.2_bepinex5.4.23.5.zip",
+        )];
+        let selected = select_github_asset(
+            &assets,
+            Some("MPMod_5.5.3_fullgame1.0.2_bepinex5.4.23.5.zip"),
+        )
+        .unwrap();
+        assert_eq!(
+            selected.name.as_str(),
+            "MPMod_5.5.4_fullgame1.0.2_bepinex5.4.23.5.zip"
+        );
+    }
+
+    #[test]
+    fn refuses_to_guess_between_version_equivalent_assets() {
+        let assets = vec![
+            release_asset("Mod-1.1.0.zip"),
+            release_asset("Mod-1.2.0.zip"),
+        ];
+        assert!(select_github_asset(&assets, Some("Mod-1.0.0.zip")).is_none());
+    }
+
+    #[test]
+    fn does_not_fall_back_to_a_different_asset_shape() {
+        let assets = vec![release_asset("Other-1.1.0.zip")];
+        assert!(select_github_asset(&assets, Some("Mod-1.0.0.zip")).is_none());
     }
 }

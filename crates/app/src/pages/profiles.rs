@@ -95,10 +95,16 @@ fn profile_row(ui: &Ui, row: &ProfileRow) -> View {
     let name = row.name.clone();
     let active = row.active;
     let entries = row.entries;
+    let rename_ui = ui.clone();
     let apply_ui = ui.clone();
     let remove_ui = ui.clone();
+    let rename_name = name.clone();
     let apply_name = name.clone();
     let remove_name = name.clone();
+    let rename_watch = ui.clone();
+    let rename_watch_name = name.clone();
+    let rename_confirm_ui = ui.clone();
+    let rename_confirm_name = name.clone();
     let apply_watch = ui.clone();
     let apply_watch_name = name.clone();
     let remove_watch = ui.clone();
@@ -144,6 +150,12 @@ fn profile_row(ui: &Ui, row: &ProfileRow) -> View {
                         .gap(scaled(&z, 8.0))
                         .child(button(
                             &z,
+                            move || t!("profiles.rename"),
+                            true,
+                            move || rename_ui.profiles_request_rename(&rename_name),
+                        ))
+                        .child(button(
+                            &z,
                             move || t!("profiles.apply"),
                             true,
                             move || apply_ui.profiles_request_apply(&apply_name),
@@ -163,6 +175,10 @@ fn profile_row(ui: &Ui, row: &ProfileRow) -> View {
         .child(when(
             move || remove_watch.profiles.remove_name.get() == remove_watch_name,
             move || remove_confirm_block(&remove_confirm_ui, &remove_confirm_name),
+        ))
+        .child(when(
+            move || rename_watch.profiles.rename_from.get() == rename_watch_name,
+            move || rename_block(&rename_confirm_ui, &rename_confirm_name),
         ))
 }
 
@@ -239,6 +255,53 @@ fn remove_confirm_block(ui: &Ui, name: &str) -> View {
         )
 }
 
+fn rename_block(ui: &Ui, name: &str) -> View {
+    let z = ui.zoom;
+    let name = name.to_owned();
+    let draft = ui.profiles.rename_name;
+    let confirm_ui = ui.clone();
+    let cancel_ui = ui.clone();
+    view()
+        .flex_col()
+        .gap(scaled(&z, 6.0))
+        .child(pix(
+            move || t!("profiles.rename_hint", name = name.clone()),
+            11.0,
+            TEXT_MUTED,
+            &z,
+        ))
+        .child(
+            input()
+                .value(draft)
+                .on_change(move |text: &str| draft.set(text.to_owned()))
+                .placeholder(move || t!("profiles.name_placeholder"))
+                .font_family(crate::ui::PIXEL_FONT.family)
+                .text_size(scaled(&z, 12.0))
+                .h(scaled(&z, 24.0))
+                .px(scaled(&z, 6.0))
+                .bg(rgb(SURFACE_RAISED))
+                .border(scaled(&z, 1.0))
+                .border_color(rgb(BORDER)),
+        )
+        .child(
+            view()
+                .flex_row()
+                .gap(scaled(&z, 8.0))
+                .child(button(
+                    &z,
+                    move || t!("profiles.rename"),
+                    true,
+                    move || confirm_ui.profiles_confirm_rename(),
+                ))
+                .child(button(
+                    &z,
+                    move || t!("common.cancel"),
+                    true,
+                    move || cancel_ui.profiles_cancel_rename(),
+                )),
+        )
+}
+
 fn create_block(ui: &Ui) -> View {
     let z = ui.zoom;
     let name = ui.profiles.name;
@@ -257,6 +320,7 @@ fn create_block(ui: &Ui) -> View {
                 .placeholder(move || t!("profiles.name_placeholder"))
                 .font_family(crate::ui::PIXEL_FONT.family)
                 .text_size(scaled(&z, 12.0))
+                .text_color(rgb(TEXT))
                 .h(scaled(&z, 24.0))
                 .px(scaled(&z, 6.0))
                 .bg(rgb(SURFACE_RAISED))
@@ -326,6 +390,7 @@ fn adopt_panel(ui: &Ui) -> View {
     let stats_watch = ui.clone();
     let stats_ui = ui.clone();
     let reasons = ui.profiles.adopt_reasons;
+    let names = ui.profiles.adopt_names;
     let warning_watch = ui.clone();
     let warning_ui = ui.clone();
     let done_watch = ui.clone();
@@ -421,6 +486,18 @@ fn adopt_panel(ui: &Ui) -> View {
                                         reason = t!(reason.key),
                                         count = reason.count
                                     ),
+                                    10.0,
+                                    TEXT_MUTED,
+                                    &z,
+                                )
+                            },
+                        ))
+                        .child(each(
+                            names,
+                            |name| name.clone(),
+                            move |name, _| {
+                                pix(
+                                    t!("profiles.adopt_name", name = name.get()),
                                     10.0,
                                     TEXT_MUTED,
                                     &z,

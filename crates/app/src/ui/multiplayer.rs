@@ -19,6 +19,7 @@ pub enum MpBusy {
     Join,
     Leave,
     Core,
+    Game,
 }
 
 #[derive(Clone, Copy)]
@@ -36,6 +37,8 @@ pub struct MultiplayerUi {
     pub error: Signal<&'static str>,
     pub leave_confirm: Signal<bool>,
     pub polling: Signal<bool>,
+    pub game_error: Signal<String>,
+    pub game_confirm: Signal<Option<bool>>,
 }
 
 pub fn busy_key(busy: MpBusy) -> &'static str {
@@ -44,6 +47,7 @@ pub fn busy_key(busy: MpBusy) -> &'static str {
         MpBusy::Join => "multiplayer.busy_join",
         MpBusy::Leave => "multiplayer.busy_leave",
         MpBusy::Core => "multiplayer.busy_core",
+        MpBusy::Game => "multiplayer.busy_game",
         MpBusy::None => "",
     }
 }
@@ -70,7 +74,7 @@ fn core_ready(hub: &Hub) -> bool {
         .is_some_and(|path| easytier::detect_custom(path).status == easytier::Status::Complete)
 }
 
-fn port_value(text: &str) -> Option<u16> {
+pub(crate) fn port_value(text: &str) -> Option<u16> {
     text.trim().parse::<u16>().ok().filter(|port| *port != 0)
 }
 
@@ -97,6 +101,8 @@ impl MultiplayerUi {
             error: signal(""),
             leave_confirm: signal(false),
             polling: signal(false),
+            game_error: signal(String::new()),
+            game_confirm: signal(None),
         }
     }
 

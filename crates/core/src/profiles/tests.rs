@@ -120,6 +120,95 @@ fn active_marker_tracks_the_saved_profile() {
     let _ = fs::remove_dir_all(dir);
 }
 
+fn raw_active(path: &Path) -> bool {
+    let raw = fs::read_to_string(path).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    value["active"].as_bool().unwrap()
+}
+
+#[test]
+fn saving_an_active_profile_clears_the_flag_in_other_files() {
+    let dir = temp_dir("profiles-flags-save");
+    let profiles = ProfileStore::new(dir.clone());
+    let mut first = Profile::new("First");
+    first.active = true;
+    profiles.save(&first).unwrap();
+    profiles.save(&Profile::new("Second")).unwrap();
+
+    let mut adopted = Profile::new("Adopted");
+    adopted.active = true;
+    profiles.save(&adopted).unwrap();
+
+    assert!(raw_active(&dir.join("Profiles/Adopted.json")));
+    assert!(!raw_active(&dir.join("Profiles/First.json")));
+    assert!(!raw_active(&dir.join("Profiles/Second.json")));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn set_active_rewrites_the_flag_in_every_file() {
+    let dir = temp_dir("profiles-flags-set");
+    let profiles = ProfileStore::new(dir.clone());
+    profiles.save(&Profile::new("First")).unwrap();
+    profiles.save(&Profile::new("Second")).unwrap();
+    let first = dir.join("Profiles/First.json");
+    fs::write(
+        &first,
+        r#"{"schemaVersion":1,"name":"First","active":true,"entries":[],"configOverrides":[]}"#,
+    )
+    .unwrap();
+
+    profiles.set_active(Some("First")).unwrap();
+
+    assert!(raw_active(&first));
+    assert!(!raw_active(&dir.join("Profiles/Second.json")));
+    profiles.set_active(None).unwrap();
+    assert!(!raw_active(&first));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn renames_profiles_and_keeps_the_active_marker() {
+    let dir = temp_dir("profiles-rename");
+    let profiles = ProfileStore::new(dir.clone());
+    let mut profile = Profile::new("Old");
+    profile.entries.push(entry("com.author.qol", "1.0.0"));
+    profiles.save(&profile).unwrap();
+    profiles.set_active(Some("Old")).unwrap();
+
+    profiles.rename("Old", "New").unwrap();
+    assert_eq!(profiles.list(), vec!["New".to_owned()]);
+    assert_eq!(profiles.active().as_deref(), Some("New"));
+    let renamed = profiles.load("New").unwrap();
+    assert_eq!(renamed.name, "New");
+    assert!(renamed.active);
+    assert_eq!(renamed.entries, vec![entry("com.author.qol", "1.0.0")]);
+    assert!(profiles.load("Old").is_none());
+    assert!(!dir.join("Profiles/Old.json").exists());
+
+    profiles.save(&Profile::new("Idle")).unwrap();
+    profiles.rename("Idle", "Idle2").unwrap();
+    assert_eq!(profiles.active().as_deref(), Some("New"));
+    assert_eq!(profiles.list(), vec!["Idle2".to_owned(), "New".to_owned()]);
+
+    profiles.save(&Profile::new("Taken")).unwrap();
+    assert_eq!(
+        profiles.rename("New", "Taken").unwrap_err().kind(),
+        io::ErrorKind::AlreadyExists
+    );
+    assert_eq!(
+        profiles.rename("New", "../New").unwrap_err().kind(),
+        io::ErrorKind::InvalidInput
+    );
+    assert_eq!(
+        profiles.rename("Missing", "Other").unwrap_err().kind(),
+        io::ErrorKind::NotFound
+    );
+    assert!(profiles.load("New").is_some());
+    assert!(profiles.load("Taken").is_some());
+    let _ = fs::remove_dir_all(dir);
+}
+
 #[test]
 fn plans_a_deploy_for_an_empty_deployment() {
     let dir = temp_dir("profiles-plan-deploy");
@@ -423,5 +512,64 @@ fn ignores_disabled_entries_and_rejects_invalid_plans() {
         ),
         Err(ProfileError::OutsideGame(_))
     ));
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn checkpoint_merges_links_into_a_new_active_profile() {
+    let dir = temp_dir("profiles-checkpoint");
+    let store = Store::new(dir.join("Store"));
+    import(
+        &dir,
+        &store,
+        "com.author.kept",
+        "1.0.0",
+        &[("Kept.dll", b"kept")],
+    );
+    import(
+        &dir,
+        &store,
+        "com.author.added",
+        "2.0.0",
+        &[("Added.dll", b"added")],
+    );
+    let game = game_dir(&dir);
+    let plugins = game.join("BepInEx/Plugins");
+    let mut links = LinkIndex::load(&dir);
+    for (mod_id, version) in [("com.author.kept", "1.0.0"), ("com.author.added", "2.0.0")] {
+        let payload = store.resolve(mod_id, version).unwrap();
+        links
+            .deploy(&game, &plugins.join(mod_id), &payload, mod_id, version)
+            .unwrap();
+    }
+
+    let mut base = Profile::new("Base");
+    base.entries.push(entry("com.author.kept", "1.0.0"));
+    let profile = checkpoint(
+        "adopt_20260101-000000".to_owned(),
+        Some(&base),
+        &links,
+        vec![entry("com.author.kept", "1.1.0")],
+    );
+
+    assert_eq!(profile.name, "adopt_20260101-000000");
+    assert!(profile.active);
+    assert_eq!(base.entries.len(), 1);
+    assert_eq!(profile.entries.len(), 2);
+    let kept: Vec<&ProfileEntry> = profile
+        .entries
+        .iter()
+        .filter(|item| item.mod_id == "com.author.kept")
+        .collect();
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].version, "1.1.0");
+    let added = profile
+        .entries
+        .iter()
+        .find(|item| item.mod_id == "com.author.added")
+        .unwrap();
+    assert_eq!(added.version, "2.0.0");
+    assert!(added.enabled);
+    assert!(added.link.is_some());
     let _ = fs::remove_dir_all(dir);
 }

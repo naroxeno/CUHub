@@ -2,6 +2,8 @@
 
 这一段解决的是「EasyTier 把双方放进同一虚拟网段之后」的事：谁在游戏里开房间、客人连哪个 IP、状态怎么回到 Cuhub。线协议见 [protocol.md](protocol.md)，C# 侧 API 研究见 [csharp-plugin.md](csharp-plugin.md)，Rust 侧现状见 [core/bridge/overview.md](../core/bridge/overview.md)。
 
+> 变更（2026-11-20）：下文关于 rendezvous 发现文件与临时端口的方案已被固定端口 `127.0.0.1:41297` + 两端共享 token 取代，以实现与 [protocol.md](protocol.md) 为准；这里保留原始决策记录。
+
 ## 0. 结论
 
 - EasyTier 只保证房主在 `10.144.144.1` 可达；开房/入房由游戏本体负责，Cuhub 不代劳。
@@ -69,9 +71,9 @@ B 的形态：Cuhub 把 `10.144.144.1:7790` 显示出来，供玩家复制。
 
 ## 5. 部署与生命周期
 
-桥是内置模组，部署、扫描、启停、删除全部交给 `mods` 模块，不另做链接与版本层：
+桥是内置目录型模组：扫描、启停、删除仍交给 `mods` 模块，安装走 `install` 的 staging → plan → 备份 → apply 链路，不另做链接与版本层：
 
-- 安装：Cuhub 把内置的 `CuhubBridge/` 目录放进 `Plugins/`，放置方式沿用现有模组安装通道，本文不规定链接类型。
+- 安装：Cuhub 把内置的 `CuhubBridge/` 目录放进 `Plugins/CuhubBridge`，入口是 Local Mods 卡片底部的独立安装区块（优先用应用旁的 `CuhubBridge.zip`，没有则选本地 zip）；只接受 `CuhubBridge.Plugin.dll` 与 `CuhubBridge.Core.dll` 并校验 GUID，目标被 Links 托管时拒绝。
 - 识别：普通目录型模组，mods 列表里显示一条；启用、禁用、删除走现有 `set_mod_enabled` / `delete_mod`。
 - 纯原版：在 mods 里禁用该条目（或整表禁用），联机功能随之不可用，界面说明原因。
 - 更新：不做版本比较与差异，随 Cuhub 安装包整体替换。
@@ -79,6 +81,8 @@ B 的形态：Cuhub 把 `10.144.144.1:7790` 显示出来，供玩家复制。
 - 卸载：删目录本身，限制仍是 Plugins 一级条目。
 
 ## 6. 玩家看到的流程
+
+W4 的具体实现方案（权限开关、自动状态机、代码落点）见 [w4-multiplayer.md](w4-multiplayer.md)；代码与单测已落地，待真机回归。
 
 房主：联机页建房 → 隧道 `Connected` → 「启动游戏」（Steam 拉起，不带参）→ 桥连上 → 页面「在游戏内开房」→ 桥调 `mp.host`。  
 客人：输码 → 等隧道 `Connected`（此时才知道 `10.144.144.1`）→ 启动游戏 → 桥连上 → 自动 `mp.join`。  
@@ -91,7 +95,7 @@ B 的形态：Cuhub 把 `10.144.144.1:7790` 显示出来，供玩家复制。
 
 1. **M1 隧道 + 手动路径**：隧道状态、两行 UI、`10.144.144.1:7790` 展示与复制。玩家在 CT 菜单手动开房/加入，先跑通一次真实联机；`launch_game` 不动。
 2. **M2 只读桥**：Rust 侧监听与握手、探针 DLL、`mp.state`、`game.state` 推送，页面显示游戏内状态。宿主侧与 `mp.state` 已在 MVP 落地；页面与 `game.state` 未做。
-3. **M3 控制**：`mp.host` / `mp.join`（页面按钮触发）、`mp.leave`、权限与两段式确认、`mp.kick`。
+3. **M3 控制**：`mp.host` / `mp.join`（桥卡片开关 + 房主自动一次 / 客人自动最多 3 次，手动按钮与重试兜底）、权限活更新；`mp.kick` 与两段式确认留到后续，`mp.leave` 因 C# 未实现暂不接。
 4. **M4 收尾**：`save.*` / `skin.*`、审计、失败提示文案。
 
 ## 8. 风险与真机验证

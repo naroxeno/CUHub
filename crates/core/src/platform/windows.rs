@@ -70,7 +70,7 @@ pub fn downloads_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("C:\\"))
 }
 
-#[link(name = "Shell32")]
+#[link(name = "shell32")]
 unsafe extern "system" {
     fn IsUserAnAdmin() -> i32;
 }

@@ -337,6 +337,7 @@ fn run_batch(ui: &Ui, hub: Arc<Mutex<Hub>>, targets: Vec<BatchTarget>) {
         ui.batch_progress.set(None);
         ui.remote_busy.set(None);
         ui.refresh_mods();
+        ui.refresh_bridge_install();
         let late = std::mem::take(&mut tally.late);
         if !late.is_empty() {
             ui.dependency_prompt.set(Some(DependencyPrompt {

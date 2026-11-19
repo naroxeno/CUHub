@@ -381,17 +381,18 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 宿主 cuhub 与游戏进程（BepInEx 插件）之间的桥。协议契约见 `docs/bridge/protocol.md`，模块说明见 `docs/core/bridge/overview.md`。
 
-- **W1 (P0)** 发现与握手：宿主监听 `127.0.0.1` 的临时端口，往 `<ProgramData>/CasualtiesHub/bridge.json` 写 token 与端口（Windows 原生、Proton prefix、macOS bottle 三种路径，客户端代码不变）；插件读文件连接，token 或协议 major 不符即拒。
-- **W2 (P0)** 连接状态：状态栏显示“桥：未连接 / 已连接（pid）/ 版本不符”；Local Mods 每行可标“运行中已加载”。桥的任何失败都不影响游戏启动，也不阻塞主线程。
-- **W3 (P0)** 联机只读：`mp.state`（房间、角色、玩家列表）进 Multiplayer 页，替换现有样例数据。
-- **W4 (P0)** 联机控制：`mp.host` / `mp.join` / `mp.leave` 走 `control` 档，默认关闭，由用户在设置里开；`mp.kick` 走 `mutate`，逐次确认。
+- **W1 (P0)** 固定端点与握手：宿主只在游戏运行时监听 `127.0.0.1:41297`；插件直连该端口，token 或协议 major 不符即拒。不再写/读 `bridge.json`，token 是两端共享的固定常量（只防误连，不是安全边界）；端口被占用时在状态栏报错，不 panic。
+- **W2 (P0)** 连接状态：状态栏显示“游戏未运行 / 游戏运行但桥未连接 / 已连接（pid）”，最近一次握手失败（坏 token、版本不符、忙）与端口占用也显示出来；Local Mods 每行按 hello 的 guid 快照标“运行中已加载”。桥的任何失败都不影响游戏启动，也不阻塞主线程。
+- **W3 (P0)** 联机只读：Multiplayer 页顶部只读卡片显示 `mp.state` 的 available / running / client / server / host 与 KrokMpVersion；房间与玩家列表仍未接（CUCoreLib 没有公开 API），页面其余部分仍是 EasyTier。
+- **W4 (P0)** 联机控制：`mp.host` / `mp.join` / `mp.leave` 走 `control` 档，默认关闭，由 Multiplayer 桥卡片的「游戏内控制」开关开启（只授权 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`）；房主在桥会话就绪时自动开房一次，客人在隧道连上后自动加入、最多 3 次退避（0/3/8 秒），两边都保留手动按钮与重试；`denied` / `invalid_params` 立即停。`mp.kick` 走 `mutate`，逐次确认。
 - **W5 (P0)** 存档只读：`save.list` / `save.current` 显示槽位与时间；存档备份归存档 mod 自己管，`backup` 模块不接管。
 - **W6 (P0)** 存档危险操作：`save.save` / `save.load` / `save.restore` 一律 `mutate`，两段式确认写清“当前进度将丢失”与目标槽位。
 - **W7 (P1)** 皮肤 mod：`skin.current` / `skin.list` 只读接入 Skins 页；`skin.apply` / `skin.reload` 走 `control`。
 - **W8 (P1)** 权限管理：设置页的桥区块列出每条命令与三档权限，默认只读；任何授权变更写日志（旧值、新值、来源）。
 - **W9 (P2)** 第三方接入：发布 `CuhubBridge.Core` 的接入说明与最小示例，协议文档作为跨语言契约。
+- **W10 (P0)** 安装入口：Local Mods 卡片底部独立「安装桥」区块显示未安装 / 已安装版本 / 运行中已加载（两个 DLL 同在才算已安装），并提供 Install bridge 按钮。优先使用 exe 同目录的 `CuhubBridge.zip`，其次工作区 `dist/bridge/CuhubBridge.zip`，都没有时用文件选择器；安装走 staging → plan → apply（含备份），固定目标 `Plugins/CuhubBridge`，只接受归档根或单一顶层目录下、名称精确匹配的 `CuhubBridge.Plugin.dll` 与 `CuhubBridge.Core.dll`（大小写不符、多层子目录或额外文件都报错），并校验 GUID `dev.cuhub.bridge`，目标被 Links 托管时拒绝。安装后仍作为普通本地模组行显示，不写 Store、Links 或 profile。
 
-实现状态（2026-11-19，实验性，不发布）：W1 已落地——Rust 宿主有监听、握手、单会话、命令表、权限、审计与 13 个回环集成测试，C# `CuhubBridge.Core` + `CuhubBridge.Plugin` 能编译（`dotnet build -c Release` 无警告，未真机加载），实现 `hello`、10 秒心跳与 `mp.state` / `mp.host` / `mp.join`；`mp.leave` / `mp.kick` / `save.*` / `skin.*` 回 `unavailable`。W2/W3 未接线：`take_events` 没有 UI 消费者，Multiplayer 页仍走 EasyTier 状态，连接状态未显示。W4 只有游戏侧命令，权限确认 UI 未做；W5–W9 未开始。插件未打进 Cuhub 安装包，需 `just package-bridge` 单独生成。
+实现状态（2026-11-20，实验性，不发布）：W1 已落地——Rust 宿主固定监听 `127.0.0.1:41297`，有握手、单会话、命令表、权限、审计与 13 个回环集成测试；token 是两端共享常量，不再落盘发现文件。W2/W3 已接线：app 在检测到游戏进程或从 cuhub 启动游戏时开始监听、游戏退出后停止（Linux/Proton 下 exe 常是 wine preloader，按进程 cwd 与 cmdline 兜底识别）；状态栏三态加最近握手失败，Local Mods 标“运行中已加载”，Multiplayer 顶部只读状态卡；桥失败只进状态，不阻塞启动或主线程。C# `CuhubBridge.Core` + `CuhubBridge.Plugin` 能编译（`dotnet build -c Release` 无警告，未真机加载），实现 `hello`、10 秒心跳与 `mp.state` / `mp.host` / `mp.join`；`mp.leave` / `mp.kick` / `save.*` / `skin.*` 回 `unavailable`。W4 已接线：桥卡片开关、房间卡「游戏内房间」区块（状态、地址、手动开房/加入与两段式确认、重试与错误行），权限在运行中即时生效，自动逻辑有 10 条纯函数单测；QuickTest 未真机验证，仍按实验性处理。W5–W9 未开始。插件未打进 Cuhub 安装包，需 `just package-bridge` 单独生成；Local Mods 底部已有独立安装区块（W10），可直接用该 zip 或用户自选 zip 走现有安装链路。
 
 边界：不做通用 RPC、不做任意文件读写、不做进程注入；命令表只增不删；Nexus key 与 GitHub token 永不进桥。
 
@@ -419,11 +420,11 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y3 (P0)** 匹配：用清单 matcher（guid / dll / name）与已装模组匹配；同一 entry 命中多个已装模组时按 guid > dll > name 取最优，与 `sources::best_match` 的优先级一致。
 - **Y4 (P0)** 搜索与过滤：按名称或仓库搜索；All / Installed / Not installed 三态；每页 50 行（`NEXUS_PAGE_SIZE` + `page_slice`）；搜索词、过滤与页码只在内存里，不写设置。
 - **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成 `PackagePlan`，成功即交给任务中心（A12）的安装卡；卡片里的 Apply 走 `Hub::apply_package`，载荷先进 Store，再写入活动档案并按档案部署。依赖检查被阻断时不进 pending，改为显示任务中心的依赖卡；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。旧 `apply_install` 只保留给 BepInEx 与回退。
-- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset，不再按 Nexus Premium 重新选源；生成 `PackagePlan` 后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级；由 `Links.json` 托管的条目允许更新：新版本进 Store 后替换活动档案里的同 `modId` 条目，并重排链接，不再以 `ManagedByProfile` 拒绝。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进任务中心的安装卡。
+- **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset（精确名缺失时仅回退到唯一同形的版本号资产，同形多资产报错），不再按 Nexus Premium 重新选源；生成 `PackagePlan` 后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级；由 `Links.json` 托管的条目允许更新：新版本进 Store 后替换活动档案里的同 `modId` 条目，并重排链接，不再以 `ManagedByProfile` 拒绝。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进任务中心的安装卡。
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
 
-实现状态（2026-11-19）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。未做：远端 release 版本预检（按钮不判断是否有新版）。清单已改为启动拉取 `naroxeno/CUHub-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。
+实现状态（2026-11-19）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。未做：远端 release 版本预检（按钮不判断是否有新版）。清单已改为启动拉取 `naroxeno/CUHub-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。2026-11-20：GitHub 更新支持清单 asset 精确名缺失时按版本号形状唯一回退，同形多资产仍报错。
 
 边界：只读清单，不在应用内编辑或抓取；不重托管模组、不伪造下载 URL；游戏进程检查、路径越界与目标已存在由 core 拒绝，界面只展示错误。
 
@@ -435,12 +436,13 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
 - **Z2 (P0)** 新建：名称输入 + 「从当前部署创建」与「新建空白」。前者把 `Links.json` 的条目映射成 `ProfileEntry{modId,version,enabled:true,source:None,link:kind}`，同一 `modId` 有多个部署时取第一条；后者 `entries` 为空。名称字符集与 core 一致（`[A-Za-z0-9._-]`，不允许 `.`/`..`），core 拒绝时界面显示原因；同名覆盖前二次确认，覆盖时保留原 active 标记。
 - **Z3 (P0)** 应用：先 `plan_profile(name)` 取 `ApplyOp` 条数，内联确认写明「会改动 Plugins、游戏必须关闭」；确认后在 worker 里 `apply_profile(name)`。只有 apply 成功才 `set_active_profile(Some(name))`，失败不改 active。失败按 `error_key` 映射成可读文案（未设游戏目录、档案不存在、计划构建失败、游戏运行中、IO、通用）。
 - **Z4 (P0)** 删除：二次确认；删除当前档案先 `set_active_profile(None)` 再 `profiles().remove(name)`。删除只删档案文件，不回滚已部署文件，确认文案写明这一点。
-- **Z5 (P0)** 扫描迁移：`plan_adopt()` 后显示可迁移数、跳过数与按 `AdoptSkip` 变体的原因计数（已禁用、已在管理、Plugins 之外、名称不合法、缺版本、内容库已有该版本、重名）；扫描中与失败各有状态。扫描只读，不改文件。
-- **Z6 (P0)** 执行迁移：确认框写「将移动 N 个模组到内容库并备份原文件到 Backups/Adopt-…」，并注明会改动游戏目录；确认后在同一个 worker 里重新 `plan_adopt()` 再 `apply_adopt(&plan)`（计划不跨线程），成功后显示 adopted 数与备份目录；`AdoptError::Adopt` 的部分完成保留已完成项并提示剩余。迁移永不默认执行。
+- **Z5 (P0)** 扫描迁移：`plan_adopt()` 后显示可迁移数、跳过数与按 `AdoptSkip` 变体的原因计数（已禁用、已在管理、Plugins 之外、由 CUHub 安装、名称不合法、缺版本、内容库已有该版本、重名、目标路径冲突），并逐行列出可迁移项名称；「已在管理」包含目标路径已有链接或 `Links.json` 已有同 mod id 的情况，「由 CUHub 安装」排除固定目录 `Plugins/CuhubBridge` 的桥。扫描中与失败各有状态。扫描只读，不改文件。
+- **Z6 (P0)** 执行迁移：确认框写「将移动 N 个模组到内容库并备份原文件到 Backups/Adopt-…」，并注明会改动游戏目录；确认后在同一个 worker 里重新 `plan_adopt()` 再 `apply_adopt(&plan)`（计划不跨线程），成功后显示 adopted 数与备份目录；`AdoptError::Adopt` 的部分完成保留已完成项并提示剩余。迁移结束且至少一项成功（含部分完成）后 Hub 新建 `adopt_<时间戳>` 档案并设为激活：以当前激活档案为底，替换被迁移的条目、补齐 `Links.json` 未被覆盖的条目，随后刷新档案页。迁移永不默认执行。
 - **Z7 (P1)** 语言与实现词：新增文案全部走 `nav.profiles` / `profiles.*`（en / zh-CN / ja），界面不出现 plan、staging、manifest 等实现词；破坏性操作的范围写在确认框里。
 - **Z8 (P1)** 线程与一致性：所有 Hub 调用在 worker（`spawn_worker` + `blocking`）里执行，UI 线程只读信号；切换档案不改 `Links.json` 之外的配置，`configOverrides` 仍只持久化、不执行；BepInEx 与 `config` 的部署不受档案应用影响。
+- **Z9 (P1)** 重命名：档案行内「重命名」展开输入框，预填原名；提交时 core 校验名称字符集、目标不存在与原名不变，成功后就地刷新列表。重命名不改变激活状态：激活档案改名后 `active.txt` 跟随新名，已部署文件不受影响；不做同名覆盖确认，目标重名直接报错。
 
-实现状态（2026-11-19）：Z1–Z7 的界面部分已落地——`crates/app/src/ui/profiles.rs` 负责行模型、worker 与错误映射，`crates/app/src/pages/profiles.rs` 负责视图与内联确认；同日起安装/更新统一走 Store：`packages::apply` 先入库再写入活动档案，未迁移的散装模组在更新时被收编并备份原文件。未做：DESIGN-v2 §3 的 M4 整合包（pack manifest 导入/导出、CUPK1 打包）未开始；档案区还没有 `configOverrides` 编辑、条目级启用/禁用与条目复制（字段已存在，无 UI 入口）；迁移撤销（undo adopt）与内容库删除/清空的两段式入口未做。
+实现状态（2026-11-19）：Z1–Z7 的界面部分已落地——`crates/app/src/ui/profiles.rs` 负责行模型、worker 与错误映射，`crates/app/src/pages/profiles.rs` 负责视图与内联确认；同日起安装/更新统一走 Store：`packages::apply` 先入库再写入活动档案，未迁移的散装模组在更新时被收编并备份原文件。未做：DESIGN-v2 §3 的 M4 整合包（pack manifest 导入/导出、CUPK1 打包）未开始；档案区还没有 `configOverrides` 编辑、条目级启用/禁用与条目复制（字段已存在，无 UI 入口）；迁移撤销（undo adopt）与内容库删除/清空的两段式入口未做。迁移收尾自动新建 `adopt_<时间戳>` 激活档案、档案重命名、迁移目标与档案部署规则统一、迁移排除自带桥并列出可迁移名称（2026-11-20）。
 
 边界：迁移只处理 Plugins 下的散装条目，被跳过的条目原样保留；删除档案不回滚已部署文件；档案应用只按 `Links.json` 重建 Plugins 根层部署，不触碰 `BepInEx/config`；路径越界、游戏运行中与目标冲突由 core 拒绝，界面只展示错误。
 

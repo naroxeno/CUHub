@@ -503,6 +503,70 @@ local.pin_nexus:
   en: "Pin: Nexus"
   zh-CN: "来源：Nexus"
   ja: "固定: Nexus"
+local.bridge_title:
+  en: "Cuhub Bridge"
+  zh-CN: "Cuhub 桥"
+  ja: "Cuhub ブリッジ"
+local.bridge_description:
+  en: "Installs the in-game bridge into BepInEx/plugins/CuhubBridge. It also appears in the mod list above."
+  zh-CN: "把游戏内桥安装到 BepInEx/plugins/CuhubBridge，安装后也会出现在上方模组列表里。"
+  ja: "ゲーム内ブリッジを BepInEx/plugins/CuhubBridge にインストールします。上のMOD一覧にも表示されます。"
+local.bridge_status_not_installed:
+  en: "Not installed"
+  zh-CN: "未安装"
+  ja: "未インストール"
+local.bridge_status_installed:
+  en: "Installed %{version}"
+  zh-CN: "已安装 %{version}"
+  ja: "インストール済み %{version}"
+local.bridge_status_installed_unknown:
+  en: "Installed"
+  zh-CN: "已安装"
+  ja: "インストール済み"
+local.bridge_loaded:
+  en: "Loaded in the running game"
+  zh-CN: "运行中的游戏已加载"
+  ja: "実行中のゲームで読み込み済み"
+local.bridge_install:
+  en: "Install bridge"
+  zh-CN: "安装桥"
+  ja: "ブリッジをインストール"
+local.bridge_installing:
+  en: "Installing…"
+  zh-CN: "正在安装…"
+  ja: "インストール中…"
+local.bridge_installing_from:
+  en: "Installing %{name}…"
+  zh-CN: "正在安装 %{name}…"
+  ja: "%{name} をインストール中…"
+local.bridge_installed_notice:
+  en: "Bridge %{version} installed."
+  zh-CN: "桥 %{version} 已安装。"
+  ja: "ブリッジ %{version} をインストールしました。"
+local.bridge_installed_notice_unknown:
+  en: "Bridge installed."
+  zh-CN: "桥已安装。"
+  ja: "ブリッジをインストールしました。"
+local.bridge_pick_title:
+  en: "Choose CuhubBridge.zip"
+  zh-CN: "选择 CuhubBridge.zip"
+  ja: "CuhubBridge.zip を選択"
+local.bridge_picker_failed:
+  en: "Could not open the file picker: %{error}"
+  zh-CN: "无法打开文件选择器：%{error}"
+  ja: "ファイル選択を開けませんでした: %{error}"
+local.bridge_worker_stopped:
+  en: "Bridge install failed: %{error}"
+  zh-CN: "桥安装失败：%{error}"
+  ja: "ブリッジのインストールに失敗しました: %{error}"
+local.bridge_game_running:
+  en: "Close the game first."
+  zh-CN: "先关掉游戏。"
+  ja: "先にゲームを終了してください。"
+local.bridge_no_game_folder:
+  en: "Choose the game folder in Settings first."
+  zh-CN: "先在设置里选游戏文件夹。"
+  ja: "先に設定でゲームフォルダを選択してください。"
 source.not_listed:
   en: "Sources: not listed in the GitHub manifest."
   zh-CN: "来源：GitHub 清单中未列出。"
@@ -667,6 +731,10 @@ multiplayer.busy_core:
   en: "Saving…"
   zh-CN: "正在保存…"
   ja: "保存しています…"
+multiplayer.busy_game:
+  en: "Controlling the game…"
+  zh-CN: "正在控制游戏…"
+  ja: "ゲームを操作しています…"
 multiplayer.host_panel:
   en: "HOST A ROOM"
   zh-CN: "开房"
@@ -1840,6 +1908,18 @@ profiles.remove_warning:
   en: "Delete profile “%{name}”? Files already deployed stay in Plugins; deleting a profile does not roll them back."
   zh-CN: "要删除档案「%{name}」吗？已部署的文件会留在 Plugins 里，删除档案不会回滚它们。"
   ja: "プロファイル「%{name}」を削除しますか？配置済みのファイルは Plugins に残り、削除しても元に戻りません。"
+profiles.rename:
+  en: "Rename"
+  zh-CN: "重命名"
+  ja: "名前を変更"
+profiles.rename_hint:
+  en: "Rename profile “%{name}”."
+  zh-CN: "重命名档案「%{name}」。"
+  ja: "プロファイル「%{name}」の名前を変更します。"
+profiles.error_name_taken:
+  en: "A profile with that name already exists."
+  zh-CN: "已有同名档案。"
+  ja: "同じ名前のプロファイルが既に存在します。"
 profiles.adopt_title:
   en: "Content library migration"
   zh-CN: "内容库迁移"
@@ -1864,6 +1944,10 @@ profiles.adopt_skipped:
   en: "%{count} skipped."
   zh-CN: "跳过 %{count} 个。"
   ja: "%{count} 件をスキップ。"
+profiles.adopt_name:
+  en: "· %{name}"
+  zh-CN: "· %{name}"
+  ja: "· %{name}"
 profiles.adopt_reason:
   en: "- %{reason}: %{count}"
   zh-CN: "· %{reason}：%{count}"
@@ -1896,6 +1980,14 @@ profiles.adopt_skip_duplicate:
   en: "duplicate name"
   zh-CN: "名称重复"
   ja: "名前の重複"
+profiles.adopt_skip_target:
+  en: "target already claimed"
+  zh-CN: "目标路径冲突"
+  ja: "配置先が競合"
+profiles.adopt_skip_builtin:
+  en: "installed by CUHub"
+  zh-CN: "由 CUHub 安装"
+  ja: "CUHub によりインストール"
 profiles.adopt_warning:
   en: "Move %{count} mods into the content library and back up the originals to Backups/Adopt-…? This changes files inside the game folder."
   zh-CN: "要把 %{count} 个模组移入内容库，并将原文件备份到 Backups/Adopt-… 吗？这会改动游戏目录里的文件。"
@@ -2069,3 +2161,224 @@ notice.batch_nothing:
   en: "No updatable mods selected."
   zh-CN: "没有选中可更新的模组。"
   ja: "更新可能な MOD が選択されていません。"
+statusline.bridge_game_off:
+  en: "Bridge: game not running"
+  zh-CN: "桥：游戏未运行"
+  ja: "ブリッジ：ゲーム未起動"
+statusline.bridge_waiting:
+  en: "Bridge: waiting for the game"
+  zh-CN: "桥：等待游戏连接"
+  ja: "ブリッジ：ゲーム接続待ち"
+statusline.bridge_connected:
+  en: "Bridge: connected (pid %{pid})"
+  zh-CN: "桥：已连接（PID %{pid}）"
+  ja: "ブリッジ：接続済み（PID %{pid}）"
+statusline.bridge_proto_mismatch:
+  en: "Bridge: protocol mismatch (host %{host}, game %{guest})"
+  zh-CN: "桥：协议版本不符（宿主 %{host}，游戏 %{guest}）"
+  ja: "ブリッジ：プロトコル不一致（ホスト %{host}、ゲーム %{guest}）"
+statusline.bridge_bad_token:
+  en: "Bridge: handshake rejected (token)"
+  zh-CN: "桥：握手被拒（令牌）"
+  ja: "ブリッジ：ハンドシェイク拒否（トークン）"
+statusline.bridge_busy:
+  en: "Bridge: another session is connected"
+  zh-CN: "桥：已有其它会话"
+  ja: "ブリッジ：別のセッションが接続中"
+statusline.bridge_busy_same:
+  en: "Bridge: this game process already has a session"
+  zh-CN: "桥：该游戏进程已有会话"
+  ja: "ブリッジ：このゲームのセッションは接続済み"
+statusline.bridge_rejected:
+  en: "Bridge: handshake failed"
+  zh-CN: "桥：握手失败"
+  ja: "ブリッジ：ハンドシェイク失敗"
+statusline.bridge_port_busy:
+  en: "Bridge: port %{port} is in use"
+  zh-CN: "桥：端口 %{port} 被占用"
+  ja: "ブリッジ：ポート %{port} 使用中"
+statusline.bridge_failed:
+  en: "Bridge: %{error}"
+  zh-CN: "桥：%{error}"
+  ja: "ブリッジ：%{error}"
+local.loaded:
+  en: "Loaded in game"
+  zh-CN: "运行中已加载"
+  ja: "ゲーム内で読み込み済み"
+multiplayer.bridge_panel:
+  en: "GAME MULTIPLAYER"
+  zh-CN: "游戏内联机"
+  ja: "ゲーム内マルチプレイ"
+multiplayer.bridge_game_off:
+  en: "Game is not running."
+  zh-CN: "游戏未运行。"
+  ja: "ゲームは起動していません。"
+multiplayer.bridge_waiting:
+  en: "In-game bridge is not connected yet."
+  zh-CN: "游戏内桥尚未连接。"
+  ja: "ゲーム内ブリッジはまだ接続されていません。"
+multiplayer.bridge_last_error:
+  en: "In-game bridge: %{error}"
+  zh-CN: "游戏内桥：%{error}"
+  ja: "ゲーム内ブリッジ：%{error}"
+multiplayer.bridge_available:
+  en: "Available"
+  zh-CN: "可用"
+  ja: "利用可能"
+multiplayer.bridge_running:
+  en: "Running"
+  zh-CN: "运行中"
+  ja: "実行中"
+multiplayer.bridge_client:
+  en: "Client"
+  zh-CN: "客户端"
+  ja: "クライアント"
+multiplayer.bridge_server:
+  en: "Server"
+  zh-CN: "服务端"
+  ja: "サーバー"
+multiplayer.bridge_host:
+  en: "Host"
+  zh-CN: "主机"
+  ja: "ホスト"
+multiplayer.bridge_krokmp_version:
+  en: "KrokMP version"
+  zh-CN: "KrokMP 版本"
+  ja: "KrokMP バージョン"
+multiplayer.bridge_yes:
+  en: "Yes"
+  zh-CN: "是"
+  ja: "はい"
+multiplayer.bridge_no:
+  en: "No"
+  zh-CN: "否"
+  ja: "いいえ"
+multiplayer.bridge_unknown:
+  en: "—"
+  zh-CN: "—"
+  ja: "—"
+multiplayer.bridge_control:
+  en: "Game control"
+  zh-CN: "游戏内控制"
+  ja: "ゲーム内操作"
+multiplayer.bridge_control_on:
+  en: "Allowed"
+  zh-CN: "已允许"
+  ja: "許可済み"
+multiplayer.bridge_control_off:
+  en: "Not allowed"
+  zh-CN: "未允许"
+  ja: "未許可"
+multiplayer.bridge_control_enable:
+  en: "Allow"
+  zh-CN: "允许"
+  ja: "許可する"
+multiplayer.bridge_control_disable:
+  en: "Revoke"
+  zh-CN: "关闭"
+  ja: "解除"
+multiplayer.bridge_control_hint:
+  en: "Allows this app to open or join the in-game room."
+  zh-CN: "允许本应用在游戏内开房或加入房间。"
+  ja: "このアプリがゲーム内ルームを立てる／参加することを許可します。"
+multiplayer.game_panel:
+  en: "IN-GAME ROOM"
+  zh-CN: "游戏内房间"
+  ja: "ゲーム内ルーム"
+multiplayer.game_status_session:
+  en: "Waiting for the game to connect."
+  zh-CN: "等待游戏连接。"
+  ja: "ゲームの接続を待っています。"
+multiplayer.game_status_unavailable:
+  en: "In-game multiplayer is not available."
+  zh-CN: "游戏内联机不可用。"
+  ja: "ゲーム内マルチプレイは利用できません。"
+multiplayer.game_status_no_control:
+  en: "Game control is off."
+  zh-CN: "尚未允许游戏内控制。"
+  ja: "ゲーム内操作が許可されていません。"
+multiplayer.game_status_tunnel:
+  en: "Connect the tunnel before joining."
+  zh-CN: "隧道连接后才能加入。"
+  ja: "トンネル接続後に参加できます。"
+multiplayer.game_status_ready_host:
+  en: "Ready to host in game."
+  zh-CN: "可以开始在游戏内开房。"
+  ja: "ゲーム内でルームを立てられます。"
+multiplayer.game_status_ready_guest:
+  en: "Ready to join in game."
+  zh-CN: "可以加入游戏内房间。"
+  ja: "ゲーム内ルームに参加できます。"
+multiplayer.game_status_hosting:
+  en: "Room is open in game."
+  zh-CN: "游戏内已开房。"
+  ja: "ゲーム内でルームを立てています。"
+multiplayer.game_status_joined:
+  en: "Joined the in-game room."
+  zh-CN: "已加入游戏内房间。"
+  ja: "ゲーム内ルームに参加しました。"
+multiplayer.game_address:
+  en: "Address"
+  zh-CN: "地址"
+  ja: "アドレス"
+multiplayer.game_host:
+  en: "Host in game"
+  zh-CN: "在游戏内开房"
+  ja: "ゲーム内でルームを立てる"
+multiplayer.game_join:
+  en: "Join in game"
+  zh-CN: "加入游戏内房间"
+  ja: "ゲーム内ルームに参加"
+multiplayer.game_confirm_warning:
+  en: "Let the game open or join a room at %{address}?"
+  zh-CN: "让游戏在 %{address} 开房或加入？"
+  ja: "ゲームに %{address} でルームを立てる／参加させますか？"
+multiplayer.game_confirm:
+  en: "Confirm"
+  zh-CN: "确认"
+  ja: "確認"
+multiplayer.game_retry:
+  en: "Retry"
+  zh-CN: "重试"
+  ja: "再試行"
+multiplayer.game_copied:
+  en: "Address copied."
+  zh-CN: "地址已复制。"
+  ja: "アドレスをコピーしました。"
+multiplayer.game_error_denied:
+  en: "The game refused game control."
+  zh-CN: "游戏拒绝了游戏内控制。"
+  ja: "ゲームがゲーム内操作を拒否しました。"
+multiplayer.game_error_session:
+  en: "The game session is not available."
+  zh-CN: "游戏会话不可用。"
+  ja: "ゲームセッションが利用できません。"
+multiplayer.game_error_params:
+  en: "The game rejected the address: %{error}"
+  zh-CN: "游戏拒绝了该地址：%{error}"
+  ja: "ゲームがアドレスを拒否しました：%{error}"
+multiplayer.game_error_timeout:
+  en: "The game did not answer in time."
+  zh-CN: "游戏没有及时响应。"
+  ja: "ゲームが時間内に応答しませんでした。"
+multiplayer.game_error_ready:
+  en: "Game control is not ready yet."
+  zh-CN: "游戏内控制尚未就绪。"
+  ja: "ゲーム内操作の準備ができていません。"
+multiplayer.game_error_address:
+  en: "Enter a valid room port first."
+  zh-CN: "请先填写有效的房间端口。"
+  ja: "有効なルームポートを入力してください。"
+multiplayer.game_error_worker:
+  en: "The game control worker stopped."
+  zh-CN: "游戏内控制线程已停止。"
+  ja: "ゲーム内操作のスレッドが停止しました。"
+multiplayer.game_error_generic:
+  en: "Game control failed: %{error}"
+  zh-CN: "游戏内控制失败：%{error}"
+  ja: "ゲーム内操作に失敗しました：%{error}"
+notice.bridge_failed:
+  en: "Bridge: %{error}"
+  zh-CN: "桥：%{error}"
+  ja: "ブリッジ：%{error}"
+

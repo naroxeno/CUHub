@@ -201,6 +201,7 @@ impl Ui {
             match result {
                 Ok(Ok(count)) => {
                     ui.refresh_mods();
+                    ui.refresh_bridge_install();
                     ui.notice.set(if managed {
                         t!("notice.profile_removed", label = label)
                     } else {

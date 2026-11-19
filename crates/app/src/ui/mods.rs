@@ -15,9 +15,16 @@ use std::collections::BTreeSet;
 
 impl Ui {
     pub fn rebuild_local_rows(&self) {
+        let loaded: BTreeSet<String> = self
+            .bridge
+            .get()
+            .status
+            .session
+            .map(|session| session.mods.into_iter().map(|entry| entry.guid).collect())
+            .unwrap_or_default();
         let rows = {
             let hub = self.hub();
-            build_local_rows(&hub, &self.mods.get(), &self.checks.get())
+            build_local_rows(&hub, &self.mods.get(), &self.checks.get(), &loaded)
         };
         let valid: BTreeSet<String> = rows
             .iter()
@@ -338,12 +345,25 @@ impl Ui {
     }
 
     pub fn launch_game(&self) {
-        let result = {
-            let hub = self.hub();
-            hub.launch_game()
+        let (result, bridge) = {
+            let mut hub = self.hub();
+            let result = hub.launch_game();
+            let bridge = if result.is_ok() {
+                Some(hub.start_bridge())
+            } else {
+                None
+            };
+            (result, bridge)
         };
         match result {
-            Ok(app_id) => self.notice.set(t!("notice.launched", app = app_id)),
+            Ok(app_id) => {
+                let mut text = t!("notice.launched", app = app_id);
+                if let Some(Err(error)) = bridge {
+                    text.push(' ');
+                    text.push_str(&t!("notice.bridge_failed", error = error));
+                }
+                self.notice.set(text);
+            }
             Err(error) => self.notice.set(t!("notice.launch_failed", error = error)),
         }
     }

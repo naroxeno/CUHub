@@ -42,11 +42,11 @@
 合格：如上全部满足。
 初判：过。唯一缺口：重定向后的 host 未做白名单（要不要做由你定）。
 
-**A7 桥的监听面（尚未接线）**
-位置：`bridge/rendezvous.rs:64`，监听在 `session`（未实现）。
-要看：只听 `127.0.0.1`、token 校验、帧上限 1 MiB、未知字段忽略。
+**A7 桥的监听面（W2/W3 已接线）**
+位置：`bridge/server.rs`（固定端口监听）、`bridge/handshake.rs`（token 与握手）、`bridge/session.rs`（帧与心跳）。
+要看：只听 `127.0.0.1:41297`、token 常量时间校验、帧上限 1 MiB、未知字段忽略。
 合格：协议文档 [protocol.md](../bridge/protocol.md) 的约束在代码里都有对应校验。
-初判：过（代码还没到那一步）。
+初判：过（固定端口、2 秒握手超时、1 MiB 帧上限、单会话均有校验）。
 
 **A8 删除作用域**
 位置：`mods.rs:288`（`delete_roots`）、`mods.rs:313`（`ensure_direct_child`）、`mods.rs:276`（`delete_all`）。
@@ -59,7 +59,7 @@
 **B1 settings 落盘无 fsync**
 位置：`settings.rs:132`。
 要看：tmp + rename 是否 fsync 文件与父目录。
-合格：同 `bridge/rendezvous.rs:80` 的做法。
+合格：tmp + rename 后 fsync 文件与父目录（参考 `crates/core/src/atomic.rs`）。
 初判：不过。
 
 **B2 凭据写入非原子**

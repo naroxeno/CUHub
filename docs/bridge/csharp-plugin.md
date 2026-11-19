@@ -6,20 +6,20 @@
 
 1. **CT 没有给第三方 mod 的网络 API。** 它的 `KrokoshaCasualtiesMultiplayerAPI` 命名空间只有 GamemodeManager / GamemodeBase / BattleRoyale，是玩法模式，不是联机接口。联机状态只能反射读。
 2. **CUCoreLib 已经把这层反射做完了**，门面是 `CUCoreLib.Networking.MultiplayerApi`（游戏内 mod 之间通信，走 CT 的 LiteNetLib 自定义消息通道）。它不是本机 IPC，但它是游戏侧唯一稳定的状态/控制入口。插件应复用它，别自己重写反射。
-3. **本机 IPC 继续用 TCP loopback + rendezvous 文件**（协议已定）。不要改用命名管道：Linux 玩家走 Proton，Wine 的 `\\.\pipe\` 由 wineserver 管，原生 Rust 进程连不进去；Wine 里的 TCP 是真实 loopback，能通三端。
+3. **本机 IPC 用 TCP loopback 的固定端口 `127.0.0.1:41297`**（协议已定）。不要改用命名管道：Linux 玩家走 Proton，Wine 的 `\\.\pipe\` 由 wineserver 管，原生 Rust 进程连不进去；Wine 里的 TCP 是真实 loopback，能通三端。也不要回到发现文件：`%ProgramData%`、prefix、bottle 三种推导都不可靠，固定端口把发现这一步整个省掉。
 
 ## 实现状态（MVP，2026-11-19）
 
 已按最小闭环落地两个程序集，`dotnet build -c Release` 通过且无警告，尚未真机加载：
 
-- `CuhubBridge.Core`（netstandard2.0）：帧编解码、`hello`/`req`/`res`/`evt`、rendezvous 校验、TCP 读写线程与队列、`Api` 契约。引用游戏自带 `Newtonsoft.Json.dll`，不引用 BepInEx/Unity。
-- `CuhubBridge.Plugin`（netstandard2.1）：`dev.cuhub.bridge` 探针，`Update()` 里跑发现、握手、心跳与 `cmd.invoke` 分发。`BridgeSession.cs` / `CommandRouter.cs` / `MpBackend.cs` 分文件；MVP 未拆 `Mp` / `Transport` 程序集。
+- `CuhubBridge.Core`（netstandard2.0）：帧编解码、`hello`/`req`/`res`/`evt`、固定端点与共享 token、TCP 读写线程与队列、`Api` 契约。引用游戏自带 `Newtonsoft.Json.dll`，不引用 BepInEx/Unity。
+- `CuhubBridge.Plugin`（netstandard2.1）：`dev.cuhub.bridge` 探针，`Update()` 里连固定端点、握手、心跳与 `cmd.invoke` 分发；连不上就退避重连，不影响游戏。`BridgeSession.cs` / `CommandRouter.cs` / `MpBackend.cs` 分文件；MVP 未拆 `Mp` / `Transport` 程序集。
 - TFM 差异：游戏 Unity 2022.3.62f3 的 `UnityEngine.CoreModule.dll` 是 netstandard 2.1，插件用 2.0 会报 CS1705，所以插件取 2.1；Core 保持 2.0。
 - 线程：`BridgeClient` 读线程只解帧入队，写线程只发队列；Unity / CUCoreLib 调用只在 `Update()` 主线程。
 - 命令：`mp.state` 读 `MultiplayerApi` 的 `IsAvailable/IsRunning/IsClient/IsServer/IsHost/BridgeReceiversInstalled/KrokMpVersion`；`mp.host`/`mp.join` 在带 `name` 时先调 `TryConfigureLocalIdentity`，再调 `TryStartLocalQuickTestHost/Client`；命令表外的 id 回 `unknown_command`，命令表内但本 build 未实现的（`mp.leave` / `mp.kick` / `save.*` / `skin.*`）回 `unavailable`，reason 写明 "command declared but not implemented in this build"。
 - 缺 CUCoreLib、方法缺失、返回 false 或反射抛异常时回 `unavailable` 并带原因；`mp.leave`、`mp.kick` 没有公开 API，未实现。
 - 未实现：`game.state` / `mods.loaded` 推送、权限、`save.*` / `skin.*`；入站 `evt` 全部忽略；`ping` 双向，插件每 10 s 发 `ping` 并回宿主的 `ping`。
-- 自验：临时 console harness（在 `/tmp`，未入库）覆盖帧往返/半截/超大、消息解析、rendezvous 拒绝、回环 TCP hello/res，21 项全过；未覆盖真机加载与 CUCoreLib 反射。
+- 自验：临时 console harness（在 `/tmp`，未入库）覆盖帧往返/半截/超大、消息解析、固定端点与共享 token、回环 TCP hello/res，21 项全过；未覆盖真机加载与 CUCoreLib 反射。
 
 ## CUCoreLib 实况
 
@@ -33,6 +33,15 @@
 - 反射目标（CT v7.x）：`Together.Multiplayer`、`Together.Net`（static bool 属性 IsRunning/IsClient/IsServer/IsHost/IsConnected）、`Together.ServerMain`（`AllClientIds` / `AllClientIdsExceptHost` 两个 static 成员）、`Together.ClientMain`、`Together.TransportLiteNetLib`、`Together.UIMainMenu`、`Together.SavesystemPatch`（`savedatapathreplacement` / `mpsavefolder`）、`Together.MyLiteNetLibExtensions`。
 - 命名空间正在从 `KrokoshaCasualtiesMP` 迁到 `Together`（v5→v7），CUCoreLib 维护了一张类型/成员别名表来兼容旧名。这就是不建议自研反射的理由。
 - 主线程调度：`CUCoreUtils.CallWhen(Func<bool> condition, Action action, float retry)`、`CUCoreUtils.StartCoroutine(IEnumerator)`（public，但必须在主线程调用）。
+
+## CUCoreLib 核对（2026-11-20）
+
+按 GitHub `jimmyking9999999/CUCoreLib` 的 `main` 源码（`Networking/MultiplayerApi.cs`、`Networking/MultiplayerBridge.cs`）逐项核对 README 与 `MpBackend.cs` 的反射目标，结论：名字与参数形状一致，不需要改反射。
+
+- `MultiplayerApi` 的 `IsAvailable` / `IsRunning` / `IsClient` / `IsServer` / `IsHost` 都是 public static bool 属性；`BridgeReceiversInstalled` 是 public static bool；`KrokMpVersion` 是 `System.Version`（不是 string），`MpBackend` 用 `ToString()`，得到 `1.2.3.0` 形状。
+- `MultiplayerBridge.TryConfigureLocalIdentity(string username, string address)`、`TryStartLocalQuickTestHost(string address)`、`TryStartLocalQuickTestClient(string address)` 的签名与调用顺序一致；`address` 的实际语义是 `host:port`，空串时 CUCoreLib 回退 `localhost:7790`。
+- 程序集名是 `CUCoreLib`（`net.cucorelib` 是 BepInEx 插件 GUID）。`MpBackend` 的 `AssemblyNames` 把 GUID 当后备名字不会命中，但先扫 AppDomain，实际无影响。
+- 风险：旧版 CUCoreLib 是否都带 `KrokMpVersion` 未逐一核对；缺该属性时反射读回 null，`mp.state` 的 `krokmp_version` 为 null，状态卡显示 unknown，不抛异常。
 
 ## CT 实况（能用的非 API 手段）
 
@@ -72,7 +81,7 @@ MVP 先落地为 Plugin + Core 两个程序集：上图的 `MpBackend` 是 Plugi
 
 ## 风险
 
-- CT 更新可能改 `Together.*` 成员；CUCoreLib 不跟就一起碎。`CuhubBridge` 应在握手时上报 `KrokMpVersion` 与自身支持范围，宿主侧给"桥版本不匹配"的明确提示。
+- CT 更新可能改 `Together.*` 成员；CUCoreLib 不跟就一起碎。宿主已把协议不符与最近握手失败写进状态栏，联机页显示 `KrokMpVersion`；普通 `mp.state` 调用的 `KrokMpVersion` 缺失仍按 unknown 显示。
 - `TryStartLocalQuickTestHost/Client` 名字含 QuickTest，语义可能是测试用快捷入口而非正式 Host；真机要先验证它是否等价于 UI 按钮。
 - 反射到 `Body`/`Limb` 的写法在无 CUCoreLib 时必须自己维护字段白名单，容易越权改数值 → 默认只在 CucoreLibBackend 下开放玩法写，NativeBackend 只读。
 - 控制台命令执行如果靠 Harmony 注入，属于高风险区，需单独评审。

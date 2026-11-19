@@ -10,7 +10,8 @@ use chrono::Utc;
 
 use crate::links::{LinkError, LinkIndex};
 use crate::mods::InstalledMod;
-use crate::store::{Store, StoreError};
+use crate::profiles::{self, Deployment};
+use crate::store::{self, Store, StoreError};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AdoptItem {
@@ -19,6 +20,7 @@ pub struct AdoptItem {
     pub source: PathBuf,
     pub target: PathBuf,
     pub directory: bool,
+    pub file: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +32,8 @@ pub enum AdoptSkip {
     MissingVersion,
     StoreHasVersion,
     DuplicateName,
+    DuplicateTarget,
+    BuiltIn,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -92,6 +96,7 @@ pub fn plan_adopt(
 ) -> AdoptPlan {
     let mut plan = AdoptPlan::default();
     let mut names: BTreeSet<String> = BTreeSet::new();
+    let mut targets: BTreeSet<PathBuf> = BTreeSet::new();
     for item in mods {
         let Some(file_name) = item.source_path.file_name().and_then(|name| name.to_str()) else {
             plan.skipped
@@ -120,15 +125,30 @@ pub fn plan_adopt(
                 .push((item.name.clone(), AdoptSkip::OutsidePlugins));
             continue;
         }
-        let target = plugins_root.join(file_name);
-        if links.get(&target).is_some() {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::AlreadyManaged));
+        if item.source_path == plugins_root.join(crate::bridge::install::BRIDGE_DIR) {
+            plan.skipped.push((item.name.clone(), AdoptSkip::BuiltIn));
             continue;
         }
-        if !names.insert(mod_id.clone()) {
+        let (target, file) = if item.source_path.is_dir() {
+            let deployment = store::scan_source_paths(&item.source_path)
+                .map(|paths| profiles::deployment_from_paths(paths.iter().map(String::as_str)))
+                .unwrap_or(Deployment::Directory);
+            match deployment {
+                Deployment::File(name) => {
+                    let target = plugins_root.join(&name);
+                    (target, Some(name))
+                }
+                Deployment::Directory => (plugins_root.join(&mod_id), None),
+            }
+        } else {
+            (plugins_root.join(file_name), Some(file_name.to_owned()))
+        };
+        let managed = links.get(&item.source_path).is_some()
+            || links.get(&target).is_some()
+            || links.entries().any(|(_, link)| link.mod_id == mod_id);
+        if managed {
             plan.skipped
-                .push((item.name.clone(), AdoptSkip::DuplicateName));
+                .push((item.name.clone(), AdoptSkip::AlreadyManaged));
             continue;
         }
         let version = item
@@ -146,12 +166,23 @@ pub fn plan_adopt(
                 .push((item.name.clone(), AdoptSkip::StoreHasVersion));
             continue;
         }
+        if !names.insert(mod_id.clone()) {
+            plan.skipped
+                .push((item.name.clone(), AdoptSkip::DuplicateName));
+            continue;
+        }
+        if !targets.insert(target.clone()) {
+            plan.skipped
+                .push((item.name.clone(), AdoptSkip::DuplicateTarget));
+            continue;
+        }
         plan.items.push(AdoptItem {
             mod_id,
             version,
             source: item.source_path.clone(),
             target,
             directory: item.source_path.is_dir(),
+            file,
         });
     }
     plan
@@ -197,9 +228,9 @@ fn adopt_one(
     } else {
         store.import_file(&item.source, &item.mod_id, &item.version, "adopt")?
     };
-    let payload = match item.source.file_name() {
-        Some(file_name) if !item.directory => stored.path.join(file_name),
-        _ => stored.path.clone(),
+    let payload = match &item.file {
+        Some(file) => stored.path.join(file),
+        None => stored.path.clone(),
     };
     let backup = backup_dir.join(match item.target.file_name() {
         Some(file_name) => file_name,

@@ -95,10 +95,79 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                     move || empty_state(&empty_z, &empty_ui),
                 ))
                 .child(table_header(&z))
-                .child(rows),
+                .child(rows)
+                .child(bridge_section(&z, ui)),
         )
         .flex_1(),
     )
+}
+
+fn bridge_section(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
+    let z = *z;
+    let state = ui.clone();
+    let loaded = ui.clone();
+    let busy = ui.clone();
+    let action = ui.clone();
+    let status_text = ui.clone();
+    view()
+        .flex_col()
+        .gap(scaled(&z, 6.0))
+        .pt(scaled(&z, 10.0))
+        .border_t(scaled(&z, 1.0))
+        .border_t_color(rgb(BORDER_DIM))
+        .child(pix(move || t!("local.bridge_title"), 11.0, TEXT, &z))
+        .child(pix(
+            move || t!("local.bridge_description"),
+            10.0,
+            TEXT_MUTED,
+            &z,
+        ))
+        .child(
+            view()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(scaled(&z, 8.0))
+                .child(pix(
+                    move || state.bridge_install_label(),
+                    10.0,
+                    TEXT_MUTED,
+                    &z,
+                ))
+                .child(when(
+                    move || loaded.bridge_loaded(),
+                    move || pix(move || t!("local.bridge_loaded"), 10.0, ACCENT, &z),
+                ))
+                .child(
+                    when(
+                        move || busy.bridge_install_busy.get(),
+                        move || button(&z, move || t!("local.bridge_installing"), false, || {}),
+                    )
+                    .otherwise({
+                        let action = action.clone();
+                        move || {
+                            let action = action.clone();
+                            button(
+                                &z,
+                                move || t!("local.bridge_install"),
+                                true,
+                                move || action.start_bridge_install(),
+                            )
+                        }
+                    }),
+                ),
+        )
+        .child(when(
+            move || !status_text.bridge_install_text.get().is_empty(),
+            move || {
+                pix(
+                    move || status_text.bridge_install_text.get(),
+                    10.0,
+                    TEXT_MUTED,
+                    &z,
+                )
+            },
+        ))
 }
 
 fn mod_bulk_buttons(z: &Signal<u8>, ui: &Ui, enabled: bool) -> View {
@@ -259,6 +328,9 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         name_cell = name_cell.child(batch_checkbox(zs, ui, row.source_key.clone(), true));
     }
     name_cell = name_cell.child(pix(item.name.clone(), 12.0, name_color, &z));
+    if row.loaded {
+        name_cell = name_cell.child(pix(t!("local.loaded"), 10.0, ACCENT, &z));
+    }
     view()
         .flex_col()
         .border_b(scaled(&z, 1.0))

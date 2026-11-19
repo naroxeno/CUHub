@@ -10,7 +10,7 @@ use cuhub_core::source_choice::mod_key;
 use cuhub_core::sources::{self, LocalMod, MatchKind, Repo, SourceEntry, SourceKind};
 use cuhub_core::version::HubVersion;
 use nsh_core::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct NexusModRow {
@@ -83,6 +83,7 @@ pub struct LocalModRow {
     pub item: InstalledMod,
     pub source: SourceRow,
     pub managed: bool,
+    pub loaded: bool,
 }
 
 impl LocalModRow {
@@ -133,6 +134,7 @@ pub(super) fn build_local_rows(
     hub: &Hub,
     mods: &[InstalledMod],
     checks: &BTreeMap<String, CheckState>,
+    loaded_guids: &BTreeSet<String>,
 ) -> Vec<LocalModRow> {
     let entries = hub
         .sources()
@@ -150,9 +152,13 @@ pub(super) fn build_local_rows(
                 pinned,
             });
             let managed = hub.is_managed_path(&item.source_path);
+            let loaded = item
+                .guid
+                .as_deref()
+                .is_some_and(|guid| loaded_guids.contains(guid));
             LocalModRow {
                 key: format!(
-                    "{key}|{}|{}|{}|{managed}",
+                    "{key}|{}|{}|{}|{managed}|{loaded}",
                     check_tag(check),
                     pin_tag(pinned),
                     item.disabled
@@ -161,6 +167,7 @@ pub(super) fn build_local_rows(
                 item: item.clone(),
                 source,
                 managed,
+                loaded,
             }
         })
         .collect()

@@ -395,6 +395,13 @@ fn scan_source(src: &Path) -> Result<Vec<SourceFile>, StoreError> {
     Ok(files)
 }
 
+pub(crate) fn scan_source_paths(src: &Path) -> Result<Vec<String>, StoreError> {
+    Ok(scan_source(src)?
+        .into_iter()
+        .map(|file| file.relative)
+        .collect())
+}
+
 fn copy_manifest(files: &[SourceFile], temporary: &Path) -> Result<Vec<StoreFile>, StoreError> {
     let mut manifest = Vec::with_capacity(files.len());
     for file in files {

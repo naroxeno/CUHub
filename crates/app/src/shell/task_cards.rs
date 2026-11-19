@@ -20,6 +20,7 @@ pub(super) fn card_list(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
     let empty_z = z;
     view()
         .flex_col()
+        .w_full()
         .gap(scaled(&z, 8.0))
         .p(scaled(&z, 12.0))
         .child(each(
@@ -51,6 +52,7 @@ fn card_view(z: &Signal<u8>, ui: &Ui, card: &TaskCard, index: usize) -> View {
     let mut body = states(
         view()
             .flex_col()
+            .w_full()
             .gap(scaled(&z, 5.0))
             .p(scaled(&z, 10.0))
             .bg(rgb(SURFACE))

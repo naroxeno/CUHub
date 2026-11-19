@@ -94,6 +94,15 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 - 行为：每步 Next 即时保存（游戏目录走 `Hub::set_game_folder`，下载目录只接受已存在的绝对目录，空串表示跟随系统下载目录）；保存失败把错误原文内联在向导里，不前进也不改内存。BepInEx 步只展示状态，不安装、不改文件；外观步复用设置页的缩放与语言按钮。
 - 关闭：Esc 与 Skip / Finish 都写 `setupCompleted=true` 后关闭，不二次确认；写入失败则停在本步并内联报错。
 
+## 桥状态与联机控制
+
+- `ui::bridge::watch_bridge` 随其他后台任务启动，每 2 秒取一次 `Hub::bridge_snapshot`：检测到游戏进程才启动桥、退出后停止，会话存在时顺带取 `mp.state`；值不变不写 signal。单次 `invoke_bridge` 最多持 Hub 锁 2 秒，轮询不更密。
+- 状态栏右侧显示桥三态与最近一次握手失败；Local Mods 行按 hello 的 guid 快照标「运行中已加载」；Multiplayer 页顶部桥卡片显示 available / running / client / server / host 与 KrokMpVersion，并带「游戏内控制」开关（只授权 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`）。
+- `ui::mp_control` 的 `watch_mp_control` 每 2 秒读同一个桥快照：`status.session.pid` 变化重置门控，房主只自动开房一次，客人在隧道 `Connected` 后最多 3 次（0/3/8 秒），`denied` / `invalid_params` 立即停；确认对话框打开或其它任务忙碌时不自动。用户也能随时关掉开关停下自动逻辑。
+- 房间卡「游戏内房间」区块：状态来自 `game_phase`（未连接 / 不可用 / 未授权 / 等隧道 / 可开房 / 可加入 / 已开房 / 已加入）；地址房主固定 `10.144.144.1:<port>`，客人取隧道 `virtual_ip:port`；手动开房/加入走两段式确认，失败行可重试，命令期间是 `MpBusy::Game`。
+- 桥未运行、端口被占、版本不符都只反映到状态，不影响游戏启动、安装、删除等既有流程。
+- Local Mods 卡片底部是独立的「安装桥」区块（`pages/local.rs::bridge_section` 与 `ui/bridge_install.rs`）：显示未安装 / 已安装版本 / 运行中已加载；按钮优先用 exe 同目录或工作区 `dist/bridge/CuhubBridge.zip`，都没有才打开 zip 文件选择器。安装在 worker 里执行，忙态禁用按钮，状态行显示进度与可读错误；成功后刷新 mods 与桥状态，不自动改 profile，桥仍作为普通本地模组行出现。删除模组、批量应用和 BepInEx 安装成功后也会重新读取桥安装状态，避免底部停留在旧的已安装/未安装。
+
 ## 任务中心
 
 - 入口：根视图尾部常驻一个右下角浮动按钮（`shell::task_center`，`absolute` + `right/bottom`，随 `zoom` 缩放），点它把 `task_open` 置真；`shell::task_drawer` 是 `sheet().side(Placement::Right)`，宽度 `relative(0.42)`——缩放只有整数档，没有 `max_w`，按比例取宽在最小窗口下仍可读。抽屉标题行含标题与 Close，内容区是 `scroll().flex_1().min_h(px(0.0))`，卡片多了只滚动抽屉，不撑破窗口。Esc、点遮罩、滑动关闭都经 `SheetEvent::OpenChange` 回写 `task_open`。
@@ -113,7 +122,7 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 
 ## 帧预算
 
-- 无常驻空转：全仓库没有为动画服务的 `set_interval`。任务中心唯一的常驻轮询是下载进度（120ms，见「任务中心」），它只读全局表、值不变时不写 signal，不驱动动画。
+- 无常驻空转：全仓库没有为动画服务的 `set_interval`。常驻轮询有三个：下载进度（120ms，见「任务中心」）与桥状态、联机控制（各 2s，见「桥状态与联机控制」）；后两者只读快照信号、值不变时不写 signal，不驱动动画。
 - 循环动画都随元素卸载停止：checking / refreshing 期间的 spinner（每个 20 Hz）、可更新行的徽标呼吸（每行 10 Hz，行数极少）、任务角标脉冲（20 Hz，仅在有待处理项时存在）、下载缺 Content-Length 时的进度条脉冲（20 Hz，仅该卡存在时）。
 - 一次性入场动画不占稳态帧；Motion preset 自带 `reduce_motion` 处理（无位移、直接到终态）。
 

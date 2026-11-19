@@ -50,7 +50,7 @@
 
 ## 安装说明
 
-- manifest 会优先按 `asset` 精确匹配 release 资产；New Firearms、Gun Minigame、CUShocker、Custom Structures 等有多个资产的仓库已经锁定文件名。
+- manifest 会优先按 `asset` 精确匹配 release 资产；精确名缺失时，只有版本号数字段不同且形状唯一的资产才作为更新回退，同形多资产仍报错；New Firearms、Gun Minigame、CUShocker、Custom Structures 等有多个资产的仓库已经锁定文件名。
 - CUShocker 的 zip 同时带 OpenShock 桌面程序；CUHub 的安装器会按 `BepInEx/plugins` 前缀只取插件部分。
 - CT 的 release 自带 `CUCoreLib.dll`；manifest 已声明 CUCoreLib 依赖，安装时会先要求安装 CUCoreLib，并跳过包内副本。
 - Bark 是目录型模组，会落到 `Plugins/Bark/`；BepInEx 5 会递归扫描插件目录。

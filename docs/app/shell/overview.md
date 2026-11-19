@@ -12,7 +12,7 @@
 | `shell/nav.rs` | 导航数据的唯一来源：id、locale key、图标、分组、页面/动作 |
 | `shell/sidebar.rs` | 宽树与窄图标栏、折叠开关、组头、页脚启动键与版本行 |
 | `shell/title_bar.rs` | 标题栏：居中的产品名与版本，不放操作入口 |
-| `shell/statusline.rs` | 状态行：notice 优先，否则「页面标题 · zoom」 |
+| `shell/statusline.rs` | 状态行：左侧 notice 优先、否则「页面标题 · zoom」；右侧桥状态 |
 | `shell/dev.rs` | 五连点版本行打开的开发者浮层 |
 
 ## 导航模型
@@ -29,6 +29,12 @@
 - 页脚：启动键始终显示，版本行只在宽模式；版本行五连点在 3 秒窗口内计数。
 - 折叠状态、组开关都在 `Ui` 的内存 signal，不落盘。
 - 动画只用 `motion()`：切页时选中标签 FadeIn；不新增常驻定时器。
+
+## 状态行
+
+- 左侧沿用 notice / 页面标题；右侧是桥状态，来自 `Ui.bridge`（`BridgeSnapshot`），由 `ui::bridge::watch_bridge` 每 2 秒轮询写入，值不变不写 signal。
+- 三态：游戏未运行、游戏运行但桥未连接、已连接（pid）；最近一次握手失败（坏 token、协议不符、忙）与端口被占用优先显示，成功握手后清除。
+- 桥的失败只写状态行，不弹窗、不阻塞游戏启动或主线程。
 
 ## 边界与失败模式
 

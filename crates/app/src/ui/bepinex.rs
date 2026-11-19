@@ -121,6 +121,7 @@ impl Ui {
                             ui.notice.set(t!("notice.bepinex_installed"));
                             ui.refresh_bepinex();
                             ui.refresh_mods();
+                            ui.refresh_bridge_install();
                         }
                         Ok(Err(error)) => ui.bepinex_status_text.set(error.to_string()),
                         Err(error) => ui

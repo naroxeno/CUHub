@@ -7,6 +7,14 @@ use nsh_base::{SheetEvent, sheet};
 use nsh_core::prelude::*;
 
 pub fn task_center(ui: &Ui) -> impl IntoElement {
+    let gate = ui.clone();
+    when(move || !gate.task_open.get(), {
+        let ui = ui.clone();
+        move || task_button(&ui)
+    })
+}
+
+fn task_button(ui: &Ui) -> View {
     let z = ui.zoom;
     let press = ui.clone();
     let label_z = z;
@@ -72,6 +80,7 @@ pub fn task_drawer(ui: &Ui) -> impl IntoElement {
     let z_body = z;
     sheet()
         .side(Placement::Right)
+        .popup_style(|style| style.w(relative(0.42)))
         .open(move || Some(open_ui.task_open.get()))
         .on_open_change(move |event: &SheetEvent| {
             if let SheetEvent::OpenChange(next, _) = event {
@@ -82,7 +91,7 @@ pub fn task_drawer(ui: &Ui) -> impl IntoElement {
         .child(
             view()
                 .flex_col()
-                .w(relative(0.42))
+                .w_full()
                 .h_full()
                 .bg(rgb(SURFACE))
                 .border_l(scaled(&z_body, 1.0))
@@ -90,6 +99,7 @@ pub fn task_drawer(ui: &Ui) -> impl IntoElement {
                 .child(drawer_header(&z_body, &header_ui))
                 .child(
                     scroll()
+                        .w_full()
                         .flex_1()
                         .min_h(px(0.0))
                         .child(card_list(&z_body, &body_ui)),
@@ -102,6 +112,7 @@ fn drawer_header(z: &Signal<u8>, ui: &Ui) -> View {
     let close = ui.clone();
     view()
         .flex_row()
+        .w_full()
         .items_center()
         .justify_between()
         .gap(scaled(&z, 8.0))

@@ -1,8 +1,11 @@
-//! Experimental bridge host: framing, discovery, command policy and the loopback server.
+//! Experimental bridge host: framing, handshake, command policy and the fixed loopback endpoint.
+
+pub const BRIDGE_GUID: &str = "dev.cuhub.bridge";
 
 pub mod command;
 pub mod handshake;
+pub mod install;
+pub mod mp;
 pub mod proto;
-pub mod rendezvous;
 pub mod server;
 pub mod session;

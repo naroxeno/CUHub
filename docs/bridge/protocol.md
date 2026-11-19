@@ -9,36 +9,19 @@ cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的
 
 - **宿主（host）= cuhub**：监听方，持有真相（装了哪些模组、开关、设置），决定哪些命令被允许。
 - **客户端（guest）= 游戏进程**：连接方，每次启动一条连接；进程内所有 mod 共用这一条（由 `CuhubBridge.Core` 收口），不允许各 mod 自己开。
-- 一个宿主可同时服务多个游戏实例，按 `(pid, nonce)` 区分。
+- 宿主同时只服务一个游戏进程；第二个连接在握手阶段被拒（同 pid 为 `duplicate_pid`，异 pid 为 `busy`）。
 - 宿主不在时，客户端必须降级为无桥运行：不抛异常、不阻塞主线程、不往游戏目录之外写东西。
 
-## 2. 发现
+## 2. 端点与生命周期
 
-宿主在启动时（以及每次拉起游戏前）原子写入：
+宿主固定监听 `127.0.0.1:41297`；客户端直接连这个端口，不读发现文件、不写游戏 prefix。固定端口是为了避开跨 Wine/Proton 的发现路径（`%ProgramData%`、prefix、bottle 三种推导都不可靠），loopback TCP 是目前唯一已验证可用的本机传输。
 
-| 平台 | 路径 |
-|---|---|
-| Windows 原生 | `%ProgramData%\CasualtiesHub\bridge.json` |
-| Linux / Proton | `<prefix>/drive_c/ProgramData/CasualtiesHub/bridge.json` |
-| macOS（CrossOver / Whisky） | `<bottle>/drive_c/ProgramData/CasualtiesHub/bridge.json`，bottle 由用户在设置里手动指定 |
-
-```json
-{
-  "proto": 1,
-  "host": { "pid": 1234, "version": "0.1.0", "os": "linux" },
-  "endpoint": { "host": "127.0.0.1", "port": 47821 },
-  "token": "<64 位小写 hex>",
-  "started_at": "2026-11-15T09:00:00Z"
-}
-```
-
-规则（违反任一条，客户端视为“没有宿主”）：
-
-- 写入用临时文件 + rename，权限 0600；不要原地改写。
-- 宿主正常退出时删除；残留文件无害，连接被拒即视为过期。
-- 客户端不信任 `endpoint.host` 以外的地址字段；`host` 必须等于 `127.0.0.1`。
-- 客户端读不到、解析失败、连不上 → 退避重试（1/2/5/10/30 秒封顶），只在第一次失败时写一条日志。
+- 宿主只在检测到游戏进程运行，或用户从 cuhub 点启动游戏时开始监听；游戏退出后停止并断开。
+- 端口被占用时宿主不启动桥，把失败留在状态里（状态栏显示端口被占用），不 panic、不静默换端口。
+- 客户端连不上 → 退避重试（1/2/5/10/30 秒封顶），只在第一次失败时写一条日志。
 - 客户端不得因为桥的任何失败影响游戏启动与主循环。
+
+token 不再是运行时生成的文件内容：Rust 与 C# 两端各有一个相同的 64 位小写十六进制常量（`crates/core/src/bridge/handshake.rs` 的 `TOKEN`、`CuhubBridge.Core/Transport.cs` 的 `Transport.Token`），改一处必须同时改另一处。它只挡住误连（例如连到别的旧版本或别的程序），不是安全边界；边界是只监听回环地址与握手的字段校验。
 
 ## 3. 帧
 
@@ -64,7 +47,7 @@ cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的
 
 | 字段 | 含义 |
 |---|---|
-| `token` | 发现文件里的 token，常量时间比较 |
+| `token` | 固定共享常量，常量时间比较；不符即拒 |
 | `proto` | `{major, minor}`；`major` 不等即拒 |
 | `caps` | 客户端能理解的扩展方法名列表 |
 | `game` | `{pid, unity_version, bepinex_version}` |
@@ -74,7 +57,7 @@ cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的
 
 `commands` 是宿主已知的命令表，`perms` 是每条命令当下的授权（`granted` / `denied` / `ask`）。授权不在握手里改，只能由用户在 cuhub 里改，改完用 `evt: perms.changed` 通知。
 
-拒绝：先回 `res.ok:false` 再断开；`bad_token`（message 只写 token rejected，不回详情）、`proto_mismatch`（附带双方 major）、`duplicate_pid`、`busy`（已有会话）。
+拒绝：先回 `res.ok:false` 再断开；`bad_token`（message 只写 token rejected，不回详情）、`proto_mismatch`（附带双方 major）、`duplicate_pid`、`busy`（已有会话）。宿主把最近一次握手失败留在桥状态里，状态栏据此显示坏 token / 版本不符 / 忙；成功握手后清空。客户端收到 `busy` / `duplicate_pid` 后按自身退避策略重试；`bad_token`、`proto_mismatch` 不在本次运行内重试。
 
 ### 5.2 心跳
 
@@ -139,10 +122,12 @@ MVP 尚未实现这两个上报，宿主收到未知 `evt` 忽略。
 - 授权持久化在 `Settings.json` 的 `bridge.permissions`，按 `mod guid` + 命令 id 记。
 - 新连接、新命令出现时一律按默认档处理，不继承上次的临时授权。
 - 任何授权变更写日志（旧值、新值、触发来源）。
+- 授权在运行中立即生效：宿主下一条命令就按新值判定，不需要重连；hello.ok 的 `perms` 仍是握手时的快照，之后不重发。
 
 ## 8. 安全边界
 
-- 只监听 `127.0.0.1` 的临时端口；不监听 `0.0.0.0`，不做局域网发现。
+- 只监听 `127.0.0.1:41297`；不监听 `0.0.0.0`，不做局域网发现。
+- token 是两端共享常量，只防误连，不承担认证；新增桥字段仍以本文件为白名单。
 - 游戏侧发来的一切按不可信输入处理：帧上限、字段长度、id 白名单、数值范围。
 - 凭据（Nexus key、GitHub token）永不进入桥；桥上字段以本文件为白名单，新增字段要过一遍这里。
 - 宿主不得把桥当作文件系统或进程控制通道：不做任意路径读写、不做进程注入、不做通用 RPC。

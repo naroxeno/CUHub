@@ -167,7 +167,7 @@ impl Session {
         );
         if let Err(error) = self.send_message(&request) {
             lock(&self.pending).remove(&id);
-            return Err(BridgeError::Io(error));
+            return Err(BridgeError::Io(error.to_string()));
         }
         match receiver.recv_timeout(timeout) {
             Ok(Ok(value)) => Ok(value),

@@ -17,6 +17,10 @@
 - `ensure_plugins(game_root)`：安装完成后确保 `BepInEx/plugins` 存在。
 - `apply_upgrade(plan, backup_root)`：只有 `can_apply()` 为真才执行；返回备份目录、替换列表与新增列表。
 
+## 游戏进程
+
+- Linux 先看 `/proc/<pid>/exe` 是否落在游戏根内；Proton/Wine 的 exe 是 `wine64-preloader`，这时再看 `/proc/<pid>/cwd` 是否在游戏根内，且 `/proc/<pid>/cmdline` 第一个参数的文件名以 `.exe` 结尾并存在于该工作目录；命中即视为游戏运行。Windows 用 `tasklist` 查进程名，macOS 用 `pgrep`。
+
 ## 布局
 
 - 归档含 `BepInEx/plugins/...` 时走 BepInEx 布局，只安装 `plugins/` 之后的部分；BepInEx 本体、`core`、`config` 等路径不写。
@@ -72,12 +76,12 @@
 
 旧的 `plan_download` + `apply_install` 链路只用于 BepInEx 与回退：`plan_download` 解包后生成 `UpgradePlan`，`apply_install` 在游戏未运行时备份并逐文件替换。两者不再处理普通模组的远程安装/更新。
 
-来源选择在 UI 层：pin 优先；未 pin 时有 Nexus Premium 走 Nexus，否则 GitHub；Nexus 下载失败且未 pin 时回退 GitHub，并在面板注明。GitHub 资产按清单 `asset` 精确名选择，未填时取 release 里第一个 zip/7z/rar 或裸 DLL；裸 DLL 下载后同样走 `stage_dll` 与 `plan_payload`。
+来源选择在 UI 层：pin 优先；未 pin 时有 Nexus Premium 走 Nexus，否则 GitHub；Nexus 下载失败且未 pin 时回退 GitHub，并在面板注明。GitHub 资产先按清单 `asset` 精确名选择；精确名缺失时，按版本号数字段归一化后的形状唯一匹配回退，同形多资产不猜；未填时取 release 里第一个 zip/7z/rar 或裸 DLL；裸 DLL 下载后同样走 `stage_dll` 与 `plan_payload`。
 
 `apply_install` 先查游戏进程：运行中返回 `GameRunning`，UI 每 3 秒重试，最多 60 次（约 3 分钟）；超时后停止重试并提示游戏仍在运行。取消只在下一次重试前生效，已经开始的写入会完成；不会留下半套文件。写入前把所有 Replace 备份到 `<AppData>/Backups/<UTC 时间戳>`，逐文件临时文件 + rename，失败按逆序回滚。备份目录保留供手工恢复；本版没有恢复界面。
 
 BepInEx 本体复用同一条链路：`Hub::prepare_bepinex` 下载到 `<AppData>/Cache/Downloads/<stamp>-<pid>`、按 pin 的 sha256 校验、解包到 staging 再生成计划；用户确认后 `apply_install`，最后 `finish_bepinex` 建 `BepInEx/plugins`。取消删除 staging，备份同样落在 `<AppData>/Backups`。
 
-远程首次安装走 `Hub::prepare_remote_install(entry)`：先查游戏进程并确认 plugins 存在，按清单的 `repo`/`asset` 下载到 `<AppData>/Cache/Downloads/<stamp>-<pid>`，再 staging 并生成 `PackagePlan`。返回的 `RemoteInstall { name, staging, package }` 交给 pending 面板，确认后 `Hub::apply_package`；下载之后的任何失败都会删掉 staging。`plan_first_install` 仅供旧链路与测试使用。
+远程首次安装走 `Hub::prepare_remote_install(entry)`：先查游戏进程并确认 plugins 存在，按清单的 `repo`/`asset` 下载（asset 精确名缺失时按同一版本形状唯一回退）到 `<AppData>/Cache/Downloads/<stamp>-<pid>`，再 staging 并生成 `PackagePlan`。返回的 `RemoteInstall { name, staging, package }` 交给 pending 面板，确认后 `Hub::apply_package`；下载之后的任何失败都会删掉 staging。`plan_first_install` 仅供旧链路与测试使用。
 
 不做：一键升级、后台自动安装、release 页链接、把归档送进收件箱再确认。Update 在 `OutOfDate`、或生效源为 GitHub 且 release 版本高于已装版本时出现；禁用模组与无法确定来源的行不给，Nexus Standard 的 403 仍按失败展示。

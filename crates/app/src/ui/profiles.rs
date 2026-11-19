@@ -17,6 +17,7 @@ pub enum ProfilesBusy {
     Plan,
     Apply,
     Remove,
+    Rename,
     Scan,
     Adopt,
 }
@@ -45,10 +46,13 @@ pub struct ProfilesUi {
     pub apply_name: Signal<String>,
     pub apply_count: Signal<usize>,
     pub remove_name: Signal<String>,
+    pub rename_from: Signal<String>,
+    pub rename_name: Signal<String>,
     pub adoptable: Signal<usize>,
     pub adopt_scanned: Signal<bool>,
     pub adopt_skipped: Signal<usize>,
     pub adopt_reasons: Signal<Vec<AdoptReason>>,
+    pub adopt_names: Signal<Vec<String>>,
     pub adopt_done: Signal<Option<(usize, String)>>,
     pub adopt_error: Signal<&'static str>,
 }
@@ -65,10 +69,13 @@ impl ProfilesUi {
             apply_name: signal(String::new()),
             apply_count: signal(0usize),
             remove_name: signal(String::new()),
+            rename_from: signal(String::new()),
+            rename_name: signal(String::new()),
             adoptable: signal(0usize),
             adopt_scanned: signal(false),
             adopt_skipped: signal(0usize),
             adopt_reasons: signal(Vec::new()),
+            adopt_names: signal(Vec::new()),
             adopt_done: signal(None::<(usize, String)>),
             adopt_error: signal(""),
         }
@@ -150,8 +157,8 @@ fn create_profile(hub: &Hub, name: &str, snapshot: bool, overwrite: bool) -> Cre
     }
 }
 
-fn scan_summary(plan: &AdoptPlan) -> (usize, usize, Vec<AdoptReason>) {
-    const KEYS: [&str; 7] = [
+fn scan_summary(plan: &AdoptPlan) -> (usize, usize, Vec<AdoptReason>, Vec<String>) {
+    const KEYS: [&str; 9] = [
         "profiles.adopt_skip_disabled",
         "profiles.adopt_skip_managed",
         "profiles.adopt_skip_outside",
@@ -159,8 +166,10 @@ fn scan_summary(plan: &AdoptPlan) -> (usize, usize, Vec<AdoptReason>) {
         "profiles.adopt_skip_missing",
         "profiles.adopt_skip_store",
         "profiles.adopt_skip_duplicate",
+        "profiles.adopt_skip_target",
+        "profiles.adopt_skip_builtin",
     ];
-    let mut counts = [0usize; 7];
+    let mut counts = [0usize; 9];
     for (_, skip) in &plan.skipped {
         let index = match skip {
             AdoptSkip::Disabled => 0,
@@ -170,6 +179,8 @@ fn scan_summary(plan: &AdoptPlan) -> (usize, usize, Vec<AdoptReason>) {
             AdoptSkip::MissingVersion => 4,
             AdoptSkip::StoreHasVersion => 5,
             AdoptSkip::DuplicateName => 6,
+            AdoptSkip::DuplicateTarget => 7,
+            AdoptSkip::BuiltIn => 8,
         };
         counts[index] += 1;
     }
@@ -179,7 +190,18 @@ fn scan_summary(plan: &AdoptPlan) -> (usize, usize, Vec<AdoptReason>) {
         .filter(|(_, count)| *count > 0)
         .map(|(key, count)| AdoptReason { key, count })
         .collect();
-    (plan.items.len(), plan.skipped.len(), reasons)
+    let names = plan
+        .items
+        .iter()
+        .map(|item| {
+            item.source
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&item.mod_id)
+                .to_owned()
+        })
+        .collect();
+    (plan.items.len(), plan.skipped.len(), reasons, names)
 }
 
 fn error_key(error: &HubError) -> &'static str {
@@ -300,6 +322,68 @@ impl Ui {
 
     pub(crate) fn profiles_cancel_create(&self) {
         self.profiles.create_confirm.set(String::new());
+    }
+
+    pub(crate) fn profiles_request_rename(&self, name: &str) {
+        if self.profiles.is_busy() {
+            return;
+        }
+        self.profiles.error.set("");
+        self.profiles.rename_from.set(name.to_owned());
+        self.profiles.rename_name.set(name.to_owned());
+    }
+
+    pub(crate) fn profiles_cancel_rename(&self) {
+        self.profiles.rename_from.set(String::new());
+        self.profiles.rename_name.set(String::new());
+    }
+
+    pub(crate) fn profiles_confirm_rename(&self) {
+        if self.profiles.is_busy() {
+            return;
+        }
+        let from = self.profiles.rename_from.get();
+        if from.is_empty() {
+            return;
+        }
+        let to = self.profiles.rename_name.get().trim().to_owned();
+        self.profiles.error.set("");
+        if to.is_empty() {
+            self.profiles.error.set("profiles.error_empty_name");
+            return;
+        }
+        if to == from {
+            self.profiles_cancel_rename();
+            return;
+        }
+        self.profiles.busy.set(ProfilesBusy::Rename);
+        let hub = self.hub.clone();
+        let ui = self.clone();
+        self.spawn_worker(async move {
+            let worker_from = from.clone();
+            let result = blocking(move || {
+                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                hub.profiles()
+                    .rename(&worker_from, &to)
+                    .map_err(|error| match error.kind() {
+                        io::ErrorKind::InvalidInput => "profiles.error_invalid_name",
+                        io::ErrorKind::AlreadyExists => "profiles.error_name_taken",
+                        io::ErrorKind::NotFound => "profiles.error_not_found",
+                        _ => "profiles.error_io",
+                    })
+            })
+            .await;
+            ui.profiles.busy.set(ProfilesBusy::None);
+            match result {
+                Ok(Ok(())) => {
+                    ui.profiles.rename_from.set(String::new());
+                    ui.profiles.rename_name.set(String::new());
+                    ui.profiles_refresh();
+                }
+                Ok(Err(key)) => ui.profiles.error.set(key),
+                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+            }
+        });
     }
 
     pub(crate) fn profiles_request_apply(&self, name: &str) {
@@ -453,6 +537,7 @@ impl Ui {
         self.profiles.adopt_error.set("");
         self.profiles.adopt_done.set(None);
         self.profiles.adopt_reasons.set(Vec::new());
+        self.profiles.adopt_names.set(Vec::new());
         self.profiles.busy.set(ProfilesBusy::Scan);
         let hub = self.hub.clone();
         let ui = self.clone();
@@ -467,16 +552,18 @@ impl Ui {
             .await;
             ui.profiles.busy.set(ProfilesBusy::None);
             match result {
-                Ok(Ok((adoptable, skipped, reasons))) => {
+                Ok(Ok((adoptable, skipped, reasons, names))) => {
                     ui.profiles.adopt_scanned.set(true);
                     ui.profiles.adoptable.set(adoptable);
                     ui.profiles.adopt_skipped.set(skipped);
                     ui.profiles.adopt_reasons.set(reasons);
+                    ui.profiles.adopt_names.set(names);
                 }
                 Ok(Err(key)) => {
                     ui.profiles.adopt_scanned.set(false);
                     ui.profiles.adoptable.set(0);
                     ui.profiles.adopt_skipped.set(0);
+                    ui.profiles.adopt_names.set(Vec::new());
                     ui.profiles.adopt_error.set(key);
                 }
                 Err(_) => ui.profiles.error.set("profiles.error_generic"),
@@ -532,24 +619,29 @@ impl Ui {
             ui.profiles.busy.set(ProfilesBusy::None);
             match result {
                 Ok(AdoptOutcome::Done { adopted, backup }) => {
+                    ui.profiles_refresh();
                     ui.profiles.adopt_done.set(Some((adopted, backup)));
                     ui.profiles.adopt_scanned.set(false);
                     ui.profiles.adoptable.set(0);
                     ui.profiles.adopt_skipped.set(0);
                     ui.profiles.adopt_reasons.set(Vec::new());
+                    ui.profiles.adopt_names.set(Vec::new());
                 }
                 Ok(AdoptOutcome::Partial { adopted, backup }) => {
+                    ui.profiles_refresh();
                     ui.profiles.adopt_done.set(Some((adopted, backup)));
                     ui.profiles.adopt_scanned.set(false);
                     ui.profiles.adoptable.set(0);
                     ui.profiles.adopt_skipped.set(0);
                     ui.profiles.adopt_reasons.set(Vec::new());
+                    ui.profiles.adopt_names.set(Vec::new());
                     ui.profiles.adopt_error.set("profiles.adopt_partial");
                 }
                 Ok(AdoptOutcome::Failed(key)) => {
                     ui.profiles.adopt_scanned.set(false);
                     ui.profiles.adoptable.set(0);
                     ui.profiles.adopt_skipped.set(0);
+                    ui.profiles.adopt_names.set(Vec::new());
                     ui.profiles.adopt_error.set(key);
                 }
                 Err(_) => ui.profiles.error.set("profiles.error_generic"),

@@ -128,6 +128,17 @@ impl ProfileStore {
     }
 
     pub fn save(&self, profile: &Profile) -> io::Result<()> {
+        self.write_file(profile)?;
+        if profile.active {
+            self.write_active(Some(&profile.name))?;
+            self.rewrite_flags(Some(&profile.name))?;
+        } else if self.active_marker().as_deref() == Some(profile.name.as_str()) {
+            self.write_active(None)?;
+        }
+        Ok(())
+    }
+
+    fn write_file(&self, profile: &Profile) -> io::Result<()> {
         validate_name(&profile.name)?;
         for entry in &profile.entries {
             if !is_valid_name(&entry.mod_id) || !is_valid_name(&entry.version) {
@@ -141,11 +152,17 @@ impl ProfileStore {
         crate::atomic::replace(
             &self.profile_file(&profile.name),
             format!("{json}\n").as_bytes(),
-        )?;
-        if profile.active {
-            self.write_active(Some(&profile.name))?;
-        } else if self.active_marker().as_deref() == Some(profile.name.as_str()) {
-            self.write_active(None)?;
+        )
+    }
+
+    fn rewrite_flags(&self, skip: Option<&str>) -> io::Result<()> {
+        for name in self.list() {
+            if skip == Some(name.as_str()) {
+                continue;
+            }
+            if let Some(profile) = self.load(&name) {
+                self.write_file(&profile)?;
+            }
         }
         Ok(())
     }
@@ -163,23 +180,47 @@ impl ProfileStore {
         Ok(())
     }
 
+    pub fn rename(&self, from: &str, to: &str) -> io::Result<()> {
+        validate_name(from)?;
+        validate_name(to)?;
+        if from == to {
+            return Ok(());
+        }
+        let Some(mut profile) = self.load(from) else {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("profile \"{from}\" does not exist"),
+            ));
+        };
+        if self.profile_file(to).is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                format!("profile \"{to}\" already exists"),
+            ));
+        }
+        profile.name = to.to_owned();
+        self.save(&profile)?;
+        self.remove(from)?;
+        Ok(())
+    }
+
     pub fn active(&self) -> Option<String> {
         let name = self.active_marker()?;
         self.profile_file(&name).is_file().then_some(name)
     }
 
     pub fn set_active(&self, name: Option<&str>) -> io::Result<()> {
-        let Some(name) = name else {
-            return self.write_active(None);
-        };
-        validate_name(name)?;
-        if !self.profile_file(name).is_file() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("profile \"{name}\" does not exist"),
-            ));
+        if let Some(name) = name {
+            validate_name(name)?;
+            if !self.profile_file(name).is_file() {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("profile \"{name}\" does not exist"),
+                ));
+            }
         }
-        self.write_active(Some(name))
+        self.write_active(name)?;
+        self.rewrite_flags(None)
     }
 
     fn directory(&self) -> PathBuf {
@@ -329,6 +370,38 @@ pub(crate) fn entry_target(
     ))
 }
 
+pub(crate) fn checkpoint(
+    name: String,
+    base: Option<&Profile>,
+    index: &LinkIndex,
+    adopted: Vec<ProfileEntry>,
+) -> Profile {
+    let mut profile = base.cloned().unwrap_or_else(|| Profile::new(name.clone()));
+    profile.name = name;
+    profile.active = true;
+    profile
+        .entries
+        .retain(|entry| !adopted.iter().any(|item| item.mod_id == entry.mod_id));
+    profile.entries.extend(adopted);
+    for (_, link) in index.entries() {
+        if profile
+            .entries
+            .iter()
+            .any(|entry| entry.mod_id == link.mod_id)
+        {
+            continue;
+        }
+        profile.entries.push(ProfileEntry {
+            mod_id: link.mod_id.clone(),
+            version: link.version.clone(),
+            enabled: true,
+            source: None,
+            link: Some(link.kind),
+        });
+    }
+    profile
+}
+
 pub fn plan_apply(
     profile: &Profile,
     index: &LinkIndex,
@@ -466,10 +539,17 @@ pub(crate) enum Deployment {
 }
 
 pub(crate) fn deployment(files: &[StoreFile]) -> Deployment {
-    let [file] = files else {
+    deployment_from_paths(files.iter().map(|file| file.path.as_str()))
+}
+
+pub(crate) fn deployment_from_paths<'a>(paths: impl IntoIterator<Item = &'a str>) -> Deployment {
+    let mut paths = paths.into_iter();
+    let Some(name) = paths.next() else {
         return Deployment::Directory;
     };
-    let name = file.path.as_str();
+    if paths.next().is_some() {
+        return Deployment::Directory;
+    }
     // A single DLL is its own unit at the top of Plugins, so its target keeps the file name.
     if is_valid_name(name) && name.to_ascii_lowercase().ends_with(".dll") {
         return Deployment::File(name.to_owned());

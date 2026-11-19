@@ -38,16 +38,16 @@
 
 ### 桥（Bridge，实验性，不发布）
 
-- Rust 宿主：`crates/core/src/bridge/{proto,rendezvous,command,session,handshake,server}.rs` 加 `hub/bridge_host.rs`；监听 127.0.0.1、token、单会话、命令表、三档权限、审计；`crates/core/tests/bridge_server.rs` 13 个回环集成测试。
-- C# 游戏侧：`mods/cuhub-bridge/` 的 `CuhubBridge.Core` + `CuhubBridge.Plugin`，`dotnet build -c Release` 通过、无警告；实现发现、hello、10 秒心跳、`mp.state`、`mp.host` / `mp.join`（反射 CUCoreLib），其余命令回 `unavailable`。尚未真机加载。
-- 未接线：`take_events` 没有 UI 消费者，Multiplayer 页不显示桥状态；`game.state` / `mods.loaded`、权限确认、`mp.leave` / `mp.kick` / `save.*` / `skin.*` 未做。桥没有打进 Cuhub 安装包，需 `just package-bridge` 生成 zip。
+- Rust 宿主：`crates/core/src/bridge/{proto,mp,command,session,handshake,server}.rs` 加 `hub/bridge_host.rs`；固定监听 `127.0.0.1:41297`、两端共享 token、单会话、命令表、三档权限、最近握手失败、审计；`crates/core/tests/bridge_server.rs` 13 个回环集成测试。
+- C# 游戏侧：`mods/cuhub-bridge/` 的 `CuhubBridge.Core` + `CuhubBridge.Plugin`，`dotnet build -c Release` 通过、无警告；直连 `127.0.0.1:41297`，实现 hello、10 秒心跳、`mp.state`、`mp.host` / `mp.join`（反射 CUCoreLib），其余命令回 `unavailable`。尚未真机加载。
+- W2/W3 已接线：状态栏三态 + 最近握手失败、Local Mods“运行中已加载”、Multiplayer 顶部只读 `mp.state` 卡；`game.state` / `mods.loaded`、权限确认、`mp.leave` / `mp.kick` / `save.*` / `skin.*` 未做。桥没有打进 Cuhub 安装包，需 `just package-bridge` 生成 zip。
 - 详细边界见 [bridge 模块说明](core/bridge/overview.md)、[协议](bridge/protocol.md)、[实施方案](bridge/plan.md)、[C# 研究](bridge/csharp-plugin.md)。
 
 ## 3. 当前结构
 
 - core：`paths / settings / network / metadata / hubconfig / nexus_auth / nexus / install / packages / store / links / profiles / adopt / mods / catalogs / modlist / sources / protect / backup / skins / steam / launch / bridge / easytier / room / multiplayer / logs / hub`。
 - app：9 项侧栏（Hub Home、Nexus、远程、本地、模组档案、多人游戏、皮肤与备份、设置、关于）；`shell/title_bar.rs` 是无边框 HUD 标题栏，`shell/frame_edges.rs` 是 8 条缩放热区，`ui/fx.rs` 是共用动效时长，`shell/task_center.rs` / `shell/task_cards.rs` 是任务中心与卡片，`ui/tasks.rs` / `ui/batch.rs` 是任务数据与批量 worker；侧栏折叠走原生 `LayoutAnimation`。
-- 持久化：`Settings.json`、`Store/`、`Profiles/`、`Links.json`、`Backups/`、`Tools/easytier/`、`multiplayer.json`（0600）；桥的 `bridge.json` 在 Proton prefix 的 `ProgramData/CasualtiesHub/`，`bridge.lock` 在 appdata。
+- 持久化：`Settings.json`、`Store/`、`Profiles/`、`Links.json`、`Backups/`、`Tools/easytier/`、`multiplayer.json`（0600）；桥没有发现文件与锁文件，端口固定，token 是源码常量。
 - 内容库自定义根路径修复过：以前会生成 `Store/Store/mods`，现在 Hub 直接把 `Settings::store_dir` 当 Store 根。
 
 ## 4. 已拍板 / 约束

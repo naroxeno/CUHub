@@ -2,11 +2,14 @@
 
 pub mod batch;
 mod bepinex;
+mod bridge;
+mod bridge_install;
 mod delete;
 mod fx;
 mod github;
 mod install;
 mod mods;
+mod mp_control;
 mod multiplayer;
 mod nexus;
 mod profiles;
@@ -22,6 +25,8 @@ pub use delete::*;
 pub use fx::*;
 #[allow(unused_imports)]
 pub use install::*;
+#[allow(unused_imports)]
+pub use mp_control::*;
 #[allow(unused_imports)]
 pub use multiplayer::*;
 pub use profiles::*;

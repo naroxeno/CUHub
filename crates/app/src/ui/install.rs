@@ -143,11 +143,8 @@ pub(super) fn prepare_update(
         }
     };
     let staging = hub.staging_root();
-    let source_label = match source {
-        SourceKind::Github => "github",
-        SourceKind::Nexus => "nexus",
-    };
-    let package = match hub.prepare_package_update(&archive, item, &staging, source_label) {
+    let label = source_label(source, repo, nexus_id)?;
+    let package = match hub.prepare_package_update(&archive, item, &staging, &label) {
         Ok(package) => package,
         Err(HubError::Dependencies(issues)) => return Ok(RemoteAttempt::Blocked(issues)),
         Err(error) => return Err(error),
@@ -163,6 +160,25 @@ pub(super) fn prepare_update(
         notes,
         game_running,
     })))
+}
+
+fn source_label(
+    source: SourceKind,
+    repo: Option<&Repo>,
+    nexus_id: Option<&str>,
+) -> Result<String, HubError> {
+    match source {
+        SourceKind::Github => {
+            let repo =
+                repo.ok_or_else(|| HubError::Update(String::from("mod has no GitHub repository")))?;
+            Ok(format!("github:{}", repo.slug()))
+        }
+        SourceKind::Nexus => {
+            let id =
+                nexus_id.ok_or_else(|| HubError::Update(String::from("mod has no Nexus id")))?;
+            Ok(format!("nexus:{id}"))
+        }
+    }
 }
 
 fn choose_update_source(
@@ -390,5 +406,43 @@ impl Ui {
     pub fn dismiss_dependency_prompt(&self) {
         self.dependency_prompt.set(None);
         self.notice.set(String::new());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_label_carries_the_repository_slug() {
+        let repo = Repo::parse("CNCUMC/Bark").unwrap();
+        assert_eq!(
+            source_label(SourceKind::Github, Some(&repo), None).unwrap(),
+            "github:CNCUMC/Bark"
+        );
+    }
+
+    #[test]
+    fn nexus_label_carries_the_mod_id() {
+        assert_eq!(
+            source_label(SourceKind::Nexus, None, Some("12345")).unwrap(),
+            "nexus:12345"
+        );
+    }
+
+    #[test]
+    fn github_label_requires_a_repository() {
+        assert!(matches!(
+            source_label(SourceKind::Github, None, None),
+            Err(HubError::Update(_))
+        ));
+    }
+
+    #[test]
+    fn nexus_label_requires_a_mod_id() {
+        assert!(matches!(
+            source_label(SourceKind::Nexus, None, None),
+            Err(HubError::Update(_))
+        ));
     }
 }

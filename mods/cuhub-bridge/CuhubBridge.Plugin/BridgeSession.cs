@@ -16,7 +16,8 @@ namespace CuhubBridge.Plugin
             internal DateTime At;
         }
 
-        static readonly int[] DiscoveryBackoffSeconds = { 1, 2, 5, 10, 30 };
+        const int DuplicateRetrySeconds = 10;
+        const int BusyRetrySeconds = 30;
 
         readonly ManualLogSource _log;
         readonly CommandRouter _router;
@@ -24,15 +25,12 @@ namespace CuhubBridge.Plugin
         readonly Action<string> _clientLog;
 
         BridgeClient _client;
-        RendezvousFile _rendezvous;
         ulong _nextId = 1;
         ulong _helloId;
         ulong _pingId;
         int _pingMisses;
-        int _discoveryAttempts;
         bool _helloForConnection;
         bool _helloAccepted;
-        bool _loggedDiscovery;
         bool _stopped;
         DateTime _handshakeDeadline;
         DateTime _connectDeadline = DateTime.MaxValue;
@@ -48,7 +46,7 @@ namespace CuhubBridge.Plugin
 
         internal void Start()
         {
-            _log.LogInfo("CuhubBridge " + BridgePlugin.PluginVersion + " loaded");
+            _log.LogInfo("CuhubBridge " + BridgePlugin.PluginVersion + " loaded; connecting to " + Transport.Host + ":" + Transport.Port);
         }
 
         internal void Pump()
@@ -71,27 +69,9 @@ namespace CuhubBridge.Plugin
         void EnsureClient(DateTime now)
         {
             if (_client != null || now < _retryAt) return;
-            if (!Rendezvous.TryRead(out _rendezvous))
-            {
-                ScheduleDiscovery(now);
-                return;
-            }
-            _discoveryAttempts = 0;
-            _client = new BridgeClient(_rendezvous.Host, _rendezvous.Port, _clientLog);
+            _client = new BridgeClient(Transport.Host, Transport.Port, _clientLog);
             _client.Start();
             _connectDeadline = now.AddSeconds(60);
-        }
-
-        void ScheduleDiscovery(DateTime now)
-        {
-            if (!_loggedDiscovery)
-            {
-                _loggedDiscovery = true;
-                _log.LogInfo("CuhubBridge: no usable bridge.json; running without the bridge");
-            }
-            var index = _discoveryAttempts < DiscoveryBackoffSeconds.Length ? _discoveryAttempts : DiscoveryBackoffSeconds.Length - 1;
-            _discoveryAttempts++;
-            _retryAt = now.AddSeconds(DiscoveryBackoffSeconds[index]);
         }
 
         void DrainIncoming(DateTime now)
@@ -127,6 +107,16 @@ namespace CuhubBridge.Plugin
                     var detail = message.Error?.Message ?? string.Empty;
                     _log.LogError("CuhubBridge: host rejected the handshake (" + code + ") " + detail);
                     StopClient();
+                    if (code == "duplicate_pid")
+                    {
+                        _retryAt = DateTime.UtcNow.AddSeconds(DuplicateRetrySeconds);
+                        return;
+                    }
+                    if (code == "busy")
+                    {
+                        _retryAt = DateTime.UtcNow.AddSeconds(BusyRetrySeconds);
+                        return;
+                    }
                     _stopped = true;
                     return;
                 }
@@ -277,7 +267,7 @@ namespace CuhubBridge.Plugin
             }
             return new JObject
             {
-                ["token"] = _rendezvous.Token,
+                ["token"] = Transport.Token,
                 ["proto"] = new JObject
                 {
                     ["major"] = Protocol.Major,

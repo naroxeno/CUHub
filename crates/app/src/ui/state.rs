@@ -16,7 +16,7 @@ use super::tasks::DownloadTrack;
 use crate::i18n;
 use crate::setup::Setup;
 use crate::shell::nav;
-use cuhub_core::hub::{BepInExInstall, Hub};
+use cuhub_core::hub::{BepInExInstall, BridgeInstallStatus, BridgeSnapshot, Hub};
 use cuhub_core::install::{Flavor, Status as BepInExStatus};
 use cuhub_core::metadata::MetadataMod;
 use cuhub_core::mods::InstalledMod;
@@ -97,6 +97,10 @@ pub struct Ui {
     pub github_token_check: Signal<String>,
     pub store_draft: Signal<String>,
     pub store_error: Signal<String>,
+    pub bridge: Signal<BridgeSnapshot>,
+    pub bridge_install: Signal<Option<BridgeInstallStatus>>,
+    pub bridge_install_busy: Signal<bool>,
+    pub bridge_install_text: Signal<String>,
     pub mp: MultiplayerUi,
     pub profiles: ProfilesUi,
     pub app_data: String,
@@ -116,7 +120,7 @@ impl Ui {
         let zoom = settings.ui_scale;
         let mods = hub.scan_mods().unwrap_or_default();
         let checks = BTreeMap::new();
-        let local_rows = build_local_rows(&hub, &mods, &checks);
+        let local_rows = build_local_rows(&hub, &mods, &checks, &BTreeSet::new());
         let nexus_rows = build_nexus_rows(hub.metadata(), &mods);
         let nexus_total = nexus_rows.len();
         let nexus_page_rows = page_slice(&nexus_rows, 0);
@@ -148,6 +152,7 @@ impl Ui {
         let store_draft = signal(settings.store_path.clone());
         let store_error = signal(String::new());
         let bepinex = hub.bepinex_status().ok();
+        let bridge_install = hub.bridge_install_status().ok();
         let owner = Owner::current();
         let setup = Setup::new(&settings, setup_due);
         let notice = if settings.game_path.trim().is_empty() {
@@ -162,6 +167,10 @@ impl Ui {
             taps: signal(0u32),
             last_tap: signal(None),
             notice: signal(notice),
+            bridge: signal(BridgeSnapshot::default()),
+            bridge_install: signal(bridge_install),
+            bridge_install_busy: signal(false),
+            bridge_install_text: signal(String::new()),
             mp: MultiplayerUi::new(&hub),
             profiles: ProfilesUi::new(),
             hub: Arc::new(Mutex::new(hub)),
@@ -255,6 +264,9 @@ impl Ui {
         }
         self.profiles_refresh();
         self.watch_downloads();
+        self.watch_bridge();
+        self.watch_mp_control();
+        self.refresh_bridge_install();
     }
 
     pub fn open_link(&self, url: &str) {
@@ -322,6 +334,7 @@ impl Ui {
                 self.settings.set(settings);
                 self.refresh_mods();
                 self.refresh_bepinex();
+                self.refresh_bridge_install();
                 Ok(())
             }
             Err(error) => Err(error),
@@ -335,6 +348,7 @@ impl Ui {
         self.settings.set(settings);
         self.refresh_mods();
         self.refresh_bepinex();
+        self.refresh_bridge_install();
         Some(path)
     }
 
