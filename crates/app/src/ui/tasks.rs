@@ -8,7 +8,6 @@ use cuhub_core::hub::BepInExInstall;
 use cuhub_core::install::FileAction;
 use cuhub_core::mods::IssueKind;
 use cuhub_core::network::DownloadProgress;
-use cuhub_core::sources::SourceKind;
 use nsh_core::prelude::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -259,10 +258,6 @@ fn dependency_card(ui: &Ui, prompt: &DependencyPrompt) -> TaskCard {
 }
 
 fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
-    let source = match pending.source {
-        SourceKind::Github => "GitHub",
-        SourceKind::Nexus => "Nexus",
-    };
     let replaced = pending
         .plan
         .files
@@ -275,8 +270,8 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
         (
             t!(
                 "pending.from",
-                source = source,
-                target = pending.plan.target_root.display().to_string()
+                source = pending.package.source.as_str(),
+                target = pending.package.target.display().to_string()
             ),
             TEXT_MUTED,
         ),

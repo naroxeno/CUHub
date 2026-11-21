@@ -18,7 +18,9 @@
 - `checkpoint` 供 Hub 迁移收尾调用：以当前激活档案为底，同 mod id 的条目被迁移结果替换，再补齐 `Links.json` 里尚未覆盖的条目，生成 active 档案；名称由 Hub 给（`adopt_%Y%m%d-%H%M%S`，重名加 `-序号`）。
 - `rename` 先按新名保存再删旧文件：激活档案改名时 `active.txt` 已由 `save` 指向新名，删旧文件不会清空激活；目标重名返回 `AlreadyExists`，旧档案原样保留。
 - `enabled=false` 的条目不部署，但留在档案里；Hub 把这类条目补进本地列表（`source_path` 为目标路径，`disabled=true`），因此禁用后行仍保留、可再启用。
-- 部分失败用 `ProfileError::Apply { report, source }` 返回：已成功的链接先写回 `Links.json`，`report.applied` 与 `report.remaining` 加起来等于输入 op 数，界面据此列出待处理项。
+- 部分失败用 `ProfileError::Apply { report, source }` 返回：已成功的链接先写回 `Links.json`，`report.applied` 与 `report.remaining` 加起来等于输入 op 数，界面展示已完成操作数、总数和失败原因。索引保存失败也保留操作报告。
+
+- 档案应用入口在预览与执行前检查部署目标。未托管目标已存在或无法检查时，在修改 Plugins 之前报出目标路径。
 
 ## 边界
 

@@ -205,7 +205,7 @@ fn updating_a_managed_mod_replaces_the_profile_entry() {
         true,
     );
     run_apply(&case, &first).unwrap();
-    let second = case.plan(
+    let mut second = case.plan(
         "goodmod",
         "2.0.0",
         target.clone(),
@@ -213,6 +213,7 @@ fn updating_a_managed_mod_replaces_the_profile_entry() {
         vec![("GoodMod.dll", b"new payload")],
         true,
     );
+    second.source = "nexus:67".to_owned();
     let report = run_apply(&case, &second).unwrap();
 
     assert!(report.backup.is_none());
@@ -225,6 +226,7 @@ fn updating_a_managed_mod_replaces_the_profile_entry() {
         .unwrap();
     assert_eq!(profile.entries.len(), 1);
     assert_eq!(profile.entries[0].version, "2.0.0");
+    assert_eq!(profile.entries[0].source.as_deref(), Some("nexus:67"));
 }
 
 #[test]

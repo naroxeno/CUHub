@@ -23,7 +23,10 @@ use crate::links::LinkIndex;
 use crate::logs::Logs;
 use crate::metadata::{self, HttpState, MetadataCache, MetadataMod};
 use crate::mods::{self, DependencyIssue, InstalledMod, ModsError};
-use crate::multiplayer::{MultiplayerState, RoomRole, TunnelState};
+use crate::multiplayer::{
+    CHANGE_WINDOW, MultiplayerState, PortDecision, PortError, PortUpdate, PortWatch, RoomRole,
+    SAMPLE_INTERVAL, TunnelState, choose_host_port, ensure_port_available,
+};
 use crate::network::{self, DownloadProgress, Fetch, Network, NetworkError};
 use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
 use crate::nexus_auth::{GithubTokenStore, KeyStoreError};
@@ -31,7 +34,7 @@ use crate::packages::{self, PackageContext, PackageError, PackagePlan, PackageRe
 use crate::paths::{self, PathError};
 use crate::platform;
 use crate::profiles::{self, ApplyOp, ApplyReport, ProfileEntry, ProfileError, ProfileStore};
-use crate::room::{RoomCode, RoomError};
+use crate::room::{HostCandidate, RoomCode, RoomError};
 use crate::settings::{Settings, SettingsStore};
 use crate::source_choice::{ChoiceError, SourceChoices};
 use crate::sources::{self, DEFAULT_MANIFEST_URL, Repo, SourceCache, SourceKind, SourceManifest};
@@ -53,6 +56,12 @@ pub enum HubError {
     ProfileNotFound(String),
     Room(RoomError),
     Tunnel(TunnelError),
+    Port(PortError),
+    GamePort {
+        expected: u16,
+        reported: Option<u16>,
+    },
+    NoRoom,
     Elevation,
     EasyTier(ReleaseError),
     Adopt(AdoptError),
@@ -103,6 +112,20 @@ impl std::fmt::Display for HubError {
             }
             Self::Room(error) => error.fmt(formatter),
             Self::Tunnel(error) => error.fmt(formatter),
+            Self::Port(error) => error.fmt(formatter),
+            Self::GamePort { expected, reported } => match reported {
+                Some(reported) => {
+                    write!(
+                        formatter,
+                        "The game listens on port {reported} instead of {expected}."
+                    )
+                }
+                None => write!(
+                    formatter,
+                    "The game did not report a listening port after hosting on port {expected}."
+                ),
+            },
+            Self::NoRoom => formatter.write_str("Create or join a room first."),
             Self::Elevation => write!(
                 formatter,
                 "Cuhub cannot create the virtual network adapter. On Windows, restart Cuhub as administrator; on Linux, grant CAP_NET_ADMIN to the EasyTier core."
@@ -204,6 +227,8 @@ impl std::error::Error for HubError {
             Self::Adopt(error) => Some(error),
             Self::Room(error) => Some(error),
             Self::Tunnel(error) => Some(error),
+            Self::Port(error) => Some(error),
+            Self::GamePort { .. } | Self::NoRoom => None,
             Self::EasyTier(error) => Some(error),
             Self::ProfileNotFound(_) | Self::Elevation | Self::ManagedByProfile => None,
             Self::Package(error) => Some(error),
@@ -402,6 +427,7 @@ pub struct Hub {
     tunnel: Option<Tunnel>,
     room: Option<RoomCode>,
     tunnel_started: Option<Instant>,
+    port_watch: PortWatch,
     bridge: Option<BridgeServer>,
     bridge_seen_game: bool,
 }
@@ -504,6 +530,7 @@ impl Hub {
             tunnel: None,
             room: None,
             tunnel_started: None,
+            port_watch: PortWatch::new(),
             bridge: None,
             bridge_seen_game: false,
         }
@@ -559,14 +586,15 @@ impl Hub {
             .ok_or_else(|| HubError::ProfileNotFound(name.to_owned()))?;
         let game_root = self.game_folder().ok_or(HubError::NoGameFolder)?;
         let plugins_root = self.plugins_dir()?;
-        profiles::plan_apply(
+        let ops = profiles::plan_apply(
             &profile,
             &self.links,
             &self.store,
             &game_root,
             &plugins_root,
-        )
-        .map_err(HubError::Profile)
+        )?;
+        profiles::check_deployment_targets(&self.links, &ops)?;
+        Ok(ops)
     }
 
     pub fn apply_profile(&mut self, name: &str) -> Result<ApplyReport, HubError> {
@@ -731,59 +759,54 @@ impl Hub {
             );
         }
         let role = tunnel.role();
-        let port = tunnel.port();
-        match tunnel.poll() {
-            Ok(Some(host)) if role == Role::Guest => TunnelState::Connected {
+
+        let candidate = match tunnel.poll() {
+            Ok(candidate) => candidate,
+            Err(error) => return TunnelState::Failed(error.to_string()),
+        };
+        if role == Role::Guest
+            && let (Some(host), Some((local_port, port))) = (&candidate, tunnel.forwarded_ports())
+        {
+            return TunnelState::Connected {
                 virtual_ip: host.address,
                 port,
-            },
-            Ok(Some(_)) => TunnelState::WaitingPeer,
-            Ok(None) => {
-                let host_ip = Ipv4Addr::new(10, 144, 144, 1);
-                let has_guest = tunnel.peers().map(|peers| peers.len() > 1).unwrap_or(false);
-                if role == Role::Host && has_guest {
-                    TunnelState::Connected {
-                        virtual_ip: host_ip,
-                        port,
-                    }
-                } else {
-                    TunnelState::WaitingPeer
-                }
-            }
-            Err(error) => TunnelState::Failed(error.to_string()),
+                local_port: Some(local_port),
+            };
         }
+        let port = tunnel.port();
+        let peers = if candidate.is_none() && role == Role::Host {
+            tunnel.peers().map(|peers| peers.len()).unwrap_or(0)
+        } else {
+            0
+        };
+        Self::polled_tunnel_state(role, port, candidate, peers)
     }
 
     pub fn start_host(&mut self, port: u16) -> Result<String, HubError> {
-        if port == 0 {
-            return Err(HubError::Install(
-                "Choose a port between 1 and 65535.".to_owned(),
-            ));
-        }
+        let reported = self.game_room_port();
+        let choice = choose_host_port(reported, Some(port));
         self.stop_multiplayer();
+        if reported != Some(choice.port) {
+            ensure_port_available(choice.port).map_err(HubError::Port)?;
+        }
         let room = RoomCode::generate();
         let code = room.encode();
-        let tunnel = self.start_tunnel(room, Role::Host, port)?;
+        let tunnel = self.start_tunnel(room, Role::Host, choice.port)?;
         self.tunnel = Some(tunnel);
         self.room = Some(room);
         self.tunnel_started = Some(Instant::now());
         self.remember_room(RoomRole::Host, &code);
         self.logs.activity(
             "Multiplayer",
-            &format!("Hosting room {code} on port {port}."),
+            &format!("Hosting room {code} on port {}.", choice.port),
         );
         Ok(code)
     }
 
     pub fn join_room(&mut self, input: &str, port: u16) -> Result<String, HubError> {
-        if port == 0 {
-            return Err(HubError::Install(
-                "Choose a port between 1 and 65535.".to_owned(),
-            ));
-        }
-        self.stop_multiplayer();
         let room = RoomCode::parse(input)?;
         let code = room.encode();
+        self.stop_multiplayer();
         let tunnel = self.start_tunnel(room, Role::Guest, port)?;
         self.tunnel = Some(tunnel);
         self.room = Some(room);
@@ -791,7 +814,7 @@ impl Hub {
         self.remember_room(RoomRole::Guest, &code);
         self.logs.activity(
             "Multiplayer",
-            &format!("Joining room {code} on port {port}."),
+            &format!("Joining room {code}."),
         );
         Ok(code)
     }
@@ -876,6 +899,145 @@ impl Hub {
         }
         self.room = None;
         self.tunnel_started = None;
+    }
+
+    pub fn restart_host_port(&mut self, port: u16) -> Result<String, HubError> {
+        if port == 0 {
+            return Err(HubError::Port(PortError::Invalid));
+        }
+        let Some(room) = self.room else {
+            return Err(HubError::NoRoom);
+        };
+        let Some(old_port) = self.host_tunnel_port() else {
+            return Err(HubError::NoRoom);
+        };
+        let code = room.encode();
+        if port == old_port {
+            return Ok(code);
+        }
+        if self.game_room_port() != Some(port) {
+            ensure_port_available(port).map_err(HubError::Port)?;
+        }
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return Err(HubError::NoRoom);
+        };
+        if let Err(error) = tunnel.restart(port) {
+            self.logs.error(
+                "Multiplayer",
+                &io::Error::other(format!("Could not move the tunnel to port {port}: {error}")),
+            );
+            if let Err(rollback) = tunnel.restart(old_port) {
+                self.logs.error(
+                    "Multiplayer",
+                    &io::Error::other(format!(
+                        "Could not restore the tunnel on port {old_port}: {rollback}"
+                    )),
+                );
+            }
+            return Err(HubError::Tunnel(error));
+        }
+        self.tunnel_started = Some(Instant::now());
+        self.logs
+            .activity("Multiplayer", &format!("Moved room {code} to port {port}."));
+        Ok(code)
+    }
+
+    pub fn reconcile_room_port(&mut self) -> PortUpdate {
+        let Some(port) = self.host_tunnel_port() else {
+            self.port_watch.reset();
+            return PortUpdate::Idle;
+        };
+        if self.room.is_none() {
+            self.port_watch.reset();
+            return PortUpdate::Idle;
+        }
+        let sample = self.game_room_port();
+        match self.port_watch.observe(port, sample, Instant::now()) {
+            PortDecision::Settled => return PortUpdate::Settled,
+            PortDecision::Idle => return PortUpdate::Idle,
+            PortDecision::Pending => {}
+            PortDecision::Confirmed(_) | PortDecision::TimedOut(_) => {}
+        }
+        let deadline = Instant::now() + CHANGE_WINDOW;
+        loop {
+            if Instant::now() >= deadline {
+                self.port_watch.reset();
+                self.logs.activity(
+                    "Multiplayer",
+                    &format!("The game port kept changing; the tunnel stays on port {port}."),
+                );
+                return PortUpdate::Unsettled;
+            }
+            thread::sleep(SAMPLE_INTERVAL);
+            let sample = self.game_room_port();
+            match self.port_watch.observe(port, sample, Instant::now()) {
+                PortDecision::Confirmed(new_port) => return self.apply_port_change(new_port),
+                PortDecision::Pending => {}
+                PortDecision::Idle | PortDecision::Settled => return PortUpdate::Settled,
+                PortDecision::TimedOut(_) => {
+                    self.port_watch.reset();
+                    self.logs.activity(
+                        "Multiplayer",
+                        &format!("The game port never settled; the tunnel stays on port {port}."),
+                    );
+                    return PortUpdate::Unsettled;
+                }
+            }
+        }
+    }
+
+    fn apply_port_change(&mut self, port: u16) -> PortUpdate {
+        self.port_watch.reset();
+        match self.restart_host_port(port) {
+            Ok(code) => {
+                self.logs.activity(
+                    "Multiplayer",
+                    &format!("The game moved to port {port}; room {code} follows it."),
+                );
+                PortUpdate::Restarted { port }
+            }
+            Err(error) => {
+                self.logs.error(
+                    "Multiplayer",
+                    &io::Error::other(format!(
+                        "The game moved to port {port} but the tunnel could not follow: {error}"
+                    )),
+                );
+                PortUpdate::Failed {
+                    port,
+                    message: error.to_string(),
+                }
+            }
+        }
+    }
+
+    pub fn host_tunnel_port(&self) -> Option<u16> {
+        self.tunnel
+            .as_ref()
+            .filter(|tunnel| tunnel.role() == Role::Host)
+            .map(Tunnel::port)
+    }
+
+    fn polled_tunnel_state(
+        role: Role,
+        port: u16,
+        host: Option<HostCandidate>,
+        peers: usize,
+    ) -> TunnelState {
+        match (role, host) {
+            (Role::Guest, Some(host)) => TunnelState::Connected {
+                virtual_ip: host.address,
+                port,
+                local_port: None,
+            },
+            (Role::Guest, None) | (Role::Host, Some(_)) => TunnelState::WaitingPeer,
+            (Role::Host, None) if peers > 1 => TunnelState::Connected {
+                virtual_ip: Ipv4Addr::new(10, 144, 144, 1),
+                port,
+                local_port: None,
+            },
+            (Role::Host, None) => TunnelState::WaitingPeer,
+        }
     }
 
     pub fn hub_config_cached(&self) -> HubConfigResult {
@@ -1349,12 +1511,15 @@ impl Hub {
     }
 
     fn source_entry_for(&self, entry: &ProfileEntry) -> Option<&sources::SourceEntry> {
-        let slug = entry.source.as_deref()?.strip_prefix("github:")?;
-        self.sources
-            .as_ref()?
-            .entries
-            .iter()
-            .find(|item| item.repo.slug().eq_ignore_ascii_case(slug))
+        let source = entry.source.as_deref()?;
+        let entries = &self.sources.as_ref()?.entries;
+        if let Some(slug) = source.strip_prefix("github:") {
+            return entries.iter().find(|item| item.repo.slug().eq_ignore_ascii_case(slug));
+        }
+        let id = source.strip_prefix("nexus:")?.parse().ok()?;
+        let mut matches = entries.iter().filter(|item| item.nexus_id == Some(id));
+        let item = matches.next()?;
+        matches.next().is_none().then_some(item)
     }
 
     fn active_profile(&self) -> Option<(String, profiles::Profile)> {
@@ -1411,6 +1576,22 @@ impl Hub {
         &self.metadata
     }
 
+    pub fn nexus_covers(&self) -> Option<crate::metadata::CoverCache> {
+        Some(crate::metadata::CoverCache::new(
+            &self.app_data,
+            self.network.clone()?,
+        ))
+    }
+
+    pub fn nexus_dependencies(&self, name: &str) -> Vec<String> {
+        self.catalogs
+            .dependencies
+            .requirements_for(&[name])
+            .iter()
+            .map(|requirement| requirement.display_label())
+            .collect()
+    }
+
     pub fn metadata_last_synced(&self) -> Option<DateTime<Utc>> {
         fs::metadata(self.metadata_cache.cache_path())
             .ok()?
@@ -1441,16 +1622,15 @@ impl Hub {
     }
 
     pub fn open_nexus_download_page(&self, mod_id: &str) -> Result<(), HubError> {
-        let url = self
+        let link = self
             .metadata
             .iter()
             .find(|entry| entry.id == mod_id)
-            .and_then(|entry| entry.nexus_download_page_url())
+            .and_then(|entry| entry.nexus_url())
             .ok_or(HubError::MissingMetadataLink)?;
-        if !network::is_https_url(&url) {
-            return Err(HubError::UnsafeMetadataLink);
-        }
-        let mut child = platform::open_url(&url).map_err(HubError::OpenLink)?;
+        let mut url = metadata::nexus_public_page(link).ok_or(HubError::UnsafeMetadataLink)?;
+        url.set_query(Some("tab=files"));
+        let mut child = platform::open_url(url.as_str()).map_err(HubError::OpenLink)?;
         thread::spawn(move || {
             let _ = child.wait();
         });
@@ -1693,7 +1873,7 @@ impl Hub {
         let files = Self::package_files_without_duplicates(
             &payload,
             &installed_mods,
-            &target,
+            installed.map_or(target.as_path(), |item| item.source_path.as_path()),
             &mut warnings,
         );
         if files.is_empty() {
@@ -1743,6 +1923,14 @@ impl Hub {
                 detected.original(),
                 installed_version.original()
             )));
+        }
+        if let Some(installed) = installed
+            && installed.source_path != target
+        {
+            warnings.push(format!(
+                "replaces the existing deployment at {}",
+                installed.source_path.display()
+            ));
         }
         Ok(PackagePlan {
             mod_id,
@@ -1804,8 +1992,13 @@ impl Hub {
         plugins: &Path,
     ) -> Result<(String, PathBuf, Option<PathBuf>), HubError> {
         let managed = installed.and_then(|item| self.links.get(&item.source_path));
-        let mod_id = if let Some(entry) = managed {
-            entry.mod_id.clone()
+        let profile_id = installed.and_then(|item| {
+            self.profile_entry_index(&item.source_path)
+                .map(|(_, profile, index)| profile.entries[index].mod_id.clone())
+        });
+        let is_managed = managed.is_some() || profile_id.is_some();
+        let mod_id = if let Some(id) = managed.map(|entry| entry.mod_id.clone()).or(profile_id) {
+            id
         } else if let Some(item) = installed {
             let raw = if item.source_path.is_dir() {
                 item.source_path.file_name()
@@ -1836,7 +2029,7 @@ impl Hub {
             )));
         }
         let previous =
-            installed.and_then(|item| managed.is_none().then(|| item.source_path.clone()));
+            installed.and_then(|item| (!is_managed).then(|| item.source_path.clone()));
         if let Some(item) = installed {
             if target != item.source_path && (target.exists() || target.symlink_metadata().is_ok())
             {
@@ -1867,6 +2060,42 @@ impl Hub {
             .dependencies
             .requirements_for(&[installed.name.as_str()]);
         let result = self.finish_package(&staged, Some(installed), None, source, requirements);
+        if result.is_err() {
+            self.discard_staging(&staged.staging_root);
+        }
+        result
+    }
+
+    pub fn check_package_guid(&self, package: &PackagePlan, expected: &str) -> Result<(), HubError> {
+        if package.files.iter().any(|file| {
+            install::is_dll_file(&file.relative)
+                && mods::read_identity(&file.staged)
+                    .and_then(|(_, guid)| guid)
+                    .is_some_and(|guid| guid.eq_ignore_ascii_case(expected))
+        }) {
+            return Ok(());
+        }
+        self.discard_staging(&package.staging);
+        Err(HubError::Plan(format!(
+            "the selected package does not contain the expected BepInEx plugin {expected}"
+        )))
+    }
+
+    pub fn prepare_nexus_package(
+        &self,
+        archive: &Path,
+        id: u64,
+        name: &str,
+    ) -> Result<PackagePlan, HubError> {
+        let staged = self.stage_download(archive, &self.staging_root())?;
+        let requirements = self.catalogs.dependencies.requirements_for(&[name]);
+        let result = self.finish_package(
+            &staged,
+            None,
+            Some(name),
+            &format!("nexus:{id}"),
+            requirements,
+        );
         if result.is_err() {
             self.discard_staging(&staged.staging_root);
         }
@@ -2451,5 +2680,51 @@ mod tests {
     fn does_not_fall_back_to_a_different_asset_shape() {
         let assets = vec![release_asset("Other-1.1.0.zip")];
         assert!(select_github_asset(&assets, Some("Mod-1.0.0.zip")).is_none());
+    }
+
+    #[test]
+    fn a_connected_host_reports_the_tunnel_port() {
+        let state = Hub::polled_tunnel_state(Role::Host, 25566, None, 2);
+        assert_eq!(
+            state,
+            TunnelState::Connected {
+                virtual_ip: Ipv4Addr::new(10, 144, 144, 1),
+                port: 25566,
+                local_port: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_connected_guest_reports_the_discovered_address_and_port() {
+        let host = HostCandidate {
+            hostname: "cuhub-host-25566".to_owned(),
+            address: Ipv4Addr::new(10, 144, 144, 5),
+        };
+        let state = Hub::polled_tunnel_state(Role::Guest, 25566, Some(host), 2);
+        assert_eq!(
+            state,
+            TunnelState::Connected {
+                virtual_ip: Ipv4Addr::new(10, 144, 144, 5),
+                port: 25566,
+                local_port: None,
+            }
+        );
+    }
+
+    #[test]
+    fn a_host_alone_is_still_waiting() {
+        assert_eq!(
+            Hub::polled_tunnel_state(Role::Host, 25565, None, 1),
+            TunnelState::WaitingPeer
+        );
+    }
+
+    #[test]
+    fn a_guest_without_a_host_is_waiting() {
+        assert_eq!(
+            Hub::polled_tunnel_state(Role::Guest, 25565, None, 3),
+            TunnelState::WaitingPeer
+        );
     }
 }

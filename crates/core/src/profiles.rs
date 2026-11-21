@@ -281,11 +281,13 @@ pub enum ProfileError {
     },
     DuplicateMod(String),
     DuplicateTarget(PathBuf),
+    OccupiedTarget(PathBuf),
     OutsideGame(PathBuf),
     Link(LinkError),
     Apply {
         report: Box<ApplyReport>,
         source: Box<ProfileError>,
+        index_error: Option<io::Error>,
     },
     Io {
         path: PathBuf,
@@ -318,16 +320,33 @@ impl std::fmt::Display for ProfileError {
                     path.display()
                 )
             }
+            Self::OccupiedTarget(path) => {
+                write!(
+                    formatter,
+                    "{} is occupied by an unmanaged file or directory",
+                    path.display()
+                )
+            }
             Self::OutsideGame(path) => {
                 write!(formatter, "{} is outside the game folder", path.display())
             }
             Self::Link(error) => error.fmt(formatter),
-            Self::Apply { report, source } => write!(
-                formatter,
-                "deployment stopped after {} of {} operations: {source}",
-                report.applied.len(),
-                report.applied.len() + report.remaining.len()
-            ),
+            Self::Apply {
+                report,
+                source,
+                index_error,
+            } => {
+                write!(
+                    formatter,
+                    "deployment failed after {} of {} operations: {source}",
+                    report.applied.len(),
+                    report.applied.len() + report.remaining.len()
+                )?;
+                if let Some(error) = index_error {
+                    write!(formatter, "; could not save Links.json: {error}")?;
+                }
+                Ok(())
+            }
             Self::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
         }
     }
@@ -468,6 +487,31 @@ pub fn plan_apply(
     Ok(ops)
 }
 
+pub(crate) fn check_deployment_targets(
+    index: &LinkIndex,
+    ops: &[ApplyOp],
+) -> Result<(), ProfileError> {
+    for op in ops {
+        let ApplyOp::Deploy { target, .. } = op else {
+            continue;
+        };
+        if index.get(target).is_some() {
+            continue;
+        }
+        match target.symlink_metadata() {
+            Ok(_) => return Err(ProfileError::OccupiedTarget(target.clone())),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(source) => {
+                return Err(ProfileError::Io {
+                    path: target.clone(),
+                    source,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn apply_plan(
     index: &mut LinkIndex,
     store: &Store,
@@ -484,24 +528,27 @@ pub fn apply_plan(
         }
         report.applied.push(op.clone());
     }
-    let saved = if report.applied.is_empty() {
-        Ok(())
+    let index_error = if report.applied.is_empty() {
+        None
     } else {
-        index.save().map_err(|source| ProfileError::Io {
-            path: index.path().to_path_buf(),
-            source,
-        })
+        index.save().err()
     };
-    match stopped {
-        Some(source) => Err(ProfileError::Apply {
-            report: Box::new(report),
-            source: Box::new(source),
-        }),
-        None => {
-            saved?;
-            Ok(report)
-        }
-    }
+    let (source, index_error) = match (stopped, index_error) {
+        (None, None) => return Ok(report),
+        (Some(source), index_error) => (source, index_error),
+        (None, Some(source)) => (
+            ProfileError::Io {
+                path: index.path().to_path_buf(),
+                source,
+            },
+            None,
+        ),
+    };
+    Err(ProfileError::Apply {
+        report: Box::new(report),
+        source: Box::new(source),
+        index_error,
+    })
 }
 
 fn apply_one(

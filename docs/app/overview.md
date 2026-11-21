@@ -48,7 +48,10 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 
 ## 模组行布局
 
-- 证据行与来源行的说明文字放在 `flex_1` + `min_w(0)` 容器里并截断，行内按钮 `flex_shrink_0`。窗口较窄或来源说明很长时先裁掉文字，按钮不会被挤出面板（修掉过 Disable 因按钮在窗口外而点不到的回归）。
+- 默认紧凑行显示模组名、已装版本、启用与更新状态，以及检查、更新或启停操作。只有可更新且能确认目标版本更高时才展示版本箭头。依赖和冲突警告留在行内。
+- 「更多」菜单提供可展开详情、来源切换和删除。详情显示作者、版本证据、来源检查结果和档案归属，长模组名也可在此查看。批量启停与删除合入顶部菜单，仍走既有确认与执行路径。
+- 行首用像素方框提示启用、禁用或更新，正文保留对应状态文字。列表工具栏与展开详情使用抬升底色，详情有像素强调线。
+- 主行在窄窗口换行，模组名称可截断，常用操作保留可见。没有已知更新时用静态说明替代选择按钮。
 
 ## Hub Home 磁贴
 
@@ -57,14 +60,22 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 - 顺序存 `Settings.home_order`（JSON `homeOrder`），经 `Ui::save_home_order` 写回；读取时按固定 id 表忽略未知、去重、补齐缺失，旧设置缺键即默认顺序。
 - 公告在启动时由 `Hub::hub_config_cached()` 读一次缓存存入 `Ui.announcement`，渲染路径不取 Hub 锁、只读缓存不联网；无当前公告显示 `hub.not_loaded`，不报错。GAME 卡副文本同时显示游戏目录与 app data 路径。
 
+## Nexus 仪表盘
+
+- 搜索、安装状态筛选、排序和 18+ 过滤在社区目录快照上执行。列表与网格切换、18+ 设置沿用现有设置字段，默认隐藏成人内容。50 条结果分页，工具栏与分页栏独立于结果滚动。分页栏为浮动任务入口预留空间。
+- 点网格卡打开右侧详情，保留结果滚动位置。列表详情在行内展开。详情展示版本、安装状态、统计、已知依赖与原有下载入口。公开 Nexus 页与复制链接要求匹配游戏域和模组路径。
+- 搜索使用去标记后的描述，详情把常用 Nexus BBCode 与换行映射到 NSH 原生 `TextView` 使用的有限 HTML 标签。只输出固定标签，正文链接按文本显示，正文内嵌资源不加载。
+- 封面由 core 通过既有网络边界请求，UI 只渲染 appdata 中的本地缓存。每轮最多四个缓存查询或下载，切页后停止处理旧队列，失败在当前会话回退占位。
+
 ## 远程模组页
 
-- 数据来自 `Hub::sources()`（core 启动时装载），页面不联网；行模型在 `src/ui/remote.rs`，与已装模组按 matcher（guid / dll / name）关联，同优先级取 guid 最优。
+- 远程页联查来源清单与 Nexus 缓存，支持来源和安装状态组合筛选，沿用 Nexus 成人内容开关。只有唯一的显式 `nexusId` 对应唯一 Nexus 条目时才合并。来源分别显示 Nexus 快照版本和按需查询的 GitHub 发布标签。
+- 两页共享安装状态和 Nexus 安装准备。授权下载进入任务卡，预览显示所选来源、载荷版本和具体目标。浏览器详情和 Files 链接使用现有的 Nexus 页面边界。
 - 状态都在 `Ui` 上：`remote_all` / `remote_rows` / `remote_page` / `remote_total` / `remote_query` / `remote_filter` / `remote_busy`；搜索、过滤与翻页只重建内存切片，不写设置。
 - 安装与更新共用 `pending_install`：准备阶段写 `remote_busy`（该行按钮与其它行一起禁用），成功后进任务中心的任务卡（右下角按钮打开；抽屉不会自动弹出），卡片里的 Apply 走既有的 `apply_pending`，Cancel 走 `discard_pending` 删 staging；`refresh_mods` 同时重建本地与远程行，装完按钮立即变成 Update。
 - 依赖门禁在 `ui::install::prepare_remote_pending` 与 `prepare_update`：core 返回 `HubError::Dependencies` 时不进 pending，而是写 `dependency_prompt`（目标条目可选 + 问题列表）与状态行提示。渲染路径只读该 signal，不取 Hub 锁。
 - 依赖卡列 `Missing` / `Outdated`：有清单条目的缺失项可以 `Install missing`，worker 依次准备并 Apply 每个依赖，清 staging；首次安装随后自动重新准备目标条目，更新则清掉提示并让用户再点一次更新。未知依赖或版本不足只显示手动处理说明，不自动安装。`Cancel` 清掉提示，不触碰已装文件。卡片与其他任务卡同处右侧抽屉，页面内不再有依赖面板。
-- 空态分三种：清单缺失（一行说明 + 清单路径小字）、清单无条目、过滤后为空。
+- 清单缺失时提示其路径，仍可浏览和搜索 Nexus 缓存。
 - 顶部「刷新列表」按钮调用 `Ui::refresh_sources_now()`：worker 里以 `force=true` 调 `Hub::refresh_sources`，绕过 ETag；成功后同时重建本地行与远程行（本地行的来源判定立即跟上新清单），期间按钮换成 spinner，结果只写状态行 notice。清单缺失的空态也显示该按钮。
 
 ## 模组启用/禁用
@@ -72,7 +83,7 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 - 行内 Toggle：禁用行显示 `Enable`、启用行显示 `Disable`。点击后在后台线程调用 `Hub::set_mod_enabled`，成功后重新扫描并把改名的 DLL 数写进状态行；失败只把 `HubError` 文案写进状态行，不弹窗。
 - 面板批量：`Disable all` / `Enable all` 调 `Hub::set_all_mods_enabled`，同样后台执行并回写改名数。任一变更进行期间，行内 Toggle、三个批量按钮（含 `Delete all`）与 `Refresh` 一起置灰，避免重复点击。
 - 后台任务挂在 App 组件 owner（`Ui::spawn_worker`）上，而不是按钮所在分支：按钮在忙时会整块换成禁用副本，分支 owner 销毁后挂在它下面的任务会被取消，忙碌信号永远不复位。
-- 禁用行视觉（FEATURES E7）：左缘 2px danger 竖条由 `status_color` 提供；名称、版本、作者、证据与详情文字转 danger，来源行在带 warning 时仍保留 WARN，避免丢掉来源匹配提示。
+- 禁用行用低强调文字和明确的「已禁用」状态标记。来源警告在详情中保留，破坏性操作的颜色用于菜单和确认。
 - 行 key 里包含 `disabled`，刷新后 `each` 会重建该行，静态文本与按钮才能跟随状态变化。
 - 启用与禁用都是可逆操作，不做确认弹窗；删除是破坏性操作，走下一节的确认弹窗。
 
@@ -97,11 +108,13 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 ## 桥状态与联机控制
 
 - `ui::bridge::watch_bridge` 随其他后台任务启动，每 2 秒取一次 `Hub::bridge_snapshot`：检测到游戏进程才启动桥、退出后停止，会话存在时顺带取 `mp.state`；值不变不写 signal。单次 `invoke_bridge` 最多持 Hub 锁 2 秒，轮询不更密。
-- 状态栏右侧显示桥三态与最近一次握手失败；Local Mods 行按 hello 的 guid 快照标「运行中已加载」；Multiplayer 页顶部桥卡片显示 available / running / client / server / host 与 KrokMpVersion，并带「游戏内控制」开关（只授权 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`）。
-- `ui::mp_control` 的 `watch_mp_control` 每 2 秒读同一个桥快照：`status.session.pid` 变化重置门控，房主只自动开房一次，客人在隧道 `Connected` 后最多 3 次（0/3/8 秒），`denied` / `invalid_params` 立即停；确认对话框打开或其它任务忙碌时不自动。用户也能随时关掉开关停下自动逻辑。
-- 房间卡「游戏内房间」区块：状态来自 `game_phase`（未连接 / 不可用 / 未授权 / 等隧道 / 可开房 / 可加入 / 已开房 / 已加入）；地址房主固定 `10.144.144.1:<port>`，客人取隧道 `virtual_ip:port`；手动开房/加入走两段式确认，失败行可重试，命令期间是 `MpBusy::Game`。
+- 状态栏右侧显示桥三态与最近一次握手失败；Local Mods 行按 hello 的 guid 快照标「运行中已加载」；Multiplayer 页用紧凑状态栏显示桥状态，并提供「自动在游戏内开房／加入」开关（只授权 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`）。
+- `ui::mp_control` 的 `watch_mp_control` 每 2 秒读同一个桥快照：`status.session.pid` 按「进入 / 换房 / 退出」重置门控与检测缓存，房主只自动开房一次，客人在隧道 `Connected` 后最多 3 次（0/3/8 秒），`denied` / `invalid_params` 立即停；房主侧 `NoRoom` / `GamePort` 失败也只尝试一次；确认对话框打开或其它任务忙碌时不自动。房主侧同一循环调 `Hub::reconcile_room_port`（core 内 350ms×2、6s 窗口）：`Restarted` 把显示地址与检测端口更新到新端口，`Failed` 只显示错误并保留旧地址，`Unsettled` 不动作。用户也能随时关掉开关停下自动逻辑。
+- 开房默认显示选定端口，优先级为游戏上报 → 手填 → 7790。重新检测和手填放进端口选项。加入侧默认只填房间码，高级选项可限定房主端口，留空自动发现。当前房间区分隧道和游戏状态，房主显示实际转发端口，客人隧道就绪后可复制本地回环转发地址。
+- 房间卡「游戏内房间」区块：状态来自 `game_phase`（未连接 / 不可用 / 未授权 / 等隧道 / 可开房 / 可加入 / 已开房 / 已加入；`mp.server` 即视为游戏内已开房，包含玩家在游戏菜单直接开房）；地址房主固定 `10.144.144.1:<chosen port>`，客人取隧道 `virtual_ip:port`；手动开房/加入走两段式确认，失败行可重试，命令期间是 `MpBusy::Game`。房主开房走 `Hub::start_game_host()`，游戏上报端口与隧道端口不一致时显示 `GamePort` 错误，不自动改写。
+- 交接：游戏内直接开房 → `mp.server` 使相位转 `Hosting`，自动逻辑停止；换房/重进 → 清 `game_error`、检测缓存并重置门控后按新房间码执行；游戏退出 → 会话消失，相位回 `NoSession` 并清缓存，不自动重连；房主退出时客人侧 `Connected` 端点消失或端口变化 → 提示「房主已离开」/「房主已换房」，停掉自动重试，只保留手动「重试」。
 - 桥未运行、端口被占、版本不符都只反映到状态，不影响游戏启动、安装、删除等既有流程。
-- Local Mods 卡片底部是独立的「安装桥」区块（`pages/local.rs::bridge_section` 与 `ui/bridge_install.rs`）：显示未安装 / 已安装版本 / 运行中已加载；按钮优先用 exe 同目录或工作区 `dist/bridge/CuhubBridge.zip`，都没有才打开 zip 文件选择器。安装在 worker 里执行，忙态禁用按钮，状态行显示进度与可读错误；成功后刷新 mods 与桥状态，不自动改 profile，桥仍作为普通本地模组行出现。删除模组、批量应用和 BepInEx 安装成功后也会重新读取桥安装状态，避免底部停留在旧的已安装/未安装。
+- 本地模组页底部的 CUHub Bridge 联机组件卡片分别展示安装版本、禁用标记与连接状态。只归并固定安装路径下完整、未被档案托管的标准双 DLL；散装、不完整或混合目录保留普通行。多人游戏页与底部状态栏共用连接状态及错误文案。详情显示安装路径和批量操作范围。安装继续走已有 worker 和受校验的归档入口，模组刷新后同步重读桥安装状态。
 
 ## 任务中心
 

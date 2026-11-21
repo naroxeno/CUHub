@@ -1,5 +1,12 @@
 // Multiplayer session persistence: the last room, a custom core path, relay overrides.
 
+mod port;
+
+pub use port::{
+    CHANGE_WINDOW, DEFAULT_GAME_PORT, HostPort, PortDecision, PortError, PortSource, PortUpdate,
+    PortWatch, SAMPLE_INTERVAL, choose_host_port, ensure_port_available,
+};
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
@@ -10,7 +17,11 @@ use std::path::{Path, PathBuf};
 pub enum TunnelState {
     Idle,
     WaitingPeer,
-    Connected { virtual_ip: Ipv4Addr, port: u16 },
+    Connected {
+        virtual_ip: Ipv4Addr,
+        port: u16,
+        local_port: Option<u16>,
+    },
     Failed(String),
 }
 

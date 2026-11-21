@@ -1,12 +1,12 @@
-//! Loopback bridge host tests with a fake guest: fixed endpoint, handshake, framing, permissions and lifecycle.
+//! Loopback bridge host tests with a fake guest: random loopback endpoint, handshake, framing, permissions and lifecycle.
 
 use std::collections::BTreeMap;
 use std::io::Write;
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
-use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -15,13 +15,10 @@ use serde_json::{Value, json};
 use cuhub_core::bridge::command::{BridgeSettings, Permission, Permissions};
 use cuhub_core::bridge::handshake::{HandshakeError, TOKEN};
 use cuhub_core::bridge::proto::{self, MAX_FRAME, Message, PROTO_MAJOR};
-use cuhub_core::bridge::server::{
-    BridgeError, BridgeEvent, BridgeOptions, BridgeServer, HOST, PORT,
-};
+use cuhub_core::bridge::server::{BridgeError, BridgeEvent, BridgeOptions, BridgeServer, HOST};
 use cuhub_core::logs::Logs;
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
-static PORT_LOCK: Mutex<()> = Mutex::new(());
 
 struct TempDir(PathBuf);
 
@@ -52,30 +49,38 @@ struct Fixture {
     server: BridgeServer,
     logs: Arc<Logs>,
     app_data: TempDir,
-    _guard: MutexGuard<'static, ()>,
+    port: u16,
 }
 
 impl Fixture {
     fn new(tag: &str, options: BridgeOptions, settings: &BridgeSettings) -> Self {
-        let guard = PORT_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let app_data = TempDir::new(tag);
         let logs = Arc::new(Logs::start(app_data.path()));
-        let server =
-            BridgeServer::start(Permissions::from_settings(settings), options, logs.clone())
-                .expect("start bridge");
+        let server = BridgeServer::start_at(
+            0,
+            Permissions::from_settings(settings),
+            options,
+            logs.clone(),
+        )
+        .expect("start bridge");
+        let endpoint: SocketAddr = server
+            .status()
+            .endpoint
+            .as_deref()
+            .expect("bridge endpoint")
+            .parse()
+            .expect("bridge endpoint address");
         Self {
             server,
             logs,
             app_data,
-            _guard: guard,
+            port: endpoint.port(),
         }
     }
 }
 
-fn connect() -> TcpStream {
-    let stream = TcpStream::connect((HOST, PORT)).expect("connect bridge");
+fn connect(port: u16) -> TcpStream {
+    let stream = TcpStream::connect((HOST, port)).expect("connect bridge");
     stream
         .set_read_timeout(Some(Duration::from_secs(5)))
         .expect("read timeout");
@@ -171,13 +176,13 @@ fn handshake_lists_commands_and_round_trips_a_command() {
         &BridgeSettings::default(),
     );
     assert!(fixture.server.status().running);
-    let expected_endpoint = format!("{HOST}:{PORT}");
+    let expected_endpoint = format!("{HOST}:{}", fixture.port);
     assert_eq!(
         fixture.server.status().endpoint.as_deref(),
         Some(expected_endpoint.as_str())
     );
 
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     let result = hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -231,7 +236,7 @@ fn bad_token_is_rejected_with_a_failure_and_recorded_in_the_status() {
         BridgeOptions::default(),
         &BridgeSettings::default(),
     );
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     proto::write_message(
         &mut stream,
         &hello(&"a".repeat(64), 7, PROTO_MAJOR, "cuhub.test"),
@@ -255,7 +260,7 @@ fn bad_token_is_rejected_with_a_failure_and_recorded_in_the_status() {
         || fixture.server.status().last_error == Some(HandshakeError::BadToken)
     ));
 
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(&mut stream, TOKEN, 7, PROTO_MAJOR, "cuhub.test"));
     let _ = stream.shutdown(std::net::Shutdown::Both);
 }
@@ -267,7 +272,7 @@ fn proto_major_mismatch_reports_both_versions_and_recovers() {
         BridgeOptions::default(),
         &BridgeSettings::default(),
     );
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     let reply = send_hello(&mut stream, TOKEN, 9, PROTO_MAJOR + 1, "cuhub.test");
     match reply {
         Message::Res {
@@ -293,7 +298,7 @@ fn proto_major_mismatch_reports_both_versions_and_recovers() {
         })));
     assert!(fixture.server.status().running);
 
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(&mut stream, TOKEN, 9, PROTO_MAJOR, "cuhub.test"));
     assert!(wait_until(|| fixture.server.status().session.is_some()));
     assert_eq!(fixture.server.status().last_error, None);
@@ -301,17 +306,17 @@ fn proto_major_mismatch_reports_both_versions_and_recovers() {
 
 #[test]
 fn partial_frame_is_rejected_and_the_listener_recovers() {
-    let _fixture = Fixture::new(
+    let fixture = Fixture::new(
         "partial",
         BridgeOptions::default(),
         &BridgeSettings::default(),
     );
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     stream.write_all(&10u32.to_le_bytes()).expect("header");
     stream.write_all(&[1, 2, 3]).expect("partial body");
     drop(stream);
 
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -329,7 +334,7 @@ fn oversized_frame_ends_the_session_and_allows_reconnect() {
         BridgeOptions::default(),
         &BridgeSettings::default(),
     );
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -349,7 +354,7 @@ fn oversized_frame_ends_the_session_and_allows_reconnect() {
             .any(|event| matches!(event, BridgeEvent::SessionEnded { pid: 12, .. }))
     );
 
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -386,7 +391,7 @@ fn default_permissions_deny_control_and_mutate() {
         BridgeOptions::default(),
         &BridgeSettings::default(),
     );
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -411,7 +416,7 @@ fn default_permissions_deny_control_and_mutate() {
 #[test]
 fn setting_permissions_live_grants_control_in_the_running_session() {
     let fixture = Fixture::new("live", BridgeOptions::default(), &BridgeSettings::default());
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -451,7 +456,7 @@ fn granted_settings_permission_allows_a_mutation() {
         BTreeMap::from([("save.save".to_owned(), Permission::Granted)]),
     );
     let fixture = Fixture::new("granted", BridgeOptions::default(), &settings);
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     let result = hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -476,7 +481,7 @@ fn command_times_out_without_a_reply() {
         ..BridgeOptions::default()
     };
     let fixture = Fixture::new("timeout", options, &BridgeSettings::default());
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -504,7 +509,7 @@ fn missed_heartbeats_close_the_session() {
         ..BridgeOptions::default()
     };
     let fixture = Fixture::new("heartbeat", options, &BridgeSettings::default());
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -532,7 +537,7 @@ fn disconnected_client_allows_a_new_session() {
         BridgeOptions::default(),
         &BridgeSettings::default(),
     );
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -544,7 +549,7 @@ fn disconnected_client_allows_a_new_session() {
     stream.shutdown(std::net::Shutdown::Both).expect("shutdown");
     assert!(wait_until(|| fixture.server.status().session.is_none()));
 
-    let mut stream = connect();
+    let mut stream = connect(fixture.port);
     hello_ok(send_hello(
         &mut stream,
         TOKEN,
@@ -566,10 +571,10 @@ fn disconnected_client_allows_a_new_session() {
 #[test]
 fn a_second_connection_is_rejected_while_busy() {
     let fixture = Fixture::new("busy", BridgeOptions::default(), &BridgeSettings::default());
-    let mut first = connect();
+    let mut first = connect(fixture.port);
     hello_ok(send_hello(&mut first, TOKEN, 61, PROTO_MAJOR, "cuhub.test"));
 
-    let mut second = connect();
+    let mut second = connect(fixture.port);
     match send_hello(&mut second, TOKEN, 62, PROTO_MAJOR, "cuhub.test") {
         Message::Res {
             ok,
@@ -581,7 +586,7 @@ fn a_second_connection_is_rejected_while_busy() {
         }
         other => panic!("unexpected reply while busy: {other:?}"),
     }
-    let mut duplicate = connect();
+    let mut duplicate = connect(fixture.port);
     match send_hello(&mut duplicate, TOKEN, 61, PROTO_MAJOR, "cuhub.test") {
         Message::Res {
             ok,
@@ -609,10 +614,15 @@ fn a_second_connection_is_rejected_while_busy() {
 fn a_second_host_reports_the_port_in_use() {
     let fixture = Fixture::new("port", BridgeOptions::default(), &BridgeSettings::default());
     let logs = Arc::new(Logs::start(fixture.app_data.path()));
-    let error = match BridgeServer::start(Permissions::default(), BridgeOptions::default(), logs) {
+    let error = match BridgeServer::start_at(
+        fixture.port,
+        Permissions::default(),
+        BridgeOptions::default(),
+        logs,
+    ) {
         Ok(_) => panic!("second host must fail"),
         Err(error) => error,
     };
-    assert_eq!(error, BridgeError::PortInUse(PORT));
+    assert_eq!(error, BridgeError::PortInUse(fixture.port));
     assert!(fixture.server.status().running);
 }

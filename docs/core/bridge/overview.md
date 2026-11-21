@@ -4,7 +4,7 @@
 
 ## 实现状态（2026-11-20，实验性，不发布）
 
-Rust 宿主已落地：`proto.rs`（帧编解码）、`command.rs`（命令表与权限）、`session.rs`（连接读写、心跳、请求等待）、`handshake.rs`（hello 校验、共享 token）、`server.rs`（固定端口监听、单会话、最近握手失败、事件、审计）、`mp.rs`（`mp.state` 回包解析），以及 `hub/bridge_host.rs` 上的生命周期、状态快照与联机控制开关。`crates/core/tests/bridge_server.rs` 用回环 TCP 假客户端跑 14 个集成测试；`cargo test -p cuhub-core` 全绿。
+Rust 宿主已落地：`proto.rs`（帧编解码）、`command.rs`（命令表与权限）、`session.rs`（连接读写、心跳、请求等待）、`handshake.rs`（hello 校验、共享 token）、`server.rs`（回环端口监听、`start_at` 可注入端口、单会话、最近握手失败、事件、审计）、`mp.rs`（`mp.state` 回包解析，含主机监听端口 `port`），以及 `hub/bridge_host.rs` 上的生命周期、状态快照、联机控制开关与游戏房间端口查询。`crates/core/tests/bridge_server.rs` 用回环 TCP 假客户端跑 14 个集成测试；`cargo test -p cuhub-core` 全绿。
 
 app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_snapshot`；检测到游戏进程才启动桥、退出后停止；状态栏显示未运行 / 未连接 / 已连接（pid）与最近一次握手失败；Local Mods 按 hello 的 guid 快照标“运行中已加载”；Multiplayer 页顶部卡片显示 `mp.state`。W4 接线：桥卡片可开关 `mp.host` / `mp.join` 授权；房间卡显示游戏内房间状态与地址，手动命令走两段式确认；`ui::mp_control` 负责自动状态机（房主一次、客人 3 次退避、`denied` / `invalid_params` 即停）。
 
@@ -20,14 +20,14 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 | `bridge/command.rs` | 15 条命令表、`Policy`、`Permission`、按 guid 解析权限、hello 快照 |
 | `bridge/session.rs` | 帧读取、`cmd.invoke` 发送与超时、pending 表、心跳、上行事件过滤 |
 | `bridge/handshake.rs` | 首帧 hello、共享 token 常量、proto / mods 校验、hello.ok / 拒绝 |
-| `bridge/mp.rs` | `mp.state` 回包的 `MpState` 解析 |
-| `bridge/server.rs` | 监听 `127.0.0.1:41297`、单会话、最近握手失败、事件、审计 |
+| `bridge/mp.rs` | `mp.state` 回包的 `MpState` 解析；`port` 宽容解析、`room_port()` 只在主机运行时给值 |
+| `bridge/server.rs` | 监听回环端口（生产固定 `41297`，测试可用 `start_at` 注入）、单会话、最近握手失败、事件、审计 |
 | `bridge/install.rs` | 固定目标 `Plugins/CuhubBridge`、`PLUGIN_FILE` / `CORE_FILE`、payload 校验 |
 | `hub/bridge_host.rs` | 启停状态机、`bridge_snapshot`、`invoke_bridge`、`take_events`、桥安装与只读状态 |
 
 ## 职责
 
-- 固定监听 `127.0.0.1:41297`；token 是编译进两端的共享常量，不再生成、不落盘。
+- 生产入口 `BridgeServer::start` 固定监听 `127.0.0.1:41297`；`start_at(port)` 只给测试注入端口（传 0 由系统分配，`endpoint` 取 `listener.local_addr()` 的实际端口），生产调用方与默认端口不受影响。token 是编译进两端的共享常量，不再生成、不落盘。
 - 握手、心跳、帧编解码、命令表与权限判定。
 - 由 app 的 `bridge_snapshot` 按游戏进程状态启停；端口被占用时只报状态，不 panic。
 - 把游戏侧上行事件翻成 `HubEvent::Bridge`，其余一概经 `Hub`。
@@ -40,6 +40,7 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 - 不做文件读写通道：命令 handler 在游戏侧，宿主不替它读写磁盘。
 - 不做 prefix 推导：没有 ProgramData 参数，也不遍历文件系统；端口固定，找不到宿主就是连不上。
 - 只做协议、白名单与权限判定；命令语义全在游戏侧。
+- `mp.state` 的 `port` 语义双关：主机是监听端口，客人是目标端口。宿主只把主机的值当“游戏房间端口”，客人侧 `MpState::room_port()` 恒为 `None`；旧插件没有该字段时同样按 `None` 处理，不报错。解析宽容：非整数、越界（> 65535）、负数、字符串或 0 都当 `None`，避免把 OS 分配的临时端口当房间端口。
 
 ## 命令表
 
@@ -65,6 +66,7 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 - `start_bridge() -> Result<BridgeStatus, HubError>`：无参数，重复调用返回现有状态；端口被占为 `BridgeError::PortInUse`。
 - `stop_bridge()`：清会话、停监听；`bridge_status()` 返回 `running`、`endpoint`、`session`、`last_error`。
 - `bridge_snapshot(&mut self) -> BridgeSnapshot`：读 `game_running`，按需启停桥，会话存在时调用 `mp.state`，返回 `{ game_running, status, mp, control, start_error }`；同时排空事件通道，避免无消费者时无限增长。
+- `game_room_port() -> Option<u16>`：游戏进程在跑、桥在监听且有会话时，取一次 `mp.state` 的 `port` 并只认 `server == true && running`；客人侧、未开房、旧插件（无 `port`）或无会话一律 `None`。只读，不启停桥、不写设置；一次 `mp.state` 往返，上限 2 秒，供后台轮询调用。
 - `bridge_control_enabled() -> bool`：`bridge.permissions` 里 `dev.cuhub.bridge` 的 `mp.host` 与 `mp.join` 都为 `granted` 才算打开；只认这两条，其它 guid 与命令不参与判断。
 - `set_bridge_control(bool) -> Result<(), HubError>`：只改上述两条并写回 `Settings.json`；桥在运行时立刻 `BridgeServer::set_permissions`，已连会话的下一条命令即按新权限判定；写一条 `Bridge` 活动日志；状态未变时为空操作。
 - `invoke_bridge(command, params) -> Result<Value, HubError>`：2 秒超时，不重试；未连接为 `NotConnected`。
@@ -112,7 +114,7 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 
 ## 测试
 
-`crates/core/tests/bridge_server.rs`：真实回环 TCP 假客户端，不需要游戏或 Wine，固定端口用进程内互斥串行化，覆盖
+`crates/core/tests/bridge_server.rs`：真实回环 TCP 假客户端，不需要游戏或 Wine；每个 fixture 用 `start_at(0)` 绑临时回环端口并从 `status().endpoint` 解析实际端口，测试可并行、不占用生产端口 41297，覆盖
 
 - 正常握手、命令表与 hello.ok 字段、`cmd.invoke` 往返（nonce 为字符串）；
 - 坏 token、proto.major 不符、第二连接 `duplicate_pid` / `busy`、第二宿主 `PortInUse`；
@@ -120,7 +122,7 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 - 半截帧、超大帧、超时、心跳丢失、断线重连；
 - 未知命令、默认权限拒绝、显式授权允许；运行中改权限对已连会话当场生效。
 
-`cargo test -p cuhub-core` 全绿（342 单测 + 14 集成）。`cargo check --workspace --all-targets` 无警告。
+`cargo test -p cuhub-core` 全绿（377 单测 + 14 集成）。`cargo check --workspace --all-targets` 无警告。
 
 ## 未做
 

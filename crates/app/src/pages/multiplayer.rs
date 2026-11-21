@@ -1,21 +1,22 @@
 //! The multiplayer page: connection status, hosting, joining and players.
 
-use cuhub_core::bridge::mp::MpState;
 use cuhub_core::easytier::EasyTierMember;
-use cuhub_core::hub::BridgeSnapshot;
-use cuhub_core::multiplayer::{RoomRole, TunnelState};
+use cuhub_core::multiplayer::{DEFAULT_GAME_PORT, RoomRole, TunnelState};
 use nsh_base::input;
 use nsh_core::prelude::*;
 
 use crate::palette::*;
 use crate::ui::{
-    GamePhase, MpBusy, MultiplayerUi, PIXEL_FONT, Ui, busy_key, button, danger_button,
-    game_address, game_phase, game_status_key, panel, pix, pix_c, rise_in, scaled, spinner,
+    GamePhase, HOST_ADDRESS, MpBusy, MultiplayerUi, PIXEL_FONT, Ui, bridge_color, bridge_text,
+    busy_key, button, danger_button, detected_port, game_address, game_phase, game_status_key,
+    host_port, join_port, panel, pix, pix_c, port_mismatch, port_source_key, rise_in, scaled,
+    spinner,
 };
 
 pub fn multiplayer(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let bridge_ui = ui.clone();
+    let status_mp = ui.mp;
     let status_ui = ui.clone();
     let setup_ui = ui.clone();
     let forms_ui = ui.clone();
@@ -25,8 +26,6 @@ pub fn multiplayer(ui: &Ui) -> impl IntoElement {
         .flex_1()
         .gap(scaled(&z, 12.0))
         .bind_motion(&rise_in())
-        .child(bridge_card(&bridge_ui))
-        .child(status_card(&status_ui))
         .child(when(
             move || !setup_ui.mp.core_ready.get() && !setup_ui.mp.running(),
             move || setup_card(&setup_ui),
@@ -39,134 +38,62 @@ pub fn multiplayer(ui: &Ui) -> impl IntoElement {
             move || room_ui.mp.running(),
             move || room_card(&room_ui),
         ))
+        .child(when(
+            move || {
+                status_mp.is_busy()
+                    || !status_mp.elevated.get()
+                    || !status_mp.error.get().is_empty()
+                    || matches!(status_mp.state.get(), TunnelState::Failed(_))
+            },
+            move || status_card(&status_ui),
+        ))
+        .child(bridge_bar(&bridge_ui))
 }
 
 fn forms(ui: &Ui) -> View {
     let z = ui.zoom;
-    let host_ui = ui.clone();
-    let join_ui = ui.clone();
     view()
         .flex_row()
+        .flex_wrap()
         .gap(scaled(&z, 12.0))
-        .child(host_card(&host_ui).flex_1())
-        .child(join_card(&join_ui).flex_1())
+        .child(host_card(ui).min_w(scaled(&z, 220.0)))
+        .child(join_card(ui).min_w(scaled(&z, 220.0)))
 }
 
-fn bridge_card(ui: &Ui) -> View {
+fn bridge_bar(ui: &Ui) -> View {
     let z = ui.zoom;
     let bridge = ui.bridge;
-    panel(
-        &z,
-        move || t!("multiplayer.bridge_panel"),
-        view()
-            .flex_col()
-            .gap(scaled(&z, 6.0))
-            .child(when(
-                move || bridge.get().status.session.is_none(),
-                move || pix(move || bridge_hint(bridge.get()), 11.0, TEXT_MUTED, &z),
-            ))
-            .child(when(
-                move || bridge.get().status.session.is_some(),
-                move || {
-                    view()
-                        .flex_row()
-                        .flex_wrap()
-                        .gap(scaled(&z, 16.0))
-                        .child(bridge_flag(
-                            &z,
-                            bridge,
-                            "multiplayer.bridge_available",
-                            |state| state.available,
-                        ))
-                        .child(bridge_flag(
-                            &z,
-                            bridge,
-                            "multiplayer.bridge_running",
-                            |state| state.running,
-                        ))
-                        .child(bridge_flag(
-                            &z,
-                            bridge,
-                            "multiplayer.bridge_client",
-                            |state| state.client,
-                        ))
-                        .child(bridge_flag(
-                            &z,
-                            bridge,
-                            "multiplayer.bridge_server",
-                            |state| state.server,
-                        ))
-                        .child(bridge_flag(
-                            &z,
-                            bridge,
-                            "multiplayer.bridge_host",
-                            |state| state.host,
-                        ))
-                        .child(bridge_version(&z, bridge))
-                },
-            ))
-            .child(bridge_control(ui)),
-    )
-}
-
-fn bridge_hint(snapshot: BridgeSnapshot) -> String {
-    if !snapshot.game_running {
-        return t!("multiplayer.bridge_game_off");
-    }
-    if let Some(error) = snapshot.status.last_error.as_ref() {
-        return t!("multiplayer.bridge_last_error", error = error);
-    }
-    if let Some(error) = snapshot.start_error.as_ref() {
-        return t!("multiplayer.bridge_last_error", error = error);
-    }
-    t!("multiplayer.bridge_waiting")
-}
-
-fn bridge_flag(
-    z: &Signal<u8>,
-    bridge: Signal<BridgeSnapshot>,
-    key: &'static str,
-    field: fn(&MpState) -> bool,
-) -> View {
     view()
-        .flex_row()
-        .items_center()
-        .gap(scaled(z, 6.0))
-        .child(pix(move || t!(key), 10.0, TEXT_MUTED, z))
-        .child(pix(
-            move || match bridge.get().mp.as_ref() {
-                Some(state) if field(state) => t!("multiplayer.bridge_yes"),
-                Some(_) => t!("multiplayer.bridge_no"),
-                None => t!("multiplayer.bridge_unknown"),
-            },
-            10.0,
-            TEXT,
-            z,
-        ))
-}
-
-fn bridge_version(z: &Signal<u8>, bridge: Signal<BridgeSnapshot>) -> View {
-    view()
-        .flex_row()
-        .items_center()
-        .gap(scaled(z, 6.0))
-        .child(pix(
-            move || t!("multiplayer.bridge_krokmp_version"),
-            10.0,
-            TEXT_MUTED,
-            z,
-        ))
-        .child(pix(
+        .flex_col()
+        .gap(scaled(&z, 5.0))
+        .p(scaled(&z, 10.0))
+        .bg(rgb(SURFACE))
+        .border_t(scaled(&z, 1.0))
+        .border_t_color(rgb(BORDER_DIM))
+        .child(
+            view()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(scaled(&z, 12.0))
+                .child(bridge_control(ui))
+                .child(pix_c(
+                    move || bridge_text(bridge.get()),
+                    10.0,
+                    move || rgb(bridge_color(&bridge.get())),
+                    &z,
+                )),
+        )
+        .child(when(
+            move || !bridge.get().game_running,
             move || {
-                bridge
-                    .get()
-                    .mp
-                    .and_then(|state| state.krokmp_version)
-                    .unwrap_or_else(|| t!("multiplayer.bridge_unknown"))
+                pix(
+                    move || t!("multiplayer.bridge_wait_game"),
+                    10.0,
+                    TEXT_MUTED,
+                    &z,
+                )
             },
-            10.0,
-            TEXT,
-            z,
         ))
 }
 
@@ -203,7 +130,9 @@ fn status_card(ui: &Ui) -> View {
                 move || {
                     pix(
                         move || match mp.state.get() {
-                            TunnelState::Connected { virtual_ip, port } => {
+                            TunnelState::Connected {
+                                virtual_ip, port, ..
+                            } => {
                                 t!("multiplayer.connected_detail", ip = virtual_ip, port = port)
                             }
                             _ => String::new(),
@@ -298,71 +227,125 @@ fn setup_card(ui: &Ui) -> View {
     )
 }
 
+fn lobby_card(z: Signal<u8>, title: &'static str, accent: u32) -> View {
+    view()
+        .flex_col()
+        .flex_1()
+        .min_w(px(0.0))
+        .gap(scaled(&z, 9.0))
+        .p(scaled(&z, 14.0))
+        .bg(rgb(SURFACE))
+        .border(scaled(&z, 1.0))
+        .border_color(rgb(BORDER_DIM))
+        .border_t(scaled(&z, 2.0))
+        .border_t_color(rgb(accent))
+        .child(pix(move || t!(title), 16.0, TEXT, &z))
+}
+
 fn host_card(ui: &Ui) -> View {
     let z = ui.zoom;
     let mp = ui.mp;
-    let host_ui = ui.clone();
-    panel(
-        &z,
-        move || t!("multiplayer.host_panel"),
-        view()
-            .flex_col()
-            .gap(scaled(&z, 8.0))
-            .child(pix(
-                move || t!("multiplayer.host_hint"),
-                11.0,
-                TEXT_MUTED,
-                &z,
-            ))
-            .child(field(
-                &z,
-                move || t!("multiplayer.port"),
-                port_input(&z, mp.port),
-            ))
-            .child(pix(move || t!("multiplayer.port_hint"), 10.0, TEXT_DIM, &z))
-            .child(button(
-                &z,
-                move || t!("multiplayer.host"),
-                !mp.is_busy(),
-                move || host_ui.mp_host(),
-            )),
-    )
+    let bridge = ui.bridge;
+    let action = ui.clone();
+    lobby_card(z, "multiplayer.host_panel", ACCENT)
+        .child(pix(
+            move || t!("multiplayer.host_hint"),
+            11.0,
+            TEXT_MUTED,
+            &z,
+        ))
+        .child(pix(
+            move || {
+                let choice = host_port(&bridge.get(), &mp.port.get());
+                t!(
+                    "multiplayer.port_source",
+                    port = choice.port,
+                    source = t!(port_source_key(choice.source))
+                )
+            },
+            11.0,
+            ACCENT,
+            &z,
+        ))
+        .child(room_action(ui, "multiplayer.host", move || {
+            action.mp_host()
+        }))
+        .child(port_options(ui, true))
 }
 
 fn join_card(ui: &Ui) -> View {
     let z = ui.zoom;
     let mp = ui.mp;
-    let join_ui = ui.clone();
-    panel(
-        &z,
-        move || t!("multiplayer.join_panel"),
-        view()
-            .flex_col()
-            .gap(scaled(&z, 8.0))
-            .child(pix(
-                move || t!("multiplayer.join_hint"),
-                11.0,
-                TEXT_MUTED,
-                &z,
-            ))
-            .child(field(
-                &z,
-                move || t!("multiplayer.code"),
-                code_input(&z, mp.code),
-            ))
-            .child(pix(move || t!("multiplayer.code_hint"), 10.0, TEXT_DIM, &z))
-            .child(field(
-                &z,
-                move || t!("multiplayer.port"),
-                port_input(&z, mp.port),
-            ))
-            .child(button(
-                &z,
-                move || t!("multiplayer.join"),
-                !mp.is_busy(),
-                move || join_ui.mp_join(),
-            )),
+    let action = ui.clone();
+    lobby_card(z, "multiplayer.join_panel", REQUEST)
+        .child(field(
+            &z,
+            move || t!("multiplayer.code"),
+            code_input(&z, mp.code),
+        ))
+        .child(room_action(ui, "multiplayer.join", move || {
+            action.mp_join()
+        }))
+        .child(port_options(ui, false))
+}
+
+fn room_action(ui: &Ui, key: &'static str, action: impl Fn() + Clone + 'static) -> View {
+    let z = ui.zoom;
+    let mp = ui.mp;
+    view().flex_row().child(
+        when(
+            move || !mp.is_busy() && mp.elevated.get(),
+            move || button(&z, move || t!(key), true, action.clone()).border_color(rgb(ACCENT)),
+        )
+        .otherwise(move || button(&z, move || t!(key), false, || {})),
     )
+}
+
+fn port_options(ui: &Ui, host: bool) -> View {
+    let z = ui.zoom;
+    let open = signal(false);
+    let ui = ui.clone();
+    let port = ui.mp.guest_port;
+    view()
+        .flex_col()
+        .gap(scaled(&z, 6.0))
+        .child(view().flex_row().child(button(
+            &z,
+            move || {
+                if open.get() {
+                    t!("multiplayer.port_options_hide")
+                } else if !host && let Some(port) = join_port(&port.get()) {
+                    t!("multiplayer.guest_port_options", port = port)
+                } else {
+                    t!("multiplayer.port_options")
+                }
+            },
+            true,
+            move || open.set(!open.get()),
+        )))
+        .child(when(
+            move || open.get(),
+            move || {
+                if host {
+                    port_field(&ui)
+                } else {
+                    view()
+                        .flex_col()
+                        .gap(scaled(&z, 6.0))
+                        .child(field(
+                            &z,
+                            move || t!("multiplayer.guest_port"),
+                            port_input(&z, port),
+                        ))
+                        .child(pix(
+                            move || t!("multiplayer.guest_port_hint"),
+                            10.0,
+                            TEXT_MUTED,
+                            &z,
+                        ))
+                }
+            },
+        ))
 }
 
 fn room_card(ui: &Ui) -> View {
@@ -376,50 +359,73 @@ fn room_card(ui: &Ui) -> View {
     let peers = each(mp.peers, peer_key, move |member, _| {
         peer_row(&list_ui, &member.get())
     });
-    panel(
-        &z,
-        move || t!("multiplayer.room_panel"),
-        view()
-            .flex_col()
-            .gap(scaled(&z, 10.0))
-            .child(
-                view()
-                    .flex_row()
-                    .items_center()
-                    .gap(scaled(&z, 8.0))
-                    .child(pix(move || t!("multiplayer.role"), 10.0, TEXT_DIM, &z))
-                    .child(pix(move || role_label(mp.role.get()), 12.0, TEXT, &z)),
-            )
-            .child(room_code_row(&z, mp, &copy_ui))
-            .child(
-                view()
-                    .flex_col()
-                    .gap(scaled(&z, 6.0))
-                    .child(pix(move || t!("multiplayer.peers"), 10.0, TEXT_DIM, &z))
-                    .child(when(
-                        move || mp.peers.get().is_empty(),
-                        move || pix(move || t!("multiplayer.peer_empty"), 11.0, TEXT_DIM, &z),
-                    ))
-                    .child(peers),
-            )
-            .child(game_section(ui))
-            .child(when(
-                move || mp.leave_confirm.get(),
-                move || leave_confirm(&confirm_ui, &cancel_ui),
-            ))
-            .child(when(
-                move || !mp.leave_confirm.get(),
-                move || {
-                    let leave = leave_ui.clone();
-                    danger_button(
-                        &z,
-                        move || t!("multiplayer.leave"),
-                        !mp.is_busy(),
-                        move || leave.mp_request_leave(),
-                    )
-                },
-            )),
-    )
+    lobby_card(z, "multiplayer.room_panel", ACCENT)
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(scaled(&z, 8.0))
+                .child(pix(move || t!("multiplayer.role"), 10.0, TEXT_DIM, &z))
+                .child(pix(move || role_label(mp.role.get()), 12.0, TEXT, &z)),
+        )
+        .child(when(
+            move || mp.role.get() == RoomRole::Host,
+            move || room_code_row(&z, mp, &copy_ui),
+        ))
+        .child(pix_c(
+            move || match (mp.role.get(), mp.state.get()) {
+                (RoomRole::Guest, TunnelState::WaitingPeer) => t!("multiplayer.finding_host"),
+                (_, TunnelState::Connected { .. }) => t!("multiplayer.tunnel_ready"),
+                (_, state) => state_label(state),
+            },
+            13.0,
+            move || rgb(state_color(mp.state.get())),
+            &z,
+        ))
+        .child(when(
+            move || mp.role.get() == RoomRole::Host && mp.host_room_port.get().is_some(),
+            move || {
+                pix(
+                    move || {
+                        t!(
+                            "multiplayer.room_port",
+                            port = mp.host_room_port.get().unwrap_or(DEFAULT_GAME_PORT)
+                        )
+                    },
+                    11.0,
+                    ACCENT,
+                    &z,
+                )
+            },
+        ))
+        .child(game_section(ui))
+        .child(
+            view()
+                .flex_col()
+                .gap(scaled(&z, 6.0))
+                .child(pix(move || t!("multiplayer.peers"), 10.0, TEXT_DIM, &z))
+                .child(when(
+                    move || mp.peers.get().is_empty(),
+                    move || pix(move || t!("multiplayer.peer_empty"), 11.0, TEXT_DIM, &z),
+                ))
+                .child(peers),
+        )
+        .child(when(
+            move || mp.leave_confirm.get(),
+            move || leave_confirm(&confirm_ui, &cancel_ui),
+        ))
+        .child(when(
+            move || !mp.leave_confirm.get(),
+            move || {
+                let leave = leave_ui.clone();
+                danger_button(
+                    &z,
+                    move || t!("multiplayer.leave"),
+                    !mp.is_busy(),
+                    move || leave.mp_request_leave(),
+                )
+            },
+        ))
 }
 
 fn room_code_row(z: &Signal<u8>, mp: MultiplayerUi, copy_ui: &Ui) -> View {
@@ -428,6 +434,7 @@ fn room_code_row(z: &Signal<u8>, mp: MultiplayerUi, copy_ui: &Ui) -> View {
         .flex_row()
         .items_center()
         .gap(scaled(z, 10.0))
+        .flex_wrap()
         .child(pix(move || t!("multiplayer.code"), 10.0, TEXT_DIM, z))
         .child(pix(move || mp.room.get(), 22.0, REQUEST, z))
         .child(button(
@@ -517,7 +524,7 @@ fn field(
 fn port_input(z: &Signal<u8>, draft: Signal<String>) -> impl IntoElement {
     input()
         .value(draft)
-        .placeholder("25565")
+        .placeholder(DEFAULT_GAME_PORT.to_string())
         .font_family(PIXEL_FONT.family)
         .text_size(scaled(z, 12.0))
         .h(scaled(z, 24.0))
@@ -528,6 +535,73 @@ fn port_input(z: &Signal<u8>, draft: Signal<String>) -> impl IntoElement {
         .border_color(rgb(BORDER))
         .text_color(rgb(TEXT))
         .on_change(move |text: &str| draft.set(text.to_owned()))
+}
+
+fn port_field(ui: &Ui) -> View {
+    let z = ui.zoom;
+    let mp = ui.mp;
+    let bridge = ui.bridge;
+    let redetect_ui = ui.clone();
+    let adopt_ui = ui.clone();
+    view()
+        .flex_col()
+        .gap(scaled(&z, 6.0))
+        .child(field(
+            &z,
+            move || t!("multiplayer.port"),
+            port_input(&z, mp.port),
+        ))
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(scaled(&z, 8.0))
+                .child(button(
+                    &z,
+                    move || t!("multiplayer.port_redetect"),
+                    !mp.is_busy(),
+                    move || redetect_ui.mp_redetect_port(),
+                )),
+        )
+        .child(when(
+            move || port_mismatch(&bridge.get(), &mp.port.get()).is_some(),
+            move || {
+                let adopt = adopt_ui.clone();
+                view()
+                    .flex_col()
+                    .gap(scaled(&z, 6.0))
+                    .child(pix(
+                        move || {
+                            let (manual, detected) =
+                                port_mismatch(&bridge.get(), &mp.port.get()).unwrap_or_default();
+                            t!(
+                                "multiplayer.port_mismatch",
+                                manual = manual,
+                                detected = detected
+                            )
+                        },
+                        10.0,
+                        WARN,
+                        &z,
+                    ))
+                    .child(button(
+                        &z,
+                        move || t!("multiplayer.port_adopt"),
+                        !adopt.mp.is_busy(),
+                        move || adopt.mp_adopt_detected_port(),
+                    ))
+            },
+        ))
+        .child(when(
+            move || !mp.port_error.get().is_empty(),
+            move || pix(move || mp.port_error.get(), 10.0, DANGER, &z),
+        ))
+        .child(pix(
+            move || t!("multiplayer.port_hint", port = DEFAULT_GAME_PORT),
+            10.0,
+            TEXT_DIM,
+            &z,
+        ))
 }
 
 fn code_input(z: &Signal<u8>, draft: Signal<String>) -> impl IntoElement {
@@ -576,7 +650,7 @@ fn state_hint(state: TunnelState) -> String {
         TunnelState::Idle => t!("multiplayer.state_idle_hint"),
         TunnelState::WaitingPeer => t!("multiplayer.state_waiting_hint"),
         TunnelState::Connected { .. } => t!("multiplayer.state_connected_hint"),
-        TunnelState::Failed(_) => t!("multiplayer.state_failed_hint"),
+        TunnelState::Failed(reason) => reason,
     }
 }
 
@@ -647,6 +721,8 @@ fn game_section(ui: &Ui) -> View {
     view()
         .flex_col()
         .gap(scaled(&z, 8.0))
+        .p(scaled(&z, 10.0))
+        .bg(rgb(SURFACE_RAISED))
         .child(pix(
             move || t!("multiplayer.game_panel"),
             10.0,
@@ -665,6 +741,23 @@ fn game_section(ui: &Ui) -> View {
             &z,
         ))
         .child(when(
+            move || {
+                game_phase(&bridge.get(), mp.role.get(), &mp.state.get()) == GamePhase::Hosting
+                    && detected_port(&bridge.get()).is_some()
+            },
+            move || {
+                pix(
+                    move || {
+                        let port = detected_port(&bridge.get()).unwrap_or_default();
+                        t!("multiplayer.game_hosting_detail", port = port)
+                    },
+                    10.0,
+                    ACCENT,
+                    &z,
+                )
+            },
+        ))
+        .child(when(
             move || !bridge.get().control,
             move || {
                 pix(
@@ -676,7 +769,15 @@ fn game_section(ui: &Ui) -> View {
             },
         ))
         .child(when(
-            move || game_address(mp.role.get(), &mp.state.get(), &mp.port.get()).is_some(),
+            move || {
+                game_address(
+                    &bridge.get(),
+                    mp.role.get(),
+                    &mp.state.get(),
+                    &mp.port.get(),
+                )
+                .is_some()
+            },
             move || game_address_row(&address_ui),
         ))
         .child(when(
@@ -695,11 +796,31 @@ fn game_section(ui: &Ui) -> View {
             move || mp.busy.get() == MpBusy::Game,
             move || pix(move || t!("multiplayer.busy_game"), 10.0, ACCENT, &z),
         ))
+        .child(when(
+            move || mp.busy.get() == MpBusy::Port,
+            move || pix(move || t!("multiplayer.busy_port"), 10.0, ACCENT, &z),
+        ))
+}
+
+fn room_game_address(
+    mp: MultiplayerUi,
+    bridge: &cuhub_core::hub::BridgeSnapshot,
+) -> Option<String> {
+    let port = if mp.role.get() == RoomRole::Host {
+        mp.host_room_port.get().map(|port| port.to_string())
+    } else {
+        None
+    };
+    if let Some(port) = port {
+        return Some(format!("{HOST_ADDRESS}:{port}"));
+    }
+    game_address(bridge, mp.role.get(), &mp.state.get(), &mp.port.get())
 }
 
 fn game_address_row(ui: &Ui) -> View {
     let z = ui.zoom;
     let mp = ui.mp;
+    let bridge = ui.bridge;
     let copy_ui = ui.clone();
     view()
         .flex_row()
@@ -712,9 +833,7 @@ fn game_address_row(ui: &Ui) -> View {
             &z,
         ))
         .child(pix(
-            move || {
-                game_address(mp.role.get(), &mp.state.get(), &mp.port.get()).unwrap_or_default()
-            },
+            move || room_game_address(mp, &bridge.get()).unwrap_or_default(),
             13.0,
             ACCENT,
             &z,
@@ -724,11 +843,7 @@ fn game_address_row(ui: &Ui) -> View {
             move || t!("multiplayer.copy"),
             true,
             move || {
-                let address = game_address(
-                    copy_ui.mp.role.get(),
-                    &copy_ui.mp.state.get(),
-                    &copy_ui.mp.port.get(),
-                );
+                let address = room_game_address(copy_ui.mp, &copy_ui.bridge.get());
                 if let Some(address) = address {
                     set_clipboard(address);
                     copy_ui.notice.set(t!("multiplayer.game_copied"));
@@ -785,8 +900,13 @@ fn game_confirm(ui: &Ui) -> View {
     let z = ui.zoom;
     let confirm_ui = ui.clone();
     let cancel_ui = ui.clone();
-    let address =
-        game_address(ui.mp.role.get(), &ui.mp.state.get(), &ui.mp.port.get()).unwrap_or_default();
+    let address = game_address(
+        &ui.bridge.get(),
+        ui.mp.role.get(),
+        &ui.mp.state.get(),
+        &ui.mp.port.get(),
+    )
+    .unwrap_or_default();
     view()
         .flex_col()
         .gap(scaled(&z, 8.0))

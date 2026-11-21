@@ -1,10 +1,16 @@
 # 交接说明
 
-截至 2026-11-19。`main` 与 `origin/main` 都在 `1148c4d`，工作副本另有任务中心、批量更新与侧栏折叠的未提交改动（以 `jj st` 为准）；接手前先读本文与 [ARCHITECTURE.md](ARCHITECTURE.md)，再按模块看 [FEATURES.md](FEATURES.md) 与对应 `docs/core/` 说明。
+截至 2026-11-21。`main` 在 `1d0f4361`，工作副本是本波 W4 端口自动检测与四类交接的未提交改动（以 `jj st` 为准）；接手前先读本文与 [ARCHITECTURE.md](ARCHITECTURE.md)，再按模块看 [FEATURES.md](FEATURES.md) 与对应 `docs/core/` 说明，真机回归看 `docs/bridge/w4-tickets/README.md`。
+
+## 联机交接补充
+
+- C1 编码、房主 hostname 和默认静态 IP 沿用旧版。新版客人留空时从同房间的 EasyTier 对端表读取唯一房主的实际虚拟 IP 和端口，手填时只匹配指定端口。无法区分多个房主时停止。
+- 客人端口由本机分配，转发绑定回环。界面和 Bridge 使用客人的回环入口。房主地址或端口变化后更新转发，保持 C1 房间码，游戏里需手动恢复连接。
+- EasyTier 2.6.4 隔离回环实验通过：发现非默认虚拟 IP、不同端口间 UDP 往返，以及游戏未监听时经独立白名单端口进行 TCP 查询。实验使用同机的无 TUN 模式。产品内尚未接房间状态查询端点，正式双机、不同版本客户端和 Together 入房仍待验证。桥尚未随主程序打包。
 
 ## 1. 仓库现状（最要紧）
 
-- jj 仓库（colocated）。`main` 与 `origin/main` 都在 `1148c4d`；工作副本有任务中心、批量更新与侧栏折叠的未提交改动。
+- jj 仓库（colocated）。`main` 在 `1d0f4361`；工作副本有本波 W4 端口自动检测、房主/客人交接与工单文档的未提交改动，覆盖 core / app / 桥插件 / docs。
 - 2026-11-19 已按 core / app / 桥插件 / docs 拆成 4 个提交并推送：`272f9f4`、`cc8075d`、`9f00143`、`1148c4d`。之后仍按模块原子提交，不要把桥和内容库混在一起。
 - 核心模块已从 `mod.rs` 全部改为同级 `<name>.rs`（`steam`、`bridge`、`install`、`easytier`、`platform`），对外路径不变。
 - 许可为 AGPL-3.0-or-later。陶瓦（Terracotta）移植代码保留来源与改动说明，台账在 `docs/third-party/terracotta.md`。
@@ -35,12 +41,13 @@
 - Multiplayer 页已接：开房/加入、状态卡、房间码复制、对端表、EasyTier 未就绪提示与自定义目录、1500ms 轮询。公共节点默认 4 条；实测 `public.easytier.top`、`public2.easytier.cn`、`etnode.zkitefly.eu.org/node1` 时常握手失败，`/node2` 可用。
 - 提权：Windows 要求以管理员重开 Cuhub（`IsUserAnAdmin`，不做 runas 单拉）；Linux/macOS 不预检查 Cuhub 自身能力，由 easytier-core 文件的 `cap_net_admin+ep` 在 exec 时生效。
 - 未做：双机同/异 NAT 实测、Windows 实机、延迟/中继列、手动 IP:端口退路、Windows 无边框窗口验证。
+- 2026-11-21 端口与交接：桥经 `mp.state` 上报主机实际监听端口（仅 running && server），core 按「上报 > 手填 > 默认 25565」选端口并做占用检查；房主端口变化经 350ms×2 采样与 6 秒窗口确认后重建隧道，客人侧提示「房主已换房，请用房间码重进」，不自动重新发现。app 增加端口来源三态与重新检测、游戏内直接开房的 Hosting 相位、四类交接（进入 / 换房 / 退出 / 房主离开）。自动基线：377 单测 + 14 集成、app 25 条。真机未做。
 
 ### 桥（Bridge，实验性，不发布）
 
-- Rust 宿主：`crates/core/src/bridge/{proto,mp,command,session,handshake,server}.rs` 加 `hub/bridge_host.rs`；固定监听 `127.0.0.1:41297`、两端共享 token、单会话、命令表、三档权限、最近握手失败、审计；`crates/core/tests/bridge_server.rs` 13 个回环集成测试。
-- C# 游戏侧：`mods/cuhub-bridge/` 的 `CuhubBridge.Core` + `CuhubBridge.Plugin`，`dotnet build -c Release` 通过、无警告；直连 `127.0.0.1:41297`，实现 hello、10 秒心跳、`mp.state`、`mp.host` / `mp.join`（反射 CUCoreLib），其余命令回 `unavailable`。尚未真机加载。
-- W2/W3 已接线：状态栏三态 + 最近握手失败、Local Mods“运行中已加载”、Multiplayer 顶部只读 `mp.state` 卡；`game.state` / `mods.loaded`、权限确认、`mp.leave` / `mp.kick` / `save.*` / `skin.*` 未做。桥没有打进 Cuhub 安装包，需 `just package-bridge` 生成 zip。
+- Rust 宿主：`crates/core/src/bridge/{proto,mp,command,session,handshake,server}.rs` 加 `hub/bridge_host.rs`；固定监听 `127.0.0.1:41297`、两端共享 token、单会话、命令表、三档权限、最近握手失败、审计；`crates/core/tests/bridge_server.rs` 14 个回环集成测试；测试用 `start_at(0)` 绑临时回环端口、不占 41297，可与真实游戏并行；`close_session` 先取会话槽位并发 `SessionEnded` 再 shutdown，关闭/心跳竞态已消除（`crates/core/src/bridge/server.rs`）。
+- C# 游戏侧：`mods/cuhub-bridge/` 的 `CuhubBridge.Core` + `CuhubBridge.Plugin`，`dotnet build -c Release` 通过、无警告；插件 0.1.1，直连 `127.0.0.1:41297`，实现 hello、10 秒心跳、`mp.state`（含主机监听端口）、`mp.host` / `mp.join`（反射 CUCoreLib），其余命令回 `unavailable`。尚未真机加载。
+- W2/W3 已接线：状态栏三态 + 最近握手失败、Local Mods“运行中已加载”、Multiplayer 顶部只读 `mp.state` 卡与端口来源；`game.state` / `mods.loaded`、权限确认、`mp.leave` / `mp.kick` / `save.*` / `skin.*` 未做。桥没有打进 Cuhub 安装包，需 `just package-bridge` 生成 zip。
 - 详细边界见 [bridge 模块说明](core/bridge/overview.md)、[协议](bridge/protocol.md)、[实施方案](bridge/plan.md)、[C# 研究](bridge/csharp-plugin.md)。
 
 ## 3. 当前结构
@@ -60,8 +67,8 @@
 
 ## 5. 建议下一步
 
-1. 按 [TEST-PLAN.md](TEST-PLAN.md) 跑批次 A，再分环境跑 B–H；当前只有 core 单测与桥回环，UI、真实游戏、双机、Windows 与打包都没有可复现记录。GitHub 源本地清单仍为 2 条；托管仓库 `naroxeno/CUHub-Store` 的远程拉取已接（6h 缓存、启动刷新、本地兜底，Remote Mods 页可手动刷新），清单已上传 26 条并验证 raw 可读（2026-11-19）。
-2. 桥的真机验证：`just build-bridge` / `just package-bridge`，把两个 DLL 放进 `BepInEx/plugins/CuhubBridge/`，确认 BepInEx 5.4.23.6 能加载、`mp.state` 有值、`mp.host` / `mp.join` 与游戏内 UI 等价；再决定是否接页面状态。
+1. 按 [TEST-PLAN.md](TEST-PLAN.md) 跑批次 A，再分环境跑 B–H；当前只有 core 单测、桥回环与 app 纯函数测试，UI、真实游戏、双机、Windows 与打包都没有可复现记录。GitHub 源本地清单仍为 2 条；托管仓库 `naroxeno/CUHub-Store` 的远程拉取已接（6h 缓存、启动刷新、本地兜底，Remote Mods 页可手动刷新），清单已上传 26 条并验证 raw 可读（2026-11-19）。
+2. 桥与联机的真机回归：两机按 `docs/bridge/w4-tickets/README.md` 的 R1–R11 执行（端口自动检测、房主/客人顺序、换房/重进、房主退出后客人侧），偏差与裁定见 `docs/bridge/w4-tickets/decisions.md`；跑前按工单备份 appdata 并用临时游戏副本。心跳集成测试的时序 flake 由 t15（只改测试）稳定。
 3. 联机双机实测（同 NAT / 异 NAT），重点看房主发现、`--port-forward` 重启、退出清理；Windows 无边框标题栏也要实机看。
 4. 内容库后续：M4 整合包、`configOverrides`、Store 删除入口、undo adopt；先补用户可见入口再动数据格式。
 5. 收尾基线警告：`cargo clippy -p cuhub-core --all-targets -- -D warnings` 仍有既有 `hub.rs` 的 `collapsible_if` 与 `settings.rs` 的 `field_reassign_with_default`；与桥无关，修时单独提交。
@@ -72,12 +79,14 @@
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 cargo fmt --all -- --check
 nsh check
-cargo test -p cuhub-core          # 301 单测 + 13 桥集成
-cargo test -p cuhub --all-targets
-cargo clippy -p cuhub --no-deps -- -D warnings
+cargo test -p cuhub-core                  # 377 单测 + 14 桥集成
+cargo test -p cuhub --all-targets         # 25 条（mp_control 15 条）
+cargo clippy -p cuhub --no-deps -- -D warnings   # 只允许既有 2 条 lint（batch.rs:46 / install.rs:244）
 
 just build-bridge                 # dotnet build，需 dotnet SDK 与游戏 Managed DLL
-just package-bridge               # dist/bridge/CuhubBridge.zip
+just package-bridge               # dist/bridge/CuhubBridge.zip（插件 0.1.1）
+dotnet build mods/cuhub-bridge/CuhubBridge.Plugin/CuhubBridge.Plugin.csproj -c Release   # 0 警告 0 错误
+jj status                         # 不允许出现构建产物、下载物、临时目录、测试残留
 ```
 
 ## 7. 接手须知
@@ -87,3 +96,4 @@ just package-bridge               # dist/bridge/CuhubBridge.zip
 - 默认零注释；解释写 `docs/` 镜像目录。新增/修改行为要同步 FEATURES 对应条目与模块 `overview.md`。
 - `tmp-shots/` 是本机截图临时目录，已在 `.git/info/exclude`；`mods/**/bin`、`mods/**/obj` 由 .gitignore 忽略，不要提交构建产物。
 - 写盘/删除/解包改动先在一次性目录或临时游戏副本验证，不要拿真实游戏目录试。
+- 真机工单与裁定在 `docs/bridge/w4-tickets/README.md` 与 `decisions.md`；`docs/bridge/w4-regression.md` 只保留技术事实与索引。

@@ -157,14 +157,24 @@ impl BridgeServer {
         options: BridgeOptions,
         logs: Arc<Logs>,
     ) -> Result<Self, BridgeError> {
-        let endpoint = SocketAddr::from((HOST, PORT));
-        let listener = match TcpListener::bind(endpoint) {
+        Self::start_at(PORT, permissions, options, logs)
+    }
+
+    pub fn start_at(
+        port: u16,
+        permissions: Permissions,
+        options: BridgeOptions,
+        logs: Arc<Logs>,
+    ) -> Result<Self, BridgeError> {
+        let requested = SocketAddr::from((HOST, port));
+        let listener = match TcpListener::bind(requested) {
             Ok(listener) => listener,
             Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
-                return Err(BridgeError::PortInUse(PORT));
+                return Err(BridgeError::PortInUse(port));
             }
             Err(error) => return Err(BridgeError::Io(error.to_string())),
         };
+        let endpoint = listener.local_addr()?;
         listener.set_nonblocking(true)?;
         let (sender, events) = mpsc::channel();
         let shared = Arc::new(ServerShared {
@@ -347,7 +357,6 @@ fn start_session(
 }
 
 pub(crate) fn close_session(shared: &Arc<ServerShared>, session: &Arc<Session>, reason: &str) {
-    session.shutdown();
     let removed = {
         let mut slot = lock(&shared.session);
         match slot.as_ref() {
@@ -367,6 +376,8 @@ pub(crate) fn close_session(shared: &Arc<ServerShared>, session: &Arc<Session>, 
             reason: reason.to_owned(),
         });
     }
+    // shutdown wakes the blocked reader; the slot is resolved first so the reader cannot replace this reason.
+    session.shutdown();
 }
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -392,5 +403,34 @@ mod tests {
     fn the_fixed_endpoint_uses_the_shared_loopback_port() {
         assert_eq!(PORT, 41297);
         assert!(HOST.is_loopback());
+    }
+
+    #[test]
+    fn start_refuses_the_fixed_port_when_it_is_taken() {
+        let holder = TcpListener::bind(SocketAddr::from((HOST, PORT)));
+        match holder {
+            Ok(listener) => {
+                let error = start_fixed();
+                assert_eq!(error, BridgeError::PortInUse(PORT));
+                drop(listener);
+            }
+            Err(error) if error.kind() == io::ErrorKind::AddrInUse => {
+                let error = start_fixed();
+                assert_eq!(error, BridgeError::PortInUse(PORT));
+            }
+            Err(error) => panic!("cannot probe the bridge port: {error}"),
+        }
+    }
+
+    fn start_fixed() -> BridgeError {
+        let app_data = crate::test_support::temp_dir("bridge-port");
+        let logs = Arc::new(Logs::start(&app_data));
+        match BridgeServer::start(Permissions::default(), BridgeOptions::default(), logs) {
+            Ok(server) => {
+                drop(server);
+                panic!("the fixed port must be taken");
+            }
+            Err(error) => error,
+        }
     }
 }

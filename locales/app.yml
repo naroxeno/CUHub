@@ -328,17 +328,17 @@ nexus.installed:
   zh-CN: "已安装 %{version}"
   ja: "インストール済み %{version}"
 remote.search_placeholder:
-  en: "Search by name or repository"
-  zh-CN: "按名称或仓库搜索"
-  ja: "名前またはリポジトリで検索"
+  en: "Search names, repositories, authors or descriptions"
+  zh-CN: "按名称、仓库、作者或描述搜索"
+  ja: "名前、リポジトリ、作者、説明で検索"
 remote.total:
   en: "%{count} mod(s)"
   zh-CN: "共 %{count} 个模组"
   ja: "%{count} 件"
 remote.refresh:
-  en: "Refresh list"
-  zh-CN: "刷新列表"
-  ja: "一覧を更新"
+  en: "Refresh GitHub list"
+  zh-CN: "刷新 GitHub 清单"
+  ja: "GitHub 一覧を更新"
 remote.refreshing:
   en: "Refreshing…"
   zh-CN: "正在刷新…"
@@ -448,9 +448,9 @@ remote.pager:
   zh-CN: "第 %{page} / %{pages} 页 · 共 %{total} 个模组"
   ja: "%{page} / %{pages} ページ · %{total} 件"
 local.count:
-  en: "%{count} mod(s) in Plugins"
-  zh-CN: "Plugins 中有 %{count} 个模组"
-  ja: "Plugins に %{count} 件のMOD"
+  en: "%{count} local mod(s)"
+  zh-CN: "%{count} 个本地模组"
+  ja: "ローカルMOD %{count} 件"
 local.disable_all:
   en: "Disable all"
   zh-CN: "全部禁用"
@@ -504,13 +504,13 @@ local.pin_nexus:
   zh-CN: "来源：Nexus"
   ja: "固定: Nexus"
 local.bridge_title:
-  en: "Cuhub Bridge"
-  zh-CN: "Cuhub 桥"
-  ja: "Cuhub ブリッジ"
+  en: "CUHub Bridge"
+  zh-CN: "CUHub Bridge"
+  ja: "CUHub Bridge"
 local.bridge_description:
-  en: "Installs the in-game bridge into BepInEx/plugins/CuhubBridge. It also appears in the mod list above."
-  zh-CN: "把游戏内桥安装到 BepInEx/plugins/CuhubBridge，安装后也会出现在上方模组列表里。"
-  ja: "ゲーム内ブリッジを BepInEx/plugins/CuhubBridge にインストールします。上のMOD一覧にも表示されます。"
+  en: "Connects CUHub to the game for multiplayer status and controls."
+  zh-CN: "连接 CUHub 和游戏，用于显示联机状态和控制开房、加入。"
+  ja: "CUHub をゲームに接続し、マルチプレイの状態表示と操作を提供します。"
 local.bridge_status_not_installed:
   en: "Not installed"
   zh-CN: "未安装"
@@ -735,6 +735,10 @@ multiplayer.busy_game:
   en: "Controlling the game…"
   zh-CN: "正在控制游戏…"
   ja: "ゲームを操作しています…"
+multiplayer.busy_port:
+  en: "Detecting the port…"
+  zh-CN: "正在检测端口…"
+  ja: "ポートを検出しています…"
 multiplayer.host_panel:
   en: "HOST A ROOM"
   zh-CN: "开房"
@@ -744,9 +748,9 @@ multiplayer.host_hint:
   zh-CN: "生成一个房间码，等朋友加入。"
   ja: "ルームコードを作って、友だちの参加を待ちます。"
 multiplayer.host:
-  en: "Host a room"
-  zh-CN: "开房"
-  ja: "ルームを立てる"
+  en: "Create multiplayer room"
+  zh-CN: "创建联机房间"
+  ja: "マルチプレイルームを作成"
 multiplayer.join_panel:
   en: "JOIN A ROOM"
   zh-CN: "加入房间"
@@ -764,17 +768,53 @@ multiplayer.port:
   zh-CN: "端口"
   ja: "ポート"
 multiplayer.port_hint:
-  en: "Keep 25565 unless the game says otherwise."
-  zh-CN: "默认 25565，和游戏里的端口保持一致。"
-  ja: "ゲーム側に指定がなければ 25565 のままで。"
+  en: "The game port takes priority. Leave this blank to use %{port} when no port is reported."
+  zh-CN: "优先使用游戏上报的端口。没有上报时，留空使用 %{port}。"
+  ja: "ゲームの報告ポートを優先します。報告がなく空欄の場合は %{port} を使用します。"
+multiplayer.port_source:
+  en: "Port %{port} · %{source}"
+  zh-CN: "端口 %{port} · %{source}"
+  ja: "ポート %{port} · %{source}"
+multiplayer.port_source_reported:
+  en: "reported by game"
+  zh-CN: "游戏上报"
+  ja: "ゲームから取得"
+multiplayer.port_source_manual:
+  en: "manual"
+  zh-CN: "手动"
+  ja: "手動"
+multiplayer.port_source_default:
+  en: "default"
+  zh-CN: "默认"
+  ja: "既定値"
+multiplayer.port_redetect:
+  en: "Detect again"
+  zh-CN: "重新检测"
+  ja: "再検出"
+multiplayer.port_mismatch:
+  en: "The field says %{manual}, but the game listens on %{detected}."
+  zh-CN: "端口填的是 %{manual}，但游戏实际在 %{detected}。"
+  ja: "入力は %{manual} ですが、ゲームは %{detected} で待ち受けています。"
+multiplayer.port_adopt:
+  en: "Use the detected port"
+  zh-CN: "采用检测端口"
+  ja: "検出されたポートを使う"
+multiplayer.port_moved:
+  en: "The game moved to port %{port}."
+  zh-CN: "游戏已换到端口 %{port}。"
+  ja: "ゲームのポートが %{port} に変わりました。"
+multiplayer.port_failed:
+  en: "The game port %{port} is not usable: %{error}"
+  zh-CN: "游戏端口 %{port} 不可用：%{error}"
+  ja: "ゲームのポート %{port} が使えません：%{error}"
 multiplayer.code:
   en: "Room code"
   zh-CN: "房间码"
   ja: "ルームコード"
 multiplayer.code_placeholder:
-  en: "C1-XXXX-XXXX-XXXX-XXXX"
-  zh-CN: "C1-XXXX-XXXX-XXXX-XXXX"
-  ja: "C1-XXXX-XXXX-XXXX-XXXX"
+  en: "Paste the room code"
+  zh-CN: "粘贴房间码"
+  ja: "ルームコードを貼り付け"
 multiplayer.code_hint:
   en: "C1- can be left out. Case, spaces and dashes don't matter."
   zh-CN: "可省略 C1-，大小写、空格和 - 都不影响。"
@@ -876,9 +916,9 @@ multiplayer.error_elevation:
   zh-CN: "开房和加入需要管理员权限，请以管理员身份重新打开 Cuhub。"
   ja: "ルームの作成・参加には管理者権限が必要です。管理者として Cuhub を開き直してください。"
 multiplayer.error_not_found:
-  en: "No host found yet. Check that the room code matches and the host is online."
-  zh-CN: "还没找到房主。请确认房间码一致、对方已开房并在线。"
-  ja: "ホストが見つかりません。ルームコードと相手の状態を確認してください。"
+  en: "No host found yet. Check the room code, host port and whether the host is online."
+  zh-CN: "还没找到房主。请核对房间码和房主端口，并确认对方已开房。"
+  ja: "ホストが見つかりません。ルームコード、ホストポート、相手の状態を確認してください。"
 multiplayer.error_port:
   en: "Choose a port between 1 and 65535."
   zh-CN: "端口要在 1 到 65535 之间。"
@@ -2036,6 +2076,10 @@ profiles.error_io:
   en: "Could not read or write the profile files."
   zh-CN: "档案文件读写失败。"
   ja: "プロファイルファイルの読み書きに失敗しました。"
+profiles.error_activate_after_apply:
+  en: "Mod deployment finished, but the active profile could not be saved."
+  zh-CN: "模组已部署，但活动档案未能保存。"
+  ja: "Mod の配置は完了しましたが、有効なプロファイルを保存できませんでした。"
 profiles.error_generic:
   en: "The operation failed. Check the game folder and the profile files."
   zh-CN: "操作失败，请检查游戏目录与档案文件。"
@@ -2258,9 +2302,9 @@ multiplayer.bridge_unknown:
   zh-CN: "—"
   ja: "—"
 multiplayer.bridge_control:
-  en: "Game control"
-  zh-CN: "游戏内控制"
-  ja: "ゲーム内操作"
+  en: "Auto host / join in game"
+  zh-CN: "自动在游戏内开房／加入"
+  ja: "ゲーム内で自動作成／参加"
 multiplayer.bridge_control_on:
   en: "Allowed"
   zh-CN: "已允许"
@@ -2317,6 +2361,18 @@ multiplayer.game_status_joined:
   en: "Joined the in-game room."
   zh-CN: "已加入游戏内房间。"
   ja: "ゲーム内ルームに参加しました。"
+multiplayer.game_hosting_detail:
+  en: "Host · game port %{port} (auto-detected)"
+  zh-CN: "房主 · 游戏端口 %{port}（自动检测）"
+  ja: "ホスト · ゲームポート %{port}（自動検出）"
+multiplayer.game_host_left:
+  en: "The host left the room. Retry when they are back."
+  zh-CN: "房主已离开房间，等房主回来后可以重试。"
+  ja: "ホストがルームを離れました。戻ってから再試行できます。"
+multiplayer.game_host_moved:
+  en: "The host endpoint changed. Rejoin in the game with the address shown here."
+  zh-CN: "房主的联机地址已变化，请用这里显示的地址在游戏内重新加入。"
+  ja: "ホストの接続先が変わりました。表示されているアドレスでゲームに再参加してください。"
 multiplayer.game_address:
   en: "Address"
   zh-CN: "地址"
@@ -2377,8 +2433,268 @@ multiplayer.game_error_generic:
   en: "Game control failed: %{error}"
   zh-CN: "游戏内控制失败：%{error}"
   ja: "ゲーム内操作に失敗しました：%{error}"
+multiplayer.game_error_game_port:
+  en: "The game listens on %{reported}, but the tunnel uses %{expected}. Detect the port again or reopen the room in game."
+  zh-CN: "游戏实际监听 %{reported}，隧道端口是 %{expected}。请重新检测端口，或在游戏里重开房间。"
+  ja: "ゲームは %{reported} で待ち受けていますが、トンネルは %{expected} です。ポートを再検出するか、ゲーム内でルームを立て直してください。"
+multiplayer.game_error_game_port_none:
+  en: "The game did not report a port for %{expected}. Reopen the room after the game starts hosting."
+  zh-CN: "游戏没有上报 %{expected} 的监听端口，等游戏内开好房后再重开一次。"
+  ja: "ゲームが %{expected} の待ち受けポートを報告しませんでした。ゲーム内でルームを立ててからやり直してください。"
+multiplayer.game_error_no_room:
+  en: "The room tunnel is not ready. Start hosting the room first."
+  zh-CN: "房间隧道还没就绪，请先在应用里开房。"
+  ja: "ルームのトンネルが未準備です。先にアプリでルームを立ててください。"
+multiplayer.error_port_in_use:
+  en: "Port %{port} is already in use."
+  zh-CN: "端口 %{port} 已被占用。"
+  ja: "ポート %{port} は使用中です。"
 notice.bridge_failed:
   en: "Bridge: %{error}"
   zh-CN: "桥：%{error}"
   ja: "ブリッジ：%{error}"
 
+
+local.bulk_actions:
+  en: "Bulk actions"
+  zh-CN: "批量操作"
+  ja: "一括操作"
+local.row_actions:
+  en: "More"
+  zh-CN: "更多"
+  ja: "その他"
+local.no_updates:
+  en: "No known updates"
+  zh-CN: "暂无已知更新"
+  ja: "確認済みの更新なし"
+local.no_newer_catalogue:
+  en: "No newer catalogue version"
+  zh-CN: "目录无更新"
+  ja: "カタログに更新なし"
+local.check_updates:
+  en: "Check for updates"
+  zh-CN: "检查更新"
+  ja: "更新を確認"
+local.hide_details:
+  en: "Hide details"
+  zh-CN: "收起详情"
+  ja: "詳細を閉じる"
+local.change_source:
+  en: "Change source (%{current})"
+  zh-CN: "切换来源（%{current}）"
+  ja: "配布元を変更（%{current}）"
+local.bridge_reinstall:
+  en: "Reinstall bridge"
+  zh-CN: "重新安装桥"
+  ja: "ブリッジを再インストール"
+local.enabled:
+  en: "Enabled"
+  zh-CN: "已启用"
+  ja: "有効"
+local.no_newer_github:
+  en: "No newer GitHub release"
+  zh-CN: "GitHub 无更新"
+  ja: "GitHub に更新なし"
+local.bridge_component:
+  en: "Multiplayer component"
+  zh-CN: "联机组件"
+  ja: "マルチプレイ用コンポーネント"
+local.bridge_installed_disabled:
+  en: "%{installed} · Disabled"
+  zh-CN: "%{installed} · 已禁用"
+  ja: "%{installed} · 無効"
+local.bridge_bulk_scope:
+  en: "Bulk enable, disable and delete also affect the bridge."
+  zh-CN: "全部启用、全部禁用和全部删除也会影响桥。"
+  ja: "一括での有効化、無効化、削除はブリッジにも適用されます。"
+
+nexus.dashboard_title:
+  en: "Community mods"
+  zh-CN: "社区模组"
+  ja: "コミュニティMOD"
+nexus.summary:
+  en: "%{total} in catalogue · %{installed} installed · %{updates} with updates"
+  zh-CN: "目录 %{total} 个 · 已安装 %{installed} 个 · 可更新 %{updates} 个"
+  ja: "登録 %{total} 件 · インストール済み %{installed} 件 · 更新あり %{updates} 件"
+nexus.search:
+  en: "Search by name, author or description"
+  zh-CN: "搜索模组名、作者或描述"
+  ja: "名前、作者、説明で検索"
+nexus.filter_all:
+  en: "All mods"
+  zh-CN: "全部模组"
+  ja: "すべてのMOD"
+nexus.filter_installed:
+  en: "Installed"
+  zh-CN: "已安装"
+  ja: "インストール済み"
+nexus.filter_missing:
+  en: "Not installed"
+  zh-CN: "未安装"
+  ja: "未インストール"
+nexus.filter_updates:
+  en: "Updates available"
+  zh-CN: "有可用更新"
+  ja: "更新あり"
+nexus.sort_downloads:
+  en: "Most downloaded"
+  zh-CN: "下载量最多"
+  ja: "ダウンロード数順"
+nexus.sort_endorsements:
+  en: "Most endorsed"
+  zh-CN: "推荐数最多"
+  ja: "推薦数順"
+nexus.sort_name:
+  en: "Name A–Z"
+  zh-CN: "按模组名"
+  ja: "MOD名順"
+nexus.sort_author:
+  en: "Author A–Z"
+  zh-CN: "按作者名"
+  ja: "作者名順"
+nexus.adult_on:
+  en: "18+ shown"
+  zh-CN: "18+ 已显示"
+  ja: "18+ 表示中"
+nexus.adult_off:
+  en: "18+ hidden"
+  zh-CN: "18+ 已隐藏"
+  ja: "18+ 非表示"
+nexus.switch_grid:
+  en: "Grid view"
+  zh-CN: "切换网格"
+  ja: "グリッド表示"
+nexus.switch_list:
+  en: "List view"
+  zh-CN: "切换列表"
+  ja: "リスト表示"
+nexus.no_results:
+  en: "No matches. Try a different search or filter."
+  zh-CN: "没有匹配的模组，试试其他关键词或筛选条件。"
+  ja: "一致するMODがありません。検索語やフィルターを変更してください。"
+nexus.no_cover:
+  en: "No cover"
+  zh-CN: "暂无封面"
+  ja: "カバーなし"
+nexus.status_installed:
+  en: "Installed"
+  zh-CN: "已安装"
+  ja: "インストール済み"
+nexus.download_count:
+  en: "%{count} downloads"
+  zh-CN: "%{count} 次下载"
+  ja: "%{count} ダウンロード"
+nexus.endorsements:
+  en: "%{count} endorsements"
+  zh-CN: "%{count} 次推荐"
+  ja: "%{count} 推薦"
+nexus.detail_meta:
+  en: "%{author} · Version %{version}"
+  zh-CN: "%{author} · 版本 %{version}"
+  ja: "%{author} · バージョン %{version}"
+nexus.detail_stats:
+  en: "%{downloads} downloads · %{unique} unique · %{endorsements} endorsements"
+  zh-CN: "%{downloads} 次下载 · %{unique} 个独立下载 · %{endorsements} 次推荐"
+  ja: "%{downloads} ダウンロード · ユニーク %{unique} · 推薦 %{endorsements}"
+nexus.no_dependencies:
+  en: "No known dependencies"
+  zh-CN: "暂无已知依赖"
+  ja: "既知の依存MODなし"
+nexus.dependencies:
+  en: "Requires %{list}"
+  zh-CN: "依赖 %{list}"
+  ja: "必要なMOD %{list}"
+nexus.no_description:
+  en: "The author did not provide a description."
+  zh-CN: "作者未提供描述。"
+  ja: "作者による説明はありません。"
+nexus.view_mod:
+  en: "View on Nexus"
+  zh-CN: "在 Nexus 查看"
+  ja: "Nexus で見る"
+nexus.copy_link:
+  en: "Copy link"
+  zh-CN: "复制链接"
+  ja: "リンクをコピー"
+nexus.link_copied:
+  en: "Nexus link copied."
+  zh-CN: "已复制 Nexus 链接。"
+  ja: "Nexus のリンクをコピーしました。"
+nexus.open_files:
+  en: "Open files page"
+  zh-CN: "打开下载页"
+  ja: "ファイルページを開く"
+
+remote.all_sources:
+  en: "All sources"
+  zh-CN: "全部来源"
+  ja: "すべての配布元"
+remote.check_version:
+  en: "Check GitHub version"
+  zh-CN: "查询 GitHub 版本"
+  ja: "GitHub のバージョンを確認"
+remote.nexus_details:
+  en: "Nexus details"
+  zh-CN: "Nexus 详情"
+  ja: "Nexus の詳細"
+remote.prepare_nexus:
+  en: "Prepare Nexus install"
+  zh-CN: "准备从 Nexus 安装"
+  ja: "Nexus からのインストールを準備"
+
+remote.nexus_source:
+  en: "Nexus"
+  zh-CN: "Nexus"
+  ja: "Nexus"
+
+remote.refresh_nexus:
+  en: "Refresh Nexus catalogue"
+  zh-CN: "刷新 Nexus 目录"
+  ja: "Nexus カタログを更新"
+
+remote.github_source:
+  en: "GitHub"
+  zh-CN: "GitHub"
+  ja: "GitHub"
+
+multiplayer.port_options:
+  en: "Port options"
+  zh-CN: "端口选项"
+  ja: "ポート設定"
+multiplayer.port_options_hide:
+  en: "Hide port options"
+  zh-CN: "收起端口选项"
+  ja: "ポート設定を閉じる"
+multiplayer.guest_port_options:
+  en: "Host port %{port} · Options"
+  zh-CN: "房主端口 %{port} · 选项"
+  ja: "ホストポート %{port} · 設定"
+multiplayer.guest_port:
+  en: "Host port"
+  zh-CN: "房主端口"
+  ja: "ホストポート"
+multiplayer.guest_port_hint:
+  en: "Leave blank to discover the host port automatically. Only enter a port to narrow discovery."
+  zh-CN: "留空自动发现房主端口。需要限定发现范围时，再手填房主端口。"
+  ja: "空欄ならホストポートを自動検出します。検出対象を絞るときだけ入力してください。"
+multiplayer.bridge_wait_game:
+  en: "You can set up a room now. In-game actions require the game to be running."
+  zh-CN: "现在就可以创建或加入 CUHub 房间。游戏内操作要等游戏启动。"
+  ja: "CUHub ルームは先に作成・参加できます。ゲーム内の操作にはゲームの起動が必要です。"
+multiplayer.finding_host:
+  en: "Looking for the host…"
+  zh-CN: "正在寻找房主…"
+  ja: "ホストを探しています…"
+multiplayer.tunnel_ready:
+  en: "Tunnel ready"
+  zh-CN: "隧道已就绪"
+  ja: "トンネル接続済み"
+multiplayer.room_port:
+  en: "Room port %{port}"
+  zh-CN: "房间端口 %{port}"
+  ja: "ルームポート %{port}"
+
+multiplayer.game_host_returned:
+  en: "The host is back. Rejoin in the game with the address shown here."
+  zh-CN: "房主已重新上线，请用这里显示的地址在游戏内重新加入。"
+  ja: "ホストが戻りました。表示されているアドレスでゲームに再参加してください。"

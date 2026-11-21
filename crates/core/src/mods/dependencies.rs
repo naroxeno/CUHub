@@ -258,6 +258,7 @@ mod tests {
 
     fn manifest_entry(name: &str, guid: Option<&str>) -> SourceEntry {
         SourceEntry {
+            nexus_id: None,
             name: name.to_owned(),
             repo: Repo::parse("owner/repo").expect("repo"),
             matcher: Matcher {

@@ -68,10 +68,18 @@ fn profile_panel(ui: &Ui) -> View {
                 },
             ))
             .child(when(
-                move || !error_watch.profiles.error.get().is_empty(),
                 move || {
-                    let key = error_ui.profiles.error.get();
-                    pix(t!(key), 11.0, DANGER, &z)
+                    let (key, detail) = error_watch.profiles.error.get();
+                    !key.is_empty() || !detail.is_empty()
+                },
+                move || {
+                    let (key, detail) = error_ui.profiles.error.get();
+                    let text = match (key.is_empty(), detail.is_empty()) {
+                        (true, _) => detail,
+                        (false, true) => t!(key),
+                        (false, false) => format!("{}\n{detail}", t!(key)),
+                    };
+                    pix(text, 11.0, DANGER, &z)
                 },
             ))
             .child(create_block(&create_ui)),

@@ -24,6 +24,7 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone)]
 pub struct Network {
     client: Client,
+    covers: Client,
 }
 
 impl Network {
@@ -32,15 +33,27 @@ impl Network {
     }
 
     pub fn with_user_agent(user_agent: &str) -> Result<Self, NetworkError> {
-        let client = Client::builder()
-            .user_agent(user_agent)
-            .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(REQUEST_TIMEOUT)
-            .https_only(true)
-            .redirect(redirect_policy())
-            .build()
-            .map_err(|error| NetworkError::Request(Box::new(error)))?;
-        Ok(Self { client })
+        let build = |redirect| {
+            Client::builder()
+                .user_agent(user_agent)
+                .connect_timeout(CONNECT_TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
+                .https_only(true)
+                .redirect(redirect)
+                .build()
+                .map_err(|error| NetworkError::Request(Box::new(error)))
+        };
+        Ok(Self {
+            client: build(redirect_policy())?,
+            covers: build(Policy::none())?,
+        })
+    }
+
+    pub(crate) fn get_cover(&self, url: Url, max_bytes: u64) -> Result<Fetch, NetworkError> {
+        if !crate::metadata::is_cover_url(&url) {
+            return Err(NetworkError::InvalidUrl(url.to_string()));
+        }
+        self.send(self.covers.get(url.clone()), url, max_bytes)
     }
 
     pub fn get(

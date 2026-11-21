@@ -97,17 +97,21 @@
 
 - 单元测试：
   - `Hub::set_bridge_control` 只改 host/join 两条，开/关都持久化，`BridgeSnapshot.control` 跟随。
-  - `BridgeServer::set_permissions` 在已有会话上立即生效；默认仍拒绝。
-  - 地址拼装：host/guest、端口边界。
-  - 状态门控纯函数：available/control/role/tunnel 的组合。
-- 集成测试：`tests/bridge_server.rs` 加“默认拒绝 → 运行中授权 → 同一会话允许”的用例。
-- C# 不改；仍跑 `dotnet build -c Release` 两个工程。
-- 真机（必须）：
-  - 房主先开房、客人后进；客人先进隧道、房主后开房。
-  - 授权关闭时按钮禁用；打开后自动执行；关闭后不再自动。
-  - QuickTest 失败、游戏退出、桥断开、端口占用各一次。
-  - 记录 `BepInEx/LogOutput.log` 与桥日志。
-- 回归：`cargo fmt --all --check`、`cargo check --workspace --all-targets`、`cargo test --workspace`，不新增警告。
+  - `PortWatch`：350ms 采样、连续 2 次确认、6 秒窗口；抖动不换端口，稳定才换。
+  - `choose_host_port`：上报 > 手填 > 默认 25565，0 视为未填；非法与占用返回错误，不静默换号。
+  - `mp.state` 宽容解析：缺 port、null、非整数、越界、客人侧都当未检测，不报错。
+  - 地址拼装与状态门控：host/guest、端口边界，`GamePhase` 组合。
+- 集成测试：`tests/bridge_server.rs` 14 条（握手、权限活更新、超时、心跳、超大帧、重连）。
+- C#：`just build-bridge` / `just package-bridge`，`dotnet build -c Release` 0 警告；插件版本 0.1.1。
+- 真机（必须，等 Naro 约到搭档后两机执行）：用例编号、步骤与取证见 `docs/bridge/w4-tickets/README.md`，裁定与偏差见 `docs/bridge/w4-tickets/decisions.md`；R1–R11 对应关系：
+  - R1 房主先开房、客人后进；R2 客人先等待、房主隧道后上线自动连上。
+  - R3 桥卡片开关（默认关、打开立即生效、关闭后不再自动）。
+  - R4 QuickTest 失败四组（缺 CUCoreLib、端口占用、名称过短、非法端口）。
+  - R5 游戏退出与重开；R6 桥断开与重连。
+  - R7 游戏内建房 7790 / 24444 的端口检测与来源标签。
+  - R8 游戏内直接开房不重复下发；R9 换房 / 重进清理。
+  - R10 房主退出后客人侧；R11 房主换端口后客人侧（提示「房主已换房，请用房间码重进」）。
+- 回归：`cargo fmt --all -- --check`、`cargo test -p cuhub-core`、`cargo test -p cuhub --all-targets`、`just build-bridge`，不新增警告；批次 F 自动部分见 `docs/TEST-PLAN.md` §8.1。
 
 ## 8. 文档与文案
 
@@ -151,3 +155,10 @@
 - 测试：`mp_control.rs` 新增 10 条纯函数单测（会话/可用性/权限门控、房主与客人状态、地址拼装与端口边界、状态键）；`cargo test -p cuhub --all-targets` 15 条全过；`cargo fmt --all` 干净；`cargo check -p cuhub --all-targets` 无警告。
 - 剩余：真机回归（§7）；桥托管重构（§0）作为发布前置。文档已同步：`docs/FEATURES.md`、`docs/bridge/plan.md`、`docs/bridge/protocol.md`、`docs/core/bridge/overview.md`、`docs/app/overview.md`。
 - §10 决议（2026-11-20，Naro）：开关在桥卡片；房主与客人都自动；客人 3 次、0/3/8 秒；桥托管重构作为发布前置单独排期；QuickTest 保持实验性，真机确认前不当稳定能力。
+
+## 13. 进度（2026-11-21，端口自动检测与交接）
+
+- core：`MpState.port` 只保留 `running && server` 的上报值；新增 `Hub::game_room_port()`、`multiplayer::port`（`choose_host_port`：上报 > 手填 > 默认 25565，`PortSource`、`PortWatch` 350ms×2 / 6s 窗口、`PortUpdate`）。`Hub::start_host` / `join_room` 改走该选择；新增 `restart_host_port` 与阻塞式 `reconcile_room_port`；`start_game_host()` 要求房主隧道，下发 `mp.host` 后回读端口，与隧道端口不一致返回 `HubError::GamePort`。
+- app：开房/加入前显示端口来源与「重新检测」，手填与上报不一致时可一键采纳；`game_phase` 把 `mp.server` 视为 `Hosting`；`watch_mp_control` 增加会话进入/换房/退出交接、客人侧房主离开或换端口提示、房主 reconcile 三态与检测缓存；新增 `MpBusy::Port` 与三语文案。
+- 房主换端口后客人旧隧道目标失效：采用低成本方案，提示「房主已换房，请用房间码重进」，不自动重新发现。
+- 验证：`cargo test -p cuhub --all-targets` 25 条全过（其中 mp_control 15 条）；`cargo check -p cuhub --all-targets` 无警告。

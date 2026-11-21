@@ -19,6 +19,7 @@
     {
       "name": "Casualties Together",
       "repo": "creaturefeaturelarry/casualties-together",
+      "nexusId": 67,
       "match": {
         "guid": "CasualtiesMP",
         "dll": [
@@ -39,6 +40,7 @@
     {
       "name": "CUCoreLib",
       "repo": "jimmyking9999999/CUCoreLib",
+      "nexusId": 341,
       "match": {
         "guid": "net.cucorelib",
         "dll": [

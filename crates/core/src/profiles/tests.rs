@@ -415,9 +415,15 @@ fn stops_on_missing_version_and_reports_the_finished_part() {
     ];
     let mut index = LinkIndex::load(&dir);
     let error = apply_plan(&mut index, &store, &game, &ops).unwrap_err();
-    let ProfileError::Apply { report, source } = error else {
+    let ProfileError::Apply {
+        report,
+        source,
+        index_error,
+    } = error
+    else {
         panic!("expected an apply failure");
     };
+    assert!(index_error.is_none());
     assert_eq!(report.applied, ops[..2].to_vec());
     assert_eq!(report.remaining, ops[2..].to_vec());
     assert!(matches!(
@@ -572,4 +578,62 @@ fn checkpoint_merges_links_into_a_new_active_profile() {
     assert!(added.enabled);
     assert!(added.link.is_some());
     let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn rejects_unmanaged_target_before_removing_the_old_deployment() {
+    let dir = temp_dir("profiles-target-conflict");
+    let game = game_dir(&dir);
+    let plugins = game.join("BepInEx/Plugins");
+    let store = Store::new(dir.clone());
+    let profiles = ProfileStore::new(dir.clone());
+    let mut index = LinkIndex::load(&dir);
+    let old = plugins.join("Old.dll");
+    let occupied = plugins.join("New.dll");
+    import(&dir, &store, "old", "1", &[("Old.dll", b"old")]);
+    import(&dir, &store, "new", "1", &[("New.dll", b"new")]);
+    let mut current = Profile::new("Current");
+    current.entries.push(entry("old", "1"));
+    profiles.save(&current).unwrap();
+    profiles.set_active(Some("Current")).unwrap();
+    let ops = plan_apply(&current, &index, &store, &game, &plugins).unwrap();
+    apply_plan(&mut index, &store, &game, &ops).unwrap();
+    let old_index = fs::read(index.path()).unwrap();
+    fs::write(&occupied, b"manual").unwrap();
+
+    let mut next = Profile::new("Next");
+    next.entries.push(entry("new", "1"));
+    let ops = plan_apply(&next, &index, &store, &game, &plugins).unwrap();
+    assert_eq!(ops[0], remove_op(&old));
+    assert!(matches!(
+        check_deployment_targets(&index, &ops),
+        Err(ProfileError::OccupiedTarget(path)) if path == occupied
+    ));
+    assert_eq!(fs::read(&old).unwrap(), b"old");
+    assert_eq!(fs::read(&occupied).unwrap(), b"manual");
+    assert_eq!(fs::read(index.path()).unwrap(), old_index);
+    assert_eq!(profiles.active().as_deref(), Some("Current"));
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn reports_completed_operations_when_the_index_cannot_be_saved() {
+    let dir = temp_dir("profiles-index-write-failed");
+    let game = game_dir(&dir);
+    let store = Store::new(dir.clone());
+    let mut index = LinkIndex::load(&dir);
+    import(&dir, &store, "test", "1", &[("Test.dll", b"MZ")]);
+    fs::create_dir(index.path()).unwrap();
+    let target = game.join("BepInEx/Plugins/Test.dll");
+    let ops = vec![deploy_op(&target, "test", "1")];
+
+    let error = apply_plan(&mut index, &store, &game, &ops).unwrap_err();
+    let ProfileError::Apply { report, source, .. } = error else {
+        panic!("expected an apply failure");
+    };
+    assert_eq!(report.applied, ops);
+    assert!(report.remaining.is_empty());
+    assert!(matches!(*source, ProfileError::Io { path, .. } if path == index.path()));
+    assert_eq!(fs::read(target).unwrap(), b"MZ");
+    fs::remove_dir_all(dir).unwrap();
 }

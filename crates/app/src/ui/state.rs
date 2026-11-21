@@ -4,13 +4,12 @@ use super::delete::DeletePrompt;
 use super::install::{DependencyPrompt, PendingInstall};
 use super::multiplayer::MultiplayerUi;
 use super::profiles::ProfilesUi;
-use super::remote::{RemoteFilter, RemoteRow, build_remote_rows};
+use super::remote::{RemoteFilter, RemoteRow, RemoteSource, merge_catalogues};
 use super::rows::CheckState;
 use super::rows::LocalModRow;
 use super::rows::NexusModRow;
 use super::rows::build_local_rows;
 use super::rows::build_nexus_rows;
-use super::rows::nexus_page_count;
 use super::rows::page_slice;
 use super::tasks::DownloadTrack;
 use crate::i18n;
@@ -21,7 +20,6 @@ use cuhub_core::install::{Flavor, Status as BepInExStatus};
 use cuhub_core::metadata::MetadataMod;
 use cuhub_core::mods::InstalledMod;
 use cuhub_core::settings::Settings;
-use nsh_core::RevealOptions;
 use nsh_core::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -48,9 +46,8 @@ pub struct Ui {
     pub hub: Arc<Mutex<Hub>>,
     pub settings: Signal<Settings>,
     pub mods: Signal<Vec<InstalledMod>>,
+    pub(super) nexus_covers: super::nexus::NexusCovers,
     pub nexus_rows: Signal<Vec<NexusModRow>>,
-    pub nexus_page_rows: Signal<Vec<NexusModRow>>,
-    pub nexus_page: Signal<usize>,
     pub nexus_total: Signal<usize>,
     pub nexus_refreshing: Signal<bool>,
     pub nexus_error: Signal<String>,
@@ -62,6 +59,8 @@ pub struct Ui {
     pub remote_total: Signal<usize>,
     pub remote_query: Signal<String>,
     pub remote_filter: Signal<RemoteFilter>,
+    pub remote_source: Signal<RemoteSource>,
+    pub remote_versions: Signal<BTreeMap<String, Option<String>>>,
     pub sources_ready: Signal<bool>,
     pub sources_refreshing: Signal<bool>,
     pub announcement: Signal<Option<String>>,
@@ -86,8 +85,6 @@ pub struct Ui {
     pub bepinex_pending: Signal<Option<BepInExInstall>>,
     pub bepinex_confirm: Signal<bool>,
     pub bepinex_status_text: Signal<String>,
-    pub nexus_downloading: Signal<Option<String>>,
-    pub nexus_list: ElementRef,
     pub metadata_synced: Signal<String>,
     pub nexus_key_saved: Signal<bool>,
     pub nexus_key_draft: Signal<String>,
@@ -121,12 +118,22 @@ impl Ui {
         let mods = hub.scan_mods().unwrap_or_default();
         let checks = BTreeMap::new();
         let local_rows = build_local_rows(&hub, &mods, &checks, &BTreeSet::new());
-        let nexus_rows = build_nexus_rows(hub.metadata(), &mods);
+        let mut nexus_rows = build_nexus_rows(hub.metadata(), &mods);
         let nexus_total = nexus_rows.len();
-        let nexus_page_rows = page_slice(&nexus_rows, 0);
-        let remote_all = build_remote_rows(&hub, &mods);
-        let remote_total = remote_all.len();
-        let remote_rows = page_slice(&remote_all, 0);
+        let entries = hub
+            .sources()
+            .map_or(&[][..], |manifest| manifest.entries.as_slice());
+        let remote_all = merge_catalogues(entries, &mut nexus_rows, &mods);
+        let visible = remote_all
+            .iter()
+            .filter(|row| {
+                settings.dashboard_show_adult_mods
+                    || !row.nexus.as_ref().is_some_and(|entry| entry.adult)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let remote_total = visible.len();
+        let remote_rows = page_slice(&visible, 0);
         let metadata_synced = hub
             .metadata_last_synced_label()
             .unwrap_or_else(|| t!("common.never"));
@@ -176,9 +183,8 @@ impl Ui {
             hub: Arc::new(Mutex::new(hub)),
             settings: signal(settings),
             mods: signal(mods),
+            nexus_covers: super::nexus::NexusCovers::new(),
             nexus_rows: signal(nexus_rows),
-            nexus_page_rows: signal(nexus_page_rows),
-            nexus_page: signal(0usize),
             nexus_total: signal(nexus_total),
             nexus_refreshing: signal(false),
             nexus_error: signal(String::new()),
@@ -192,6 +198,8 @@ impl Ui {
             remote_total: signal(remote_total),
             remote_query: signal(String::new()),
             remote_filter: signal(RemoteFilter::All),
+            remote_source: signal(RemoteSource::All),
+            remote_versions: signal(BTreeMap::new()),
             sources_ready: signal(has_sources),
             sources_refreshing: signal(false),
             announcement: signal(announcement),
@@ -216,8 +224,6 @@ impl Ui {
             bepinex_pending: signal_with(None::<BepInExInstall>, SignalEquals::Never),
             bepinex_confirm: signal(false),
             bepinex_status_text: signal(String::new()),
-            nexus_downloading: signal(None::<String>),
-            nexus_list: element_ref(),
             metadata_synced: signal(metadata_synced),
             nexus_key_saved: signal(nexus_key_saved),
             nexus_key_draft: signal(String::new()),
@@ -291,7 +297,7 @@ impl Ui {
                 self.mods.set(mods);
                 self.rebuild_nexus(&metadata);
                 self.rebuild_local_rows();
-                self.rebuild_remote();
+                self.refresh_bridge_install();
                 self.notice.set(t!("notice.scanned", count = count));
             }
             Err(error) => self.notice.set(error.to_string()),
@@ -299,24 +305,20 @@ impl Ui {
     }
 
     pub(super) fn rebuild_nexus(&self, metadata: &[MetadataMod]) {
-        let rows = build_nexus_rows(metadata, &self.mods.get());
+        let mods = self.mods.get();
+        let mut rows = build_nexus_rows(metadata, &mods);
+        let remote = {
+            let hub = self.hub();
+            let entries = hub
+                .sources()
+                .map_or(&[][..], |manifest| manifest.entries.as_slice());
+            merge_catalogues(entries, &mut rows, &mods)
+        };
         let total = rows.len();
-        let page = self.nexus_page.get();
         self.nexus_rows.set(rows);
         self.nexus_total.set(total);
-        self.set_nexus_page(page);
-    }
-
-    pub fn set_nexus_page(&self, page: usize) {
-        let rows = self.nexus_rows.get();
-        let previous = self.nexus_page.get();
-        let page = page.min(nexus_page_count(rows.len()) - 1);
-        self.nexus_page.set(page);
-        self.nexus_page_rows.set(page_slice(&rows, page));
-        if previous != page {
-            self.nexus_list
-                .reveal(RevealOptions::default().animated(false));
-        }
+        self.remote_all.set(remote);
+        self.refresh_remote_view();
     }
 
     pub(crate) fn save_setup_game(&self, draft: &str) -> Result<(), String> {
@@ -467,8 +469,6 @@ impl Ui {
                 self.reset_credential_checks();
                 self.rebuild_local_rows();
                 self.rebuild_remote();
-                let metadata = self.hub().metadata().to_vec();
-                self.rebuild_nexus(&metadata);
                 self.notice.set(t!(
                     "notice.language_set",
                     language = i18n::language_label(code)

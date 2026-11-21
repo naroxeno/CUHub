@@ -54,3 +54,5 @@ depends 只声明「装这条之前还需要什么」：name 与 guid 至少一�
 UI 接线（2026-11-15）：Hub 打开时读本地清单与 pin（`Hub::sources` / `source_choice` / `pin_source` / `clear_source_pin` / `check_release`）。Local Mods 每行第三行显示 GitHub 仓库、命中依据、check 结果与生效源；未命中显示 not listed；Check 按钮只对命中条目出现。check 结果只存在 UI 内存（不落盘），同一行在飞行中隐藏 Check 按钮。prerelease 与 name 兜底用黄色文字；失败在行内给 summary，notice 给 summary + detail。命中且有多个来源（或已 pin）时出现 Pin 按钮；按钮文字显示当前状态（auto / GitHub / Nexus），点击按 auto → GitHub → Nexus → auto 循环，写盘失败在 notice 报错。pin 只改生效源判定，不发网络请求。
 
 清单路径已定（2026-11-19）：`naroxeno/CUHub-Store` 的 `main` 分支根 `manifest.json`。`SourceCache` 校验 schemaVersion、URL 与大小上限；`Hub::sources_needs_refresh` 判断过期、`Hub::refresh_sources` 刷新。2026-11-19 已上传 26 条清单，raw 可读（`main` 根 `manifest.json`）。
+
+远程模组页以可选正整数 `nexusId` 关联 Nexus 目录。旧清单中的 Casualties Together 与 CUCoreLib 使用上游公开链接的已知 ID（67 和 341），显式字段优先。重复声明或重复目录 ID 时各条目独立显示。该关联不修改来源 pin。

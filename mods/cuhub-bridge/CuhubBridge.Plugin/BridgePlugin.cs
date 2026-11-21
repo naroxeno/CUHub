@@ -8,7 +8,7 @@ namespace CuhubBridge.Plugin
     {
         public const string PluginGuid = "dev.cuhub.bridge";
         public const string PluginName = "CuhubBridge";
-        public const string PluginVersion = "0.1.0";
+        public const string PluginVersion = "0.1.1";
 
         BridgeSession _session;
 

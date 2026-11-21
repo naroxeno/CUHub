@@ -10,7 +10,7 @@ EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它�
 - `argument.rs`：参数拼装；房间码只在这里派生成网络名/密钥，不落日志。
 - `process.rs`：拉起 core/cli、接管 stdout/stderr、父进程退出时一起死（Windows Job / Linux PDEATHSIG）、`peers_json` 读取。
 - `status.rs`：解析 `peer list -o json` 为 `EasyTierMember`，nat 类型未知时保留 `Unknown`，字段缺失返回 `None` 而不是猜。
-- `tunnel.rs`：门面。host 加 hostname/静态 IP/端口白名单；guest 首次发现房主后带 `--port-forward` 重启一次，`forwarded` 标记防循环；找到房主后粘住，避免 peer 列表抖动导致状态回退。
+- `tunnel.rs`：门面。host 加 hostname/静态 IP/端口白名单；guest 在发现唯一房主后配置回环 TCP/UDP 转发，房主虚拟地址或端口变化时重建转发，连续三次失去候选才移除旧转发。
 - `mod.rs`（`easytier.rs`）：只做 `mod` 与 `pub use`，对外路径保持稳定。
 
 ## 边界与失败模式
@@ -19,6 +19,7 @@ EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它�
 - 内核缺失：先托管目录，再用户指定目录，最后按 release 下载；解压只取必需文件名，扁平写入缓存目录，缺一个即失败。进度只覆盖压缩包传输：缓存命中且 sha256 一致时不会发请求，也就没有回调；解压与校验阶段同样没有进度。
 - 用户指定目录不完整时只记日志后回退下载，不删除用户文件。
 - 隧道全程同一时刻只允许一个；重建前先停旧进程。
+- `Tunnel::restart(port)`：先停旧进程，再用同一房间码/中继按新端口重建。hostname 与端口白名单都随端口变化，所以端口变更只能靠重启。spawn 失败时 `port()` 保持旧值（进程已停），由调用方决定回滚（再重启旧端口）或报错。
 - 日志里房间码只出现网络名前 4 位与省略号；密钥段不落地。
 
 ## 常量出处
@@ -26,3 +27,5 @@ EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它�
 - 默认中继：`public.easytier.top:11010`、`public2.easytier.cn:54321`、`etnode.zkitefly.eu.org/node1|node2`（来自陶瓦 publics.rs，见 docs/third-party/terracotta.md）。
 - Windows 资产约 32.7 MB，Linux 约 25.5 MB；sha256 在 `release.rs` 内 pin。
 - 房主 `--hostname cuhub-host-<port>`，虚拟 IP 固定 `10.144.144.1`；端口白名单同时含 TCP 与 UDP。
+
+EasyTier 2.6.4 对端查询使用 `easytier-cli -p 127.0.0.1:<rpc> -o json peer list`。对端解析支持该版本的扁平数组和旧的 route 分组。

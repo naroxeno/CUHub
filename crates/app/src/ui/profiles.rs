@@ -40,7 +40,7 @@ pub struct ProfilesUi {
     pub rows: Signal<Vec<ProfileRow>>,
     pub name: Signal<String>,
     pub busy: Signal<ProfilesBusy>,
-    pub error: Signal<&'static str>,
+    pub error: Signal<(&'static str, String)>,
     pub create_confirm: Signal<String>,
     pub create_snapshot: Signal<bool>,
     pub apply_name: Signal<String>,
@@ -63,7 +63,7 @@ impl ProfilesUi {
             rows: signal(Vec::new()),
             name: signal(String::new()),
             busy: signal(ProfilesBusy::None),
-            error: signal(""),
+            error: signal(("", String::new())),
             create_confirm: signal(String::new()),
             create_snapshot: signal(false),
             apply_name: signal(String::new()),
@@ -79,6 +79,10 @@ impl ProfilesUi {
             adopt_done: signal(None::<(usize, String)>),
             adopt_error: signal(""),
         }
+    }
+
+    fn set_error(&self, key: &'static str) {
+        self.error.set((key, String::new()));
     }
 
     pub fn is_busy(&self) -> bool {
@@ -215,13 +219,20 @@ fn error_key(error: &HubError) -> &'static str {
     }
 }
 
+fn profile_apply_error(error: HubError) -> (&'static str, String) {
+    match error {
+        HubError::Profile(ref cause) => ("", cause.to_string()),
+        _ => (error_key(&error), String::new()),
+    }
+}
+
 impl Ui {
     pub(crate) fn profiles_refresh(&self) {
         if self.profiles.is_busy() {
             return;
         }
         self.profiles.busy.set(ProfilesBusy::Refresh);
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         let hub = self.hub.clone();
         let ui = self.clone();
         self.spawn_worker(async move {
@@ -232,7 +243,7 @@ impl Ui {
             .await;
             match rows {
                 Ok(rows) => ui.profiles.rows.set(rows),
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
             ui.profiles.busy.set(ProfilesBusy::None);
         });
@@ -243,9 +254,9 @@ impl Ui {
             return;
         }
         let name = self.profiles.name.get().trim().to_owned();
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         if name.is_empty() {
-            self.profiles.error.set("profiles.error_empty_name");
+            self.profiles.set_error("profiles.error_empty_name");
             return;
         }
         self.profiles.create_confirm.set(String::new());
@@ -271,10 +282,10 @@ impl Ui {
                     ui.profiles.create_confirm.set(name);
                 }
                 Ok(CreateOutcome::InvalidName) => {
-                    ui.profiles.error.set("profiles.error_invalid_name")
+                    ui.profiles.set_error("profiles.error_invalid_name")
                 }
-                Ok(CreateOutcome::Failed(key)) => ui.profiles.error.set(key),
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Ok(CreateOutcome::Failed(key)) => ui.profiles.set_error(key),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }
@@ -288,7 +299,7 @@ impl Ui {
             return;
         }
         let snapshot = self.profiles.create_snapshot.get();
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         self.profiles.busy.set(ProfilesBusy::Create);
         let hub = self.hub.clone();
         let ui = self.clone();
@@ -308,14 +319,14 @@ impl Ui {
                 }
                 Ok(CreateOutcome::InvalidName) => {
                     ui.profiles.create_confirm.set(String::new());
-                    ui.profiles.error.set("profiles.error_invalid_name");
+                    ui.profiles.set_error("profiles.error_invalid_name");
                 }
                 Ok(CreateOutcome::Failed(key)) => {
                     ui.profiles.create_confirm.set(String::new());
-                    ui.profiles.error.set(key);
+                    ui.profiles.set_error(key);
                 }
                 Ok(CreateOutcome::Exists) => ui.profiles.create_confirm.set(String::new()),
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }
@@ -328,7 +339,7 @@ impl Ui {
         if self.profiles.is_busy() {
             return;
         }
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         self.profiles.rename_from.set(name.to_owned());
         self.profiles.rename_name.set(name.to_owned());
     }
@@ -347,9 +358,9 @@ impl Ui {
             return;
         }
         let to = self.profiles.rename_name.get().trim().to_owned();
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         if to.is_empty() {
-            self.profiles.error.set("profiles.error_empty_name");
+            self.profiles.set_error("profiles.error_empty_name");
             return;
         }
         if to == from {
@@ -380,8 +391,8 @@ impl Ui {
                     ui.profiles.rename_name.set(String::new());
                     ui.profiles_refresh();
                 }
-                Ok(Err(key)) => ui.profiles.error.set(key),
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Ok(Err(key)) => ui.profiles.set_error(key),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }
@@ -391,7 +402,7 @@ impl Ui {
             return;
         }
         let name = name.to_owned();
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         self.profiles.busy.set(ProfilesBusy::Plan);
         let hub = self.hub.clone();
         let ui = self.clone();
@@ -401,7 +412,7 @@ impl Ui {
                 let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
                 hub.plan_profile(&worker_name)
                     .map(|ops| ops.len())
-                    .map_err(|error| error_key(&error))
+                    .map_err(profile_apply_error)
             })
             .await;
             ui.profiles.busy.set(ProfilesBusy::None);
@@ -410,11 +421,11 @@ impl Ui {
                     ui.profiles.apply_count.set(count);
                     ui.profiles.apply_name.set(name);
                 }
-                Ok(Err(key)) => {
+                Ok(Err(error)) => {
                     ui.profiles.apply_name.set(String::new());
-                    ui.profiles.error.set(key);
+                    ui.profiles.error.set(error);
                 }
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }
@@ -428,18 +439,18 @@ impl Ui {
             return;
         }
         if self.pending_install.get().is_some() {
-            self.profiles.error.set("notice.pending_first");
+            self.profiles.set_error("notice.pending_first");
             return;
         }
         if self.install_preparing() {
-            self.profiles.error.set("notice.busy");
+            self.profiles.set_error("notice.busy");
             return;
         }
         let name = self.profiles.apply_name.get();
         if name.is_empty() {
             return;
         }
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         self.profiles.busy.set(ProfilesBusy::Apply);
         let hub = self.hub.clone();
         let ui = self.clone();
@@ -452,10 +463,10 @@ impl Ui {
                         let applied = report.applied.len();
                         match hub.set_active_profile(Some(&worker_name)) {
                             Ok(()) => Ok((applied, None)),
-                            Err(error) => Ok((applied, Some(error_key(&error)))),
+                            Err(error) => Ok((applied, Some(error.to_string()))),
                         }
                     }
-                    Err(error) => Err(error_key(&error)),
+                    Err(error) => Err(profile_apply_error(error)),
                 }
             })
             .await;
@@ -463,15 +474,20 @@ impl Ui {
             match result {
                 Ok(Ok((applied, active_error))) => {
                     ui.profiles.apply_name.set(String::new());
-                    ui.profiles.error.set(active_error.unwrap_or(""));
-                    ui.notice.set(t!("profiles.applied", count = applied));
-                    ui.profiles_refresh();
+                    if let Some(error) = active_error {
+                        ui.profiles
+                            .error
+                            .set(("profiles.error_activate_after_apply", error));
+                    } else {
+                        ui.notice.set(t!("profiles.applied", count = applied));
+                        ui.profiles_refresh();
+                    }
                 }
-                Ok(Err(key)) => {
+                Ok(Err(error)) => {
                     ui.profiles.apply_name.set(String::new());
-                    ui.profiles.error.set(key);
+                    ui.profiles.error.set(error);
                 }
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }
@@ -480,7 +496,7 @@ impl Ui {
         if self.profiles.is_busy() {
             return;
         }
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         self.profiles.remove_name.set(name.to_owned());
     }
 
@@ -496,7 +512,7 @@ impl Ui {
         if name.is_empty() {
             return;
         }
-        self.profiles.error.set("");
+        self.profiles.set_error("");
         self.profiles.busy.set(ProfilesBusy::Remove);
         let hub = self.hub.clone();
         let ui = self.clone();
@@ -523,9 +539,9 @@ impl Ui {
                 }
                 Ok(Err(key)) => {
                     ui.profiles.remove_name.set(String::new());
-                    ui.profiles.error.set(key);
+                    ui.profiles.set_error(key);
                 }
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }
@@ -566,7 +582,7 @@ impl Ui {
                     ui.profiles.adopt_names.set(Vec::new());
                     ui.profiles.adopt_error.set(key);
                 }
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }
@@ -644,7 +660,7 @@ impl Ui {
                     ui.profiles.adopt_names.set(Vec::new());
                     ui.profiles.adopt_error.set(key);
                 }
-                Err(_) => ui.profiles.error.set("profiles.error_generic"),
+                Err(_) => ui.profiles.set_error("profiles.error_generic"),
             }
         });
     }

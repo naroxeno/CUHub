@@ -58,42 +58,6 @@ impl Ui {
         });
     }
 
-    pub fn download_nexus(&self, mod_id: String) {
-        if self.nexus_downloading.get().is_some() {
-            self.notice.set(t!("notice.nexus_download_running"));
-            return;
-        }
-        if mod_id.trim().is_empty() {
-            self.notice.set(t!("notice.no_nexus_id"));
-            return;
-        }
-        self.nexus_downloading.set(Some(mod_id.clone()));
-        self.notice.set(t!("notice.nexus_downloading"));
-        let hub = self.hub.clone();
-        let ui = self.clone();
-        self.spawn_worker(async move {
-            let result = blocking(move || {
-                let hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                hub.download_nexus_latest(&mod_id)
-            })
-            .await;
-            ui.nexus_downloading.set(None);
-            match result {
-                Ok(Ok(download)) => ui.notice.set(t!(
-                    "notice.downloaded",
-                    file = download.file_name,
-                    path = download.path.display().to_string()
-                )),
-                Ok(Err(error)) => ui
-                    .notice
-                    .set(t!("notice.nexus_download_failed", error = error)),
-                Err(error) => ui
-                    .notice
-                    .set(t!("notice.nexus_download_failed", error = error)),
-            }
-        });
-    }
-
     pub fn open_nexus_download(&self, mod_id: String) {
         let result = {
             let hub = self.hub();
@@ -184,5 +148,198 @@ impl Ui {
                 .notice
                 .set(t!("notice.clear_nexus_key_failed", error = error)),
         }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct NexusCovers {
+    requested: Signal<Vec<String>>,
+    paths: Signal<std::collections::BTreeMap<String, Option<String>>>,
+    busy: Signal<bool>,
+}
+
+impl NexusCovers {
+    pub(super) fn new() -> Self {
+        Self {
+            requested: signal(Vec::new()),
+            paths: signal(std::collections::BTreeMap::new()),
+            busy: signal(false),
+        }
+    }
+}
+
+impl Ui {
+    pub fn nexus_cover_path(&self, source: &str) -> Option<String> {
+        self.nexus_covers.paths.get().get(source).cloned().flatten()
+    }
+
+    pub fn request_nexus_covers(&self, sources: Vec<String>) {
+        let covers = self.nexus_covers;
+        let page = self.page;
+        covers.requested.set(sources);
+        if covers.busy.get_untracked() {
+            return;
+        }
+        let Some(cache) = self.hub().nexus_covers() else {
+            return;
+        };
+        covers.busy.set(true);
+        self.spawn_worker(async move {
+            while page.get_untracked() == crate::shell::nav::NEXUS {
+                let paths = covers.paths.get_untracked();
+                let mut unique = std::collections::BTreeSet::new();
+                let pending: Vec<_> = covers
+                    .requested
+                    .get_untracked()
+                    .into_iter()
+                    .filter(|url| !paths.contains_key(url) && unique.insert(url.clone()))
+                    .take(4)
+                    .collect();
+                if pending.is_empty() {
+                    break;
+                }
+                let worker_cache = cache.clone();
+                let batch = pending.clone();
+                let results = blocking(move || {
+                    std::thread::scope(|scope| {
+                        batch
+                            .into_iter()
+                            .map(|url| {
+                                let cache = &worker_cache;
+                                scope.spawn(move || {
+                                    let path = cache.fetch(&url);
+                                    (url, path)
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .filter_map(|worker| worker.join().ok())
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .await;
+                let mut paths = paths;
+                for url in pending {
+                    paths.insert(url, None);
+                }
+                if let Ok(results) = results {
+                    paths.extend(results);
+                }
+                covers.paths.set(paths);
+            }
+            covers.busy.set(false);
+        });
+    }
+
+    pub fn set_nexus_dashboard_preferences(&self, list: bool, adult: bool) {
+        let result = {
+            let mut hub = self.hub();
+            let mut settings = hub.settings().clone();
+            settings.dashboard_list_view = list;
+            settings.dashboard_show_adult_mods = adult;
+            hub.save_settings(&settings).map(|()| settings)
+        };
+        match result {
+            Ok(settings) => {
+                self.settings.set(settings);
+                self.refresh_remote_view();
+            }
+            Err(error) => self
+                .notice
+                .set(t!("notice.save_settings_failed", error = error)),
+        }
+    }
+
+    pub fn nexus_dependencies(&self, name: &str) -> Vec<String> {
+        self.hub().nexus_dependencies(name)
+    }
+}
+
+pub(super) fn description_text(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut rest = input;
+    let mut source_break = false;
+    while let Some(first) = rest.chars().next() {
+        let marker = match first {
+            '[' => ']',
+            '<' => '>',
+            _ => '\0',
+        };
+        if marker != '\0'
+            && let Some(end) = rest.find(marker).filter(|end| *end < 512)
+        {
+            let tag = rest[1..end].trim().trim_end_matches('/').trim();
+            if tag.eq_ignore_ascii_case("br") {
+                if source_break && output.ends_with('\n') {
+                    output.pop();
+                }
+                if !output.ends_with("\n\n") {
+                    output.push('\n');
+                }
+                source_break = false;
+                rest = rest[end + 1..]
+                    .strip_prefix("\r\n")
+                    .or_else(|| rest[end + 1..].strip_prefix('\n'))
+                    .unwrap_or(&rest[end + 1..]);
+                continue;
+            }
+            let name = tag
+                .trim_start_matches('/')
+                .split(['=', ' '])
+                .next()
+                .unwrap_or("");
+            if matches!(
+                name.to_ascii_lowercase().as_str(),
+                "b" | "i"
+                    | "u"
+                    | "s"
+                    | "center"
+                    | "left"
+                    | "right"
+                    | "quote"
+                    | "code"
+                    | "list"
+                    | "*"
+                    | "color"
+                    | "size"
+                    | "font"
+                    | "url"
+                    | "img"
+                    | "spoiler"
+                    | "p"
+                    | "a"
+            ) {
+                rest = &rest[end + 1..];
+                continue;
+            }
+        }
+        source_break = first == '\n';
+        if first != '\r' && !(first == '\n' && output.ends_with("\n\n")) {
+            output.push(first);
+        }
+        rest = &rest[first.len_utf8()..];
+    }
+    output
+        .trim()
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::description_text;
+
+    #[test]
+    fn description_preserves_author_paragraphs_as_plain_text() {
+        assert_eq!(
+            description_text(
+                "[size=4][b]Title[/b][/size]\n<br />\n<br />Use [url=https://example.com]this guide[/url] &amp; keep [custom]."
+            ),
+            "Title\n\nUse this guide & keep [custom]."
+        );
     }
 }

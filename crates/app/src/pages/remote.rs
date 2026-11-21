@@ -1,10 +1,10 @@
-//! Remote (Nexus) list page: filters, rows, pager and empty state.
+//! Combined remote catalogue: filters, rows, pager and empty state.
 
 use crate::palette::*;
 use crate::shell::nav;
 use crate::ui::{
-    RemoteFilter, RemoteRow, Ui, button, nexus_page_count, panel, pix, pix_c, rise_in, scaled,
-    spinner,
+    RemoteFilter, RemoteRow, RemoteSource, Ui, button, nexus_page_count, panel, pix, pix_c,
+    rise_in, scaled, spinner,
 };
 use nsh_base::input;
 use nsh_core::prelude::*;
@@ -20,61 +20,64 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
     let total = ui.remote_total;
     let empty_z = z;
     let empty_ui = ui.clone();
-    let has_manifest = ui.sources_ready.get();
+    let has_manifest = ui.sources_ready;
     let manifest_path = ui.sources_path();
-    let mut body = view().flex_col().gap(scaled(&z, 8.0));
-    if has_manifest {
-        body = body
-            .child(
-                view()
-                    .flex_row()
-                    .flex_wrap()
-                    .items_center()
-                    .gap(scaled(&z, 8.0))
-                    .child(
-                        input()
-                            .value(ui.remote_query)
-                            .placeholder(move || t!("remote.search_placeholder"))
-                            .font_family(crate::ui::PIXEL_FONT.family)
-                            .text_size(scaled(&z, 12.0))
-                            .h(scaled(&z, 24.0))
-                            .flex_1()
-                            .min_w(scaled(&z, 160.0))
-                            .px(scaled(&z, 6.0))
-                            .bg(rgb(SURFACE_RAISED))
-                            .border(scaled(&z, 1.0))
-                            .border_color(rgb(BORDER))
-                            .text_color(rgb(TEXT))
-                            .on_change(move |text: &str| search.set_remote_query(text.to_owned())),
-                    )
-                    .child(remote_filters(&z, ui))
-                    .child(remote_refresh(&z, ui)),
-            )
-            .child(pix(
-                move || t!("remote.total", count = count.remote_total.get()),
-                11.0,
-                TEXT_MUTED,
-                &z,
-            ))
-            .child(when(
-                move || total.get() == 0,
-                move || remote_empty(&empty_z, &empty_ui),
-            ))
-            .child(each(
-                rows,
-                |row| row.row_key(),
-                move |row, _| {
-                    let row = row.get();
-                    remote_row(&list_z, &row, &rows_ui)
-                },
-            ))
-            .child(when(
-                move || total.get() > 0,
-                move || remote_pager(&z, &pager_ui),
-            ));
-    } else {
-        body = body.child(remote_manifest_hint(&z, &manifest_path, ui));
-    }
+    let body = view()
+        .flex_col()
+        .gap(scaled(&z, 8.0))
+        .child(
+            view()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(scaled(&z, 8.0))
+                .child(
+                    input()
+                        .value(ui.remote_query)
+                        .placeholder(move || t!("remote.search_placeholder"))
+                        .font_family(crate::ui::PIXEL_FONT.family)
+                        .text_size(scaled(&z, 12.0))
+                        .h(scaled(&z, 24.0))
+                        .flex_1()
+                        .min_w(scaled(&z, 160.0))
+                        .px(scaled(&z, 6.0))
+                        .bg(rgb(SURFACE_RAISED))
+                        .border(scaled(&z, 1.0))
+                        .border_color(rgb(BORDER))
+                        .text_color(rgb(TEXT))
+                        .on_change(move |text: &str| search.set_remote_query(text.to_owned())),
+                )
+                .child(remote_filters(&z, ui))
+                .child(remote_refresh(&z, ui))
+                .child(nexus_refresh(&z, ui)),
+        )
+        .child(source_filters(&z, ui))
+        .child(pix(
+            move || t!("remote.total", count = count.remote_total.get()),
+            11.0,
+            TEXT_MUTED,
+            &z,
+        ))
+        .child(when(
+            move || total.get() == 0,
+            move || remote_empty(&empty_z, &empty_ui),
+        ))
+        .child(each(
+            rows,
+            |row| row.row_key(),
+            move |row, _| {
+                let row = row.get();
+                remote_row(&list_z, &row, &rows_ui)
+            },
+        ))
+        .child(when(
+            move || total.get() > 0,
+            move || remote_pager(&z, &pager_ui),
+        ));
+    let body = body.child(when(
+        move || !has_manifest.get(),
+        move || remote_manifest_hint(&z, &manifest_path),
+    ));
     view()
         .flex_col()
         .flex_1()
@@ -143,6 +146,39 @@ fn remote_filter_button(
     .flex_shrink_0()
 }
 
+fn source_filters(z: &Signal<u8>, ui: &Ui) -> View {
+    let z = *z;
+    let current = ui.remote_source;
+    let mut row = view().flex_row().flex_wrap().gap(scaled(&z, 6.0));
+    for (source, key) in [
+        (RemoteSource::All, "remote.all_sources"),
+        (RemoteSource::Github, "remote.github_source"),
+        (RemoteSource::Nexus, "remote.nexus_source"),
+    ] {
+        let ui = ui.clone();
+        row = row.child(
+            pix_c(
+                move || t!(key),
+                11.0,
+                move || {
+                    rgb(if current.get() == source {
+                        ACCENT
+                    } else {
+                        TEXT_MUTED
+                    })
+                },
+                &z,
+            )
+            .px(scaled(&z, 8.0))
+            .py(scaled(&z, 3.0))
+            .border(scaled(&z, 1.0))
+            .border_color(rgb(BORDER_DIM))
+            .on_press(move || ui.set_remote_source(source)),
+        );
+    }
+    row
+}
+
 fn remote_row(z: &Signal<u8>, row: &RemoteRow, ui: &Ui) -> View {
     let z = *z;
     let installed = row.is_installed();
@@ -152,22 +188,15 @@ fn remote_row(z: &Signal<u8>, row: &RemoteRow, ui: &Ui) -> View {
         .and_then(|item| item.installed_version.clone());
     let busy = ui.remote_busy;
     let pending = ui.pending_install;
-    let action = ui.clone();
-    let target = row.clone();
-    let label_key = if installed {
-        "remote.update"
-    } else {
-        "remote.install"
-    };
-    let mut meta_line = view()
-        .flex_row()
-        .items_center()
-        .gap(scaled(&z, 8.0))
-        .flex_shrink_0();
+    let mut content =
+        view()
+            .flex_col()
+            .gap(scaled(&z, 4.0))
+            .child(pix(row.name().to_owned(), 12.0, TEXT, &z));
     if installed {
-        meta_line = meta_line.child(pix(
+        content = content.child(pix(
             move || match &version {
-                Some(version) => t!("nexus.installed", version = version.clone()),
+                Some(version) => t!("nexus.installed", version = version),
                 None => t!("remote.installed_tag"),
             },
             10.0,
@@ -175,48 +204,126 @@ fn remote_row(z: &Signal<u8>, row: &RemoteRow, ui: &Ui) -> View {
             &z,
         ));
     }
-    view()
-        .flex_col()
+    if let Some(entry) = &row.github {
+        let ui = ui.clone();
+        let check = ui.clone();
+        let row = row.clone();
+        let repo = entry.repo.clone();
+        let slug = repo.slug();
+        let versions = ui.remote_versions;
+        let label = if installed {
+            "remote.update"
+        } else {
+            "remote.install"
+        };
+        content = content.child(
+            view()
+                .flex_row()
+                .flex_wrap()
+                .items_center()
+                .gap(scaled(&z, 6.0))
+                .child(pix(
+                    move || {
+                        let versions = versions.get();
+                        let version = versions
+                            .get(&slug)
+                            .and_then(|tag| tag.clone())
+                            .unwrap_or_else(|| t!("nexus.unknown_version"));
+                        format!("GitHub · {slug} · {version}")
+                    },
+                    10.0,
+                    TEXT_MUTED,
+                    &z,
+                ))
+                .child(button(
+                    &z,
+                    move || t!("remote.check_version"),
+                    true,
+                    move || check.check_remote_release(repo.clone()),
+                ))
+                .child(
+                    when(
+                        move || busy.get().is_some() || pending.get().is_some(),
+                        move || button(&z, move || t!(label), false, || {}),
+                    )
+                    .otherwise(move || {
+                        let ui = ui.clone();
+                        let row = row.clone();
+                        button(
+                            &z,
+                            move || t!(label),
+                            true,
+                            move || ui.run_remote(row.clone()),
+                        )
+                    }),
+                ),
+        );
+    }
+    if let Some(entry) = &row.nexus {
+        let mut source = view()
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap(scaled(&z, 6.0))
+            .child(pix(
+                format!("Nexus · {}", entry.version),
+                10.0,
+                TEXT_MUTED,
+                &z,
+            ));
+        if let Some(url) = &entry.page_url {
+            let url = url.clone();
+            let open = ui.clone();
+            source = source.child(button(
+                &z,
+                move || t!("remote.nexus_details"),
+                true,
+                move || open.open_link(&url),
+            ));
+            let id = entry.id.clone();
+            let open = ui.clone();
+            source = source.child(button(
+                &z,
+                move || t!("nexus.open_files"),
+                true,
+                move || open.open_nexus_download(id.clone()),
+            ));
+        }
+        if entry.download_id.is_some() {
+            let key = ui.nexus_key_saved;
+            let id = entry.id.clone();
+            let ui = ui.clone();
+            source = source.child(when(
+                move || key.get(),
+                move || {
+                    let ui = ui.clone();
+                    let id = id.clone();
+                    when(
+                        move || busy.get().is_some() || pending.get().is_some(),
+                        move || button(&z, move || t!("remote.prepare_nexus"), false, || {}),
+                    )
+                    .otherwise(move || {
+                        let ui = ui.clone();
+                        let id = id.clone();
+                        button(
+                            &z,
+                            move || t!("remote.prepare_nexus"),
+                            true,
+                            move || ui.prepare_catalogue_nexus(id.clone()),
+                        )
+                    })
+                },
+            ));
+        }
+        content = content.child(source);
+    }
+    content
+        .px(scaled(&z, 6.0))
+        .py(scaled(&z, 6.0))
         .border_b(scaled(&z, 1.0))
         .border_b_color(rgb(BORDER_DIM))
         .border_l(scaled(&z, 2.0))
         .border_l_color(rgb(if installed { ACCENT } else { SURFACE }))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)).border_b_color(rgb(BORDER)))
-        .child(
-            view()
-                .flex_row()
-                .items_center()
-                .px(scaled(&z, 6.0))
-                .py(scaled(&z, 4.0))
-                .gap(scaled(&z, 8.0))
-                .child(
-                    view()
-                        .flex_col()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .child(pix(row.entry.name.clone(), 12.0, TEXT, &z).truncate())
-                        .child(pix(row.repo(), 10.0, TEXT_MUTED, &z).truncate()),
-                )
-                .child(meta_line)
-                .child(
-                    when(
-                        move || busy.get().is_some() || pending.get().is_some(),
-                        move || button(&z, move || t!(label_key), false, || {}),
-                    )
-                    .otherwise(move || {
-                        let action = action.clone();
-                        let target = target.clone();
-                        button(
-                            &z,
-                            move || t!(label_key),
-                            true,
-                            move || {
-                                action.run_remote(target.clone());
-                            },
-                        )
-                    }),
-                ),
-        )
 }
 
 fn remote_pager(z: &Signal<u8>, ui: &Ui) -> View {
@@ -326,7 +433,28 @@ fn remote_refresh(z: &Signal<u8>, ui: &Ui) -> View {
     )
 }
 
-fn remote_manifest_hint(z: &Signal<u8>, path: &str, ui: &Ui) -> View {
+fn nexus_refresh(z: &Signal<u8>, ui: &Ui) -> View {
+    let z = *z;
+    let busy = ui.nexus_refreshing;
+    let ui = ui.clone();
+    view().child(
+        when(
+            move || busy.get(),
+            move || button(&z, move || t!("remote.refreshing"), false, || {}),
+        )
+        .otherwise(move || {
+            let ui = ui.clone();
+            button(
+                &z,
+                move || t!("remote.refresh_nexus"),
+                true,
+                move || ui.refresh_metadata(true),
+            )
+        }),
+    )
+}
+
+fn remote_manifest_hint(z: &Signal<u8>, path: &str) -> View {
     let z = *z;
     let path = path.to_owned();
     view()
@@ -345,5 +473,4 @@ fn remote_manifest_hint(z: &Signal<u8>, path: &str, ui: &Ui) -> View {
             TEXT_DIM,
             &z,
         ))
-        .child(remote_refresh(&z, ui))
 }

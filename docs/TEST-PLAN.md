@@ -1,16 +1,16 @@
 # 测试计划与覆盖矩阵
 
-- 基线：`main` `1148c4d`（2026-11-19），工作副本干净。
-- 结论：自动化只覆盖 core 与桥宿主回环；app 没有单元测试，也没有 `--selftest` / `--diagnostics` 实现。真实游戏、双机、Windows、桥真机与打包安装都没有可复现记录。
+- 基线：`main` `1d0f4361`（2026-11-21）；工作副本为本波 W4 端口自动检测与交接改动（以 `jj st` 为准）。
+- 结论：自动覆盖扩展到 core 377 单测 + 14 桥回环集成、app 25 条纯函数测试；真实游戏、双机、Windows、桥真机与打包安装仍没有可复现记录，真机工单见 `docs/bridge/w4-tickets/README.md`。
 
 ## 0. 现在到底测了什么
 
 | 层 | 已有 | 仍缺 |
 | --- | --- | --- |
-| core | 301 个单测 + 13 个桥回环集成；fmt | 无属性/模糊测试；core clippy 有 2 个既有告警 |
-| app | `nsh check`、app clippy | 0 个 `#[test]`；无 UI 自动化；无 headless 自检 |
-| 桥 C# | `dotnet build` 可过 | 未在 BepInEx / 游戏内加载 |
-| 联机 | 房间码、参数、进程、状态有单测；页面截过图 | 无真实开房/加入、无双机、无 Windows |
+| core | 377 个单测 + 14 个桥回环集成；fmt | 无属性/模糊测试；core clippy 有 2 个既有告警 |
+| app | `nsh check`、25 个 `#[test]`（mp_control 15 条）、app clippy（2 条既有 lint 除外） | 无 UI 自动化；无 headless 自检 |
+| 桥 C# | `dotnet build` 0 警告；`just package-bridge` 产出 0.1.1 zip | 未在 BepInEx / 游戏内加载 |
+| 联机 | 房间码、参数、进程、状态、端口选择与交接有单测；页面截过图 | 无真实开房/加入、无双机、无 Windows |
 | 内容库 | Store / Link / Profile / Adopt / Package 有单测 | 无真实游戏目录的端到端回归 |
 | 打包 | `package-linux` / `package-windows` 配方存在 | 无安装、升级、卸载验证记录 |
 
@@ -20,6 +20,8 @@
 - 先备份 `~/.local/share/CUHub`；至少备份 `Settings.json`、`Store/`、`Profiles/`、`Links.json`、`Backups/`。
 - 每次记录：提交号、系统、appdata 与游戏路径、操作、预期/实际、日志路径。
 - 状态含义：`自动` 每次提交可跑；`单测` 只有 core 测试；`未测` 没有可复现记录；`未实现` 功能还不存在；`需环境` 当前机器做不了。
+- 真机两机用例统一按 `docs/bridge/w4-tickets/README.md` 的 R1–R11 执行；偏差与裁定见 `docs/bridge/w4-tickets/decisions.md`，不要在执行时临时改脚本。
+- 心跳集成测试的时序 flake 由 t15（只改测试）稳定；稳定前以暖缓存重跑为准。
 
 ## 2. 批次表
 
@@ -30,7 +32,7 @@
 | C | 安装、更新 | 1–1.5 小时 | 发布前 |
 | D | GitHub 源 | 0.5–1 小时 | 发布前 |
 | E | 双机联机 | 1 小时 | 联机改动或发布前 |
-| F | 桥真机 | 1 小时 | 桥单独发布前 |
+| F | 桥真机 R1–R11（工单见 `docs/bridge/w4-tickets/README.md`） | 两机 1–1.5 小时 | 桥单独发布前 |
 | G | UI、安全与 Linux 打包 | 1 小时 | 发布前 |
 | H | Windows 实机与打包 | 2–3 小时 | Windows 发布前 |
 
@@ -40,11 +42,17 @@
 | --- | --- | --- | --- |
 | A1 | `cargo fmt --all -- --check` | 无 diff | 自动 |
 | A2 | `nsh check` | 编译通过 | 自动 |
-| A3 | `cargo test -p cuhub-core` | 301 + 13 通过 | 自动 |
-| A4 | `cargo test -p cuhub --all-targets` | 通过；注意它当前是 0 个测试 | 自动 |
-| A5 | `cargo clippy -p cuhub --no-deps -- -D warnings` | 0 告警 | 自动 |
-| A6 | `just build-bridge` | 0 error / 0 warning | 自动 |
-| A7 | `cargo clippy -p cuhub-core --all-targets -- -D warnings` | 已知 2 个既有告警，暂不作门禁 | 非门禁 |
+| A3 | `cargo test -p cuhub-core` | 377 单测 + 14 集成通过 | 自动 |
+| A4 | `cargo test -p cuhub --all-targets` | 25 条通过（mp_control 15 条） | 自动 |
+| A5 | `cargo clippy -p cuhub --no-deps -- -D warnings` | 只允许既有 2 条 lint（batch.rs:46 large_enum_variant、install.rs:244 never_loop）；其它告警判失败 | 自动 |
+| A6 | `just build-bridge` | 0 error / 0 warning，插件 0.1.1 | 自动 |
+| A7 | `cargo clippy -p cuhub-core --no-deps` | 已知 2 个既有 collapsible_if（hub.rs:823 / :1361），非门禁 | 非门禁 |
+| A8 | `just package-bridge` | `dist/bridge/CuhubBridge.zip` 含 Plugin 与 Core 两 DLL | 自动 |
+| A9 | `dotnet build mods/cuhub-bridge/CuhubBridge.Plugin/CuhubBridge.Plugin.csproj -c Release` | 0 警告 0 错误 | 自动 |
+
+t7 基线（@ b679851c，父 1d0f4361）：10 条 exit 0；clippy-app 的 101 仅由 A5 里那两条既有 lint 造成；`cargo test -p cuhub-core` 冷构建首跑命中心跳 flake，暖缓存重跑全绿（t15 负责稳定）。
+
+t18 基线（2026-11-21 12:50，游戏以 `steam -applaunch 4576490` 保持运行）：A1–A4、A6、A8、A9 exit 0；A5 仍为 101 且只由那两条既有 lint 造成；core 377 单测 + 14 集成，`bridge_server` 连续 10 次全绿。桥集成测试用 `start_at(0)` 绑临时回环端口，不占生产 41297、可与真实游戏并行（t16）；`close_session` 改为先取会话槽位并发 `SessionEnded` 再 shutdown，消除关闭/心跳竞态（`crates/core/src/bridge/server.rs`，t17）。
 
 ## 4. Linux 单机（批次 B）
 
@@ -102,7 +110,7 @@
 | ID | 用例 | 验收点 | 现状 |
 | --- | --- | --- | --- |
 | E1 | 房间码格式 | 带或不带 `C1-`、大小写、空格、`-` 都能解析；坏校验拒绝 | 单测 |
-| E2 | 开房 | core 启动；状态 WaitingPeer；房间码可显示/复制；默认端口 25565 | 未测 |
+| E2 | 开房 | core 启动；状态 WaitingPeer；房间码可显示/复制；默认端口 7790 | 未测 |
 | E3 | 同 LAN 加入 | 5 秒内发现房主；带 forward 重启；Connected 显示 IP 与端口 | 未测 |
 | E4 | 异 NAT / 中继 | 走 relay 能连；失败时有可读原因 | 未测 |
 | E5 | 错误码与 60 秒超时 | 明确失败；给手动退路；不留进程 | 未测 |
@@ -115,18 +123,35 @@
 
 ## 8. 桥真机（批次 F）
 
-| ID | 用例 | 验收点 | 现状 |
+批次 F 拆两段：8.1 每次改动都跑；8.2 等 Naro 约到搭档后两机执行。真机用例与工单同源：步骤、取证与注入见 `docs/bridge/w4-tickets/README.md`，偏差与裁定见 `docs/bridge/w4-tickets/decisions.md`；本表只保留编号与预期摘要。
+
+### 8.1 自动（每次跑）
+
+| ID | 用例 | 通过标准 | 现状 |
 | --- | --- | --- | --- |
-| F1 | Rust 宿主回环 | 13 个集成测试通过 | 自动 |
-| F2 | `just package-bridge` | `dist/bridge/CuhubBridge.zip` 含 Plugin 与 Core 两个 DLL | 自动 |
-| F3 | BepInEx 5.4.23.6 加载 | 日志出现插件；无加载异常 | 未测 |
-| F4 | 握手、token、超时、单会话 | 第二连接被拒；超时清理；token 不泄漏 | 自动 / 未真机 |
-| F5 | `mp.state` | 游戏状态与游戏内 UI 一致 | 未测 |
-| F6 | `mp.host` / `mp.join` | 与游戏内操作等价；CUCoreLib 反射可用 | 未测 |
-| F7 | `mp.leave` / `mp.kick` / `save.*` / `skin.*` | 当前应返回 unavailable，不误报成功 | 未测 |
-| F8 | 游戏崩溃、重启、端口被占 | 不残留死锁；可重连；旧会话被清 | 未测 |
-| F9 | Proton 与 Windows loopback | 127.0.0.1 可连；防火墙不误拦 | 未测 |
-| F10 | 桥事件消费（`take_events`） | 状态经 snapshot 轮询显示；事件仍未消费 | 未实现 |
+| F1 | Rust 宿主回环 | `cargo test -p cuhub-core` 的 14 条集成全过 | 自动 |
+| F2 | 桥制品 | `just package-bridge` 生成 `dist/bridge/CuhubBridge.zip`，含 Plugin 与 Core 两 DLL，插件 0.1.1 | 自动 |
+| F3 | C# 构建 | `just build-bridge` / `dotnet build -c Release` 0 警告 0 错误 | 自动 |
+| F4 | 握手、权限、超时、单会话 | 第二连接被拒、超时清理、运行中授权立即生效 | 自动 |
+| F10 | 事件消费 | `take_events` 仍未消费，状态只经 snapshot 轮询 | 未实现 |
+
+### 8.2 真机（R1–R11，两机）
+
+| 编号 | 用例 | 预期（摘要） |
+| --- | --- | --- |
+| R1 | 房主先开房、客人后进 | 60 秒内两端「已连接」；游戏内双向可见与开箱；端口与 `ss -lunp` 一致、来源「自动检测」 |
+| R2 | 客人先等待、房主隧道后上线 | 客人 ≤30 秒自动变「已连接」，无需手动重试 |
+| R3 | 桥卡片开关（默认关） | 关时无开房/加入按钮；打开 ≤4 秒生效；关闭后不再自动下发 |
+| R4 | QuickTest 失败四组 | 缺 CUCoreLib →「游戏内联机不可用。」；端口占用 →「端口 N 已被占用。」/ 游戏内 `net_lnl_server_start_failed`；名称 <3 →「游戏会话不可用。」；非法端口 →「端口要在 1 到 65535 之间。」；房主只尝试一次，错误可读 |
+| R5 | 游戏退出与重开 | 会话回「等待游戏连接。」、桥卡不报错；重开游戏自动再次开房 |
+| R6 | 桥断开与重连 | 状态栏「桥：端口 41297 被占用」；释放后自动重连；插件 ≤30 秒重连成功 |
+| R7 | 端口自动检测 | 7790 / 24444 两次都对上 `ss -lunp`；来源「自动检测」；手填在游戏未上报时标「手动」 |
+| R8 | 游戏内直接开房 | 房间卡显示房主与 `10.144.144.1:<检测端口>`；`mp.host` 增量 0 |
+| R9 | 换房 / 重进 | 旧隧道与旧端口清理干净；新码 ≤60 秒「已连接」 |
+| R10 | 房主退出后客人侧 | ≤30 秒提示「房主已离开房间，等房主回来后可以重试。」；停止自动重试；可手动重试 |
+| R11 | 房主换端口后客人侧 | 客人侧提示「房主已换房（游戏端口变了），请用房间码重进。」（或先落「房主已离开…」，以实际为准）；地址不显示旧端口；按码重进恢复 |
+
+真机执行仍按 §1 的破坏性约定：只用临时游戏副本、先备份 `~/.local/share/CUHub`（至少 `Settings.json`、`multiplayer.json`）、每例记录提交号、系统、路径、操作、预期/实际与日志路径。
 
 ## 9. UI、安全与 Linux 打包（批次 G）
 
@@ -161,7 +186,7 @@
 - Linux 发布：B1–B14、C1–C11 与 D1–D5 的 P0 至少各跑一次；写盘用例必须在临时副本。
 - 联机发布：E2–E10 在同 LAN 与异 NAT 各跑一次。
 - Windows 发布：H1–H6 必过；G1–G3 也要在 Windows 看一次。
-- 桥不随应用包发布；桥单独发布前 F3–F9 必过。
+- 桥不随应用包发布；桥单独发布前 8.1 全绿，且 R1–R11 真机必过（工单见 `docs/bridge/w4-tickets/README.md`）。
 
 ## 12. 最该补的自动化
 

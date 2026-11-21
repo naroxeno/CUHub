@@ -1,7 +1,6 @@
 //! Row models and the pure functions that build them from hub data.
 
 use super::widgets::NEXUS_PAGE_SIZE;
-use crate::i18n;
 use cuhub_core::github::{CheckFailure, ReleaseInfo};
 use cuhub_core::hub::Hub;
 use cuhub_core::metadata::MetadataMod;
@@ -18,34 +17,28 @@ pub struct NexusModRow {
     pub name: String,
     pub author: String,
     pub version: String,
-    pub downloads: String,
+    pub downloads_count: i64,
+    pub endorsements: i64,
+    pub unique_downloads: i64,
+    pub description: String,
+    pub description_source: std::sync::Arc<str>,
+    pub cover: Option<String>,
+    pub page_url: Option<String>,
     pub adult: bool,
     pub has_page: bool,
-    pub can_download: bool,
+    pub download_id: Option<String>,
     pub status: Option<ModStatus>,
     pub installed_version: Option<String>,
 }
 
 impl NexusModRow {
-    pub fn row_key(&self) -> String {
-        format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
-            self.id,
-            self.name,
-            self.author,
-            self.version,
-            self.downloads,
-            self.state_key(),
-            self.installed_version.as_deref().unwrap_or(""),
-            self.adult,
-            self.has_page
-        )
-    }
-
     pub fn state_key(&self) -> &'static str {
-        self.status
-            .map(i18n::status_key)
-            .unwrap_or("status.not_installed")
+        match self.status {
+            Some(ModStatus::Disabled) => "status.disabled",
+            Some(ModStatus::OutOfDate) => "status.update_available",
+            Some(_) => "nexus.status_installed",
+            None => "status.not_installed",
+        }
     }
 }
 
@@ -158,10 +151,11 @@ pub(super) fn build_local_rows(
                 .is_some_and(|guid| loaded_guids.contains(guid));
             LocalModRow {
                 key: format!(
-                    "{key}|{}|{}|{}|{managed}|{loaded}",
+                    "{key}|{}|{}|{}|{}|{managed}|{loaded}",
                     check_tag(check),
                     pin_tag(pinned),
-                    item.disabled
+                    item.row_key(),
+                    source.text
                 ),
                 source_key: key,
                 item: item.clone(),
@@ -348,6 +342,16 @@ pub(super) fn build_nexus_rows(
                 .iter()
                 .find(|installed| installed.metadata_id.as_deref() == Some(entry.id.as_str()));
             NexusModRow {
+                downloads_count: entry.statistics.total_downloads,
+                endorsements: entry.statistics.endorsements,
+                unique_downloads: entry.statistics.unique_downloads,
+                description: super::nexus::description_text(&entry.description),
+                description_source: entry.description.as_str().into(),
+                cover: entry.image_url().map(str::to_owned),
+                page_url: entry
+                    .nexus_url()
+                    .and_then(cuhub_core::metadata::nexus_public_page)
+                    .map(|url| url.to_string()),
                 id: entry.id.clone(),
                 name: if entry.name.trim().is_empty() {
                     t!("nexus.unknown_mod")
@@ -364,10 +368,16 @@ pub(super) fn build_nexus_rows(
                 } else {
                     entry.version.clone()
                 },
-                downloads: entry.total_downloads_label(),
                 adult: entry.is_adult_content(),
                 has_page: entry.nexus_download_page_url().is_some(),
-                can_download: !entry.id.trim().is_empty(),
+                download_id: entry
+                    .id
+                    .strip_prefix("nexus-")
+                    .unwrap_or(&entry.id)
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|id| *id > 0)
+                    .map(|id| id.to_string()),
                 status: installed.map(|installed| installed.status),
                 installed_version: installed
                     .and_then(|installed| installed.installed_version.clone()),

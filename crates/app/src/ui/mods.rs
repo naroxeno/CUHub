@@ -340,10 +340,6 @@ impl Ui {
         }
     }
 
-    pub fn show_mod_details(&self, name: &str) {
-        self.notice.set(t!("notice.details_todo", name = name));
-    }
-
     pub fn launch_game(&self) {
         let (result, bridge) = {
             let mut hub = self.hub();

@@ -7,8 +7,8 @@ cuhub 与游戏进程之间的桥，以及给其他 CU mod 用的接入点。协
 游戏侧已打通最小闭环，`dotnet build -c Release` 通过且无警告；尚未在真机加载验证。
 
 - `CuhubBridge.Core`（netstandard2.0）：协议帧（u32 LE 长度 + UTF-8 JSON，1 MiB 上限）、`hello`/`req`/`res`/`evt` 数据结构、固定回环端点与共享 token、TCP 连接与读写队列、`Api` 契约。不依赖 BepInEx，但引用游戏自带的 `Newtonsoft.Json.dll`。
-- `CuhubBridge.Plugin`（netstandard2.1）：`[BepInPlugin("dev.cuhub.bridge", "CuhubBridge", "0.1.0")]` 探针。`Update()` 主线程泵负责连接 `127.0.0.1:41297` 的宿主、`hello`、10 s 心跳（连续 3 次未回重连）与 `cmd.invoke` 分发。
-- 命令：`mp.state` 反射 `CUCoreLib.Networking.MultiplayerApi`；`mp.host` / `mp.join` 反射 `MultiplayerBridge.TryConfigureLocalIdentity` + `TryStartLocalQuickTestHost/Client`；命令表外的 id 回 `unknown_command`，命令表内但本 build 未实现的（`mp.leave` / `mp.kick` / `save.*` / `skin.*`）回 `unavailable` 并写明未实现。缺 CUCoreLib、方法缺失、返回 false 或抛异常时回 `unavailable` 并带原因。
+- `CuhubBridge.Plugin`（netstandard2.1）：`[BepInPlugin("dev.cuhub.bridge", "CuhubBridge", "0.1.1")]` 探针。`Update()` 主线程泵负责连接 `127.0.0.1:41297` 的宿主、`hello`、10 s 心跳（连续 3 次未回重连）与 `cmd.invoke` 分发。
+- 命令：`mp.state` 反射 `CUCoreLib.Networking.MultiplayerApi`，房主侧再反射 `Together.Net.Transport` → `TransportLiteNetLib.port` 给出扁平 `port`；`mp.host` / `mp.join` 反射 `MultiplayerBridge.TryConfigureLocalIdentity` + `TryStartLocalQuickTestHost/Client`，成功后回读 `Together.Net` 确认并回 `{started, host, address, port}`；命令表外的 id 回 `unknown_command`，命令表内但本 build 未实现的（`mp.leave` / `mp.kick` / `save.*` / `skin.*`）回 `unavailable` 并写明未实现。失败分三类：参数问题回 `invalid_params`，端口被占用回 `busy`，缺 CUCoreLib/Together、方法缺失、返回 false、回读不一致或抛异常回 `unavailable` 并带原因。
 - 线程：`BridgeClient` 的读线程只解帧入队，写线程只发队列，都不碰 Unity；所有游戏与 CUCoreLib 调用都在 `Update()` 主线程；结果进写队列由写线程发出。
 
 尚未实现：`game.state` / `mods.loaded` 推送、`ask` 权限的用户确认、`save.*` / `skin.*`、`mp.leave` / `mp.kick`（CUCoreLib 没有公开 API）。`mp.host` / `mp.join` 的 QuickTest 语义未在真机验证。宿主侧（Rust）MVP 已实现监听、握手、命令表、权限与会话，见 `crates/core/src/bridge/`。
@@ -53,3 +53,4 @@ token 是 Rust 与 C# 两端共享的常量，只用于挡住误连（例如连�
 
 - 程序集版本与 `Api.ContractVersion` 分开：前者跟发布走，后者只在 API 破坏性变更时 +1。
 - 线上协议版本单独记在 `docs/bridge/protocol.md`，与程序集版本解耦。
+- 0.1.1：`mp.state` 加扁平 `port`（房主侧为实际监听端口）、`mp.host`/`mp.join` 回包加 `address`/`port` 并做调用后回读、错误映射分 `invalid_params`/`busy`/`unavailable`。协议 minor、命令表、帧格式都没变。

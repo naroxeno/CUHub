@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cuhub_core::bridge::BRIDGE_GUID;
 use cuhub_core::hub::{BridgeInstallStatus, HubError};
 use nsh_core::file_dialog::{FileFilter, OpenDialog};
 use nsh_core::prelude::*;
@@ -53,15 +52,6 @@ impl Ui {
             },
             _ => t!("local.bridge_status_not_installed"),
         }
-    }
-
-    pub fn bridge_loaded(&self) -> bool {
-        self.bridge
-            .get()
-            .status
-            .session
-            .as_ref()
-            .is_some_and(|session| session.mods.iter().any(|entry| entry.guid == BRIDGE_GUID))
     }
 
     fn begin_bridge_install(&self, archive: PathBuf) {

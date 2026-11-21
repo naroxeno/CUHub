@@ -81,7 +81,7 @@ MVP 尚未实现这两个上报，宿主收到未知 `evt` 忽略。
 | `unknown_command` | `id` 不在命令表 |
 | `denied` | 权限不足或用户未授权 |
 | `invalid_params` | 参数不符合 `schema` |
-| `busy` | 同一条命令已有一次在飞 |
+| `busy` | 同一条命令已有一次在飞，或目标资源被占用（`mp.host` 的 UDP 端口已被占用） |
 | `unavailable` | 当前游戏状态不允许（如不在世界内） |
 | `timeout` | 客户端内部超时（默认 2 秒） |
 
@@ -110,6 +110,52 @@ MVP 尚未实现这两个上报，宿主收到未知 `evt` 忽略。
 | `skin.reload` | control | 重新扫描 CustomSprites |
 
 参数校验用 JSON Schema 子集：`type`（`string`/`integer`/`boolean`/`object`）、`required`、`enum`、`minimum`/`maximum`、`maxLength`。两端各校验一次：宿主不信客户端，客户端也不信宿主。
+
+### 6.1 `mp.state` 的 result
+
+只读快照；字段只增不删，宿主遇到不认识的字段应忽略。
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `available` | bool | CUCoreLib 的 `MultiplayerApi.IsAvailable` |
+| `running` | bool | 联机是否在跑（`IsRunning`） |
+| `client` / `server` / `host` | bool | 角色（`IsClient` / `IsServer` / `IsHost`） |
+| `bridge_receivers_installed` | bool | CUCoreLib 的自定义通道接收器是否装好 |
+| `krokmp_version` | string \| null | CT 版本（`System.Version.ToString()`），读不到为 `null` |
+| `port` | integer \| null | 实际监听端口（`u16`）；只有 `running && server` 时才可能非空 |
+
+`port` 读的是 `Together.Net.Transport`（public static 属性）→ `Together.TransportLiteNetLib.port`（public readonly `ushort` 字段），不是常量 7790，也不是从 `/proc` 反推。语义按角色分：房主侧是**监听端口**，客人侧的 `port` 是目标端口、本机并不监听，所以只在房主侧给值，客人恒 `null`。Steam 传输没有这个字段，也是 `null`。
+
+"没开房"与"读不出来"要分开：没开房是 `port: null`（正常快照）；Together 类型/字段缺失时 `port` 同样为 `null`，快照不因探测失败而整条失败——只有 CUCoreLib 本身没加载，`mp.state` 才回 `unavailable`。
+
+### 6.2 `mp.host` / `mp.join` 的 result
+
+`params`：`address`（`host:port`，≤128 字符，必填）、`name`（≤64 字符，可选；给了就先写 `UIMainMenu.USERINPUT_NAME`）。`mp.host` 的 `name` 少于 3 字符回 `invalid_params`，与 CT 自己的 `net_name_too_short` 一致。
+
+成功时 `result`：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `started` | bool | 恒 `true`；失败走 `error` |
+| `host` | bool | 本次是开房（`true`）还是加入（`false`） |
+| `address` | string | 请求里的 `address`，原样回（只 trim，不改写） |
+| `port` | integer | 解析出的端口（`u16`） |
+
+`port` 用 CT 自己的规则解析，与 `Net.TryParseIPPORT` 等价：`[v6]:port` 取括号后的端口；其它情况只有"点号在冒号前"才按 IPv4 取最后一个冒号后的端口；否则整串当 IPv6、端口回落 `7790`。所以**无点号的主机名带端口（如 `localhost:24444`）会被 CT 当成 IPv6，端口是 7790**——这是游戏的既有怪癖，插件照着来、不修正；宿主想连这种地址应当自己补点号或直接用 IP。端口 `0` 直接 `invalid_params`：CT 会把 0 交给 `NetManager.Start(0)` 随机挑端口，隧道追不上。
+
+成功回包前回读确认：`Together.Net.IsRunning` 为 `true`，`IsServer`（host）/ `IsClient`（join）与请求一致，`Transport` 非空；房主侧还要求 `Transport.port` 等于请求端口。任一项不符回 `unavailable`，message 写明哪一项没对上，不假装成功。
+
+失败映射：
+
+| error.code | 何时 |
+|---|---|
+| `invalid_params` | `address` 缺失/超长/含空白或控制字符、端口解析失败、端口 0、`name` 少于 3 字符或超长 |
+| `busy` | 目标 UDP 端口已被占用（`AddressAlreadyInUse`）；或调用后返回失败且该端口正被占用 |
+| `unavailable` | 缺 CUCoreLib/Together、反射成员缺失、`TryStartLocalQuickTest*` 返回 `false`、回读不一致、反射抛异常 |
+
+`busy` 在调用前后各探一次 UDP 绑定：调用前探到端口被占就不调（CT 的 `OnWantToConnect` 会先 `ShutdownReset`，端口被占时照调会把已经在跑的房间拆掉）；调用后返回 `false` 且端口被占才算占用。
+
+CT 的失败原因只有本地化的 `multiplayerStatusMessage`。插件把它压成一行、截断后拼进 message，只作可读线索；判错不看这个字符串，也永不按它分支。
 
 ## 7. 权限
 

@@ -12,7 +12,9 @@
 
 ## 房主发现
 
-房主把 hostname 设为 `cuhub-host-<端口>`；客人取 `easytier-cli peer list -o json`，按 hostname 精确匹配并读虚拟 IP。`find_host_candidates` 返回去重后的全部命中，`find_host` 只在恰好一个命中时给结果——多个房主时由调用方报错，不猜。
+房主把 hostname 设为 `cuhub-host-<端口>`；客人读取 EasyTier 对端 JSON，验证规范的 hostname 并读取所通告的虚拟 IP；留空时发现唯一房主，手填时按该端口筛选。`find_host_candidates` 返回去重后的全部命中，`find_host` 只在恰好一个命中时给结果——多个房主时由调用方报错，不猜。
+
+端口变化后 hostname 随之变化，旧候选立即失效；客人侧必须按当前端口重新匹配，不做跨端口回退。
 
 ## 边界
 

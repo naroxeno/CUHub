@@ -178,8 +178,9 @@ impl EasyTierProcess {
 
     fn cli_command(&self) -> Command {
         let mut command = Command::new(&self.cli);
+        let rpc = format!("127.0.0.1:{}", self.rpc);
         command
-            .args(["-p", &self.rpc.to_string(), "peer", "-o", "json"])
+            .args(["-p", &rpc, "-o", "json", "peer", "list"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

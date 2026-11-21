@@ -2,14 +2,17 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use crate::bridge::BRIDGE_GUID;
 use crate::bridge::command::{BridgeSettings, Permission, Permissions};
 use crate::bridge::install as package;
-use crate::bridge::mp::MpState;
+use crate::bridge::mp::{GameStart, MpState};
 use crate::bridge::server::{BridgeError, BridgeEvent, BridgeOptions, BridgeServer, BridgeStatus};
+use crate::easytier::{Role, Tunnel};
 use crate::hub::{Hub, HubError};
 use crate::install;
 use crate::mods;
@@ -133,6 +136,17 @@ impl Hub {
         MpState::from_value(&value)
     }
 
+    pub fn game_room_port(&self) -> Option<u16> {
+        let game_running = self.game_running().unwrap_or(false);
+        let status = self.bridge_status();
+        let state = if game_running && status.running && status.session.is_some() {
+            self.poll_mp_state()
+        } else {
+            None
+        };
+        room_port(game_running, &status, state)
+    }
+
     pub fn invoke_bridge(&self, command: &str, params: Value) -> Result<Value, HubError> {
         let Some(server) = &self.bridge else {
             return Err(HubError::Bridge(BridgeError::Unavailable));
@@ -146,6 +160,45 @@ impl Hub {
 
     pub fn game_join(&self, address: &str) -> Result<Value, HubError> {
         self.invoke_bridge("mp.join", json!({ "address": address }))
+    }
+
+    pub fn start_game_host(&self) -> Result<GameStart, HubError> {
+        let port = self
+            .tunnel
+            .as_ref()
+            .filter(|tunnel| tunnel.role() == Role::Host)
+            .map(Tunnel::port)
+            .ok_or(HubError::NoRoom)?;
+        let address = match self.tunnel_virtual_ip() {
+            Some(ip) => format!("{ip}:{port}"),
+            None => return Err(HubError::NoRoom),
+        };
+        let started =
+            GameStart::from_value(&self.game_host(&address)?).ok_or(HubError::UnexpectedContent)?;
+        let reported = self.await_room_port();
+        if started.port != port || reported != Some(port) {
+            return Err(HubError::GamePort {
+                expected: port,
+                reported: reported.or(Some(started.port)),
+            });
+        }
+        self.logs.activity(
+            "Multiplayer",
+            &format!("The game is hosting the room on port {port}."),
+        );
+        Ok(started)
+    }
+
+    fn await_room_port(&self) -> Option<u16> {
+        for attempt in 0..10 {
+            if let Some(port) = self.game_room_port() {
+                return Some(port);
+            }
+            if attempt < 9 {
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+        None
     }
 
     pub fn take_events(&mut self) -> Vec<HubEvent> {
@@ -267,6 +320,13 @@ impl Hub {
     }
 }
 
+fn room_port(game_running: bool, status: &BridgeStatus, state: Option<MpState>) -> Option<u16> {
+    if !game_running || !status.running || status.session.is_none() {
+        return None;
+    }
+    state.and_then(|state| state.room_port())
+}
+
 const CONTROL_COMMANDS: [&str; 2] = ["mp.host", "mp.join"];
 
 fn control_enabled(settings: &BridgeSettings) -> bool {
@@ -302,6 +362,76 @@ fn with_control(settings: &Settings, enabled: bool) -> Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bridge::session::BridgeSessionInfo;
+    use serde_json::json;
+
+    fn state(value: serde_json::Value) -> MpState {
+        MpState::from_value(&value).expect("parse state")
+    }
+
+    fn host(port: Option<u16>) -> MpState {
+        state(json!({
+            "available": true,
+            "running": true,
+            "client": false,
+            "server": true,
+            "host": true,
+            "port": port,
+        }))
+    }
+
+    fn guest() -> MpState {
+        state(json!({
+            "available": true,
+            "running": true,
+            "client": true,
+            "server": false,
+            "host": false,
+            "port": 7790,
+        }))
+    }
+
+    fn connected() -> BridgeStatus {
+        BridgeStatus {
+            running: true,
+            endpoint: Some("127.0.0.1:41297".to_owned()),
+            session: Some(BridgeSessionInfo {
+                pid: 4242,
+                unity_version: None,
+                bepinex_version: None,
+                mods: Vec::new(),
+            }),
+            last_error: None,
+        }
+    }
+
+    #[test]
+    fn a_room_port_needs_a_running_game_and_an_attached_bridge() {
+        assert_eq!(room_port(false, &connected(), Some(host(Some(7790)))), None);
+        assert_eq!(
+            room_port(true, &BridgeStatus::default(), Some(host(Some(7790)))),
+            None
+        );
+        let stopped = BridgeStatus {
+            running: true,
+            ..BridgeStatus::default()
+        };
+        assert_eq!(room_port(true, &stopped, Some(host(Some(7790)))), None);
+    }
+
+    #[test]
+    fn an_attached_bridge_reports_the_game_room_port() {
+        assert_eq!(
+            room_port(true, &connected(), Some(host(Some(7790)))),
+            Some(7790)
+        );
+    }
+
+    #[test]
+    fn a_missing_or_guest_state_has_no_room_port() {
+        assert_eq!(room_port(true, &connected(), None), None);
+        assert_eq!(room_port(true, &connected(), Some(guest())), None);
+    }
 
     #[test]
     fn control_grants_only_the_two_multiplayer_commands() {

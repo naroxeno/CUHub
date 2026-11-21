@@ -185,6 +185,47 @@ pub fn find_host(peers: &[EasyTierMember], port: u16) -> Option<HostCandidate> {
     }
 }
 
+pub(crate) fn discover_host(
+    peers: &[EasyTierMember],
+    port_override: Option<u16>,
+) -> Result<Option<(HostCandidate, u16)>, ()> {
+    let mut found = None;
+    for member in peers.iter().filter(|member| !member.is_local) {
+        let Some(port) = member
+            .hostname
+            .strip_prefix(HOST_PREFIX)
+            .and_then(|port| port.parse::<u16>().ok())
+            .filter(|port| *port != 0 && port_override.is_none_or(|manual| *port == manual))
+        else {
+            continue;
+        };
+        if member.hostname != host_hostname(port) {
+            continue;
+        }
+        let Some(address) = member.address.filter(|address| {
+            !address.is_unspecified()
+                && !address.is_loopback()
+                && !address.is_multicast()
+                && !address.is_broadcast()
+                && !address.is_link_local()
+        }) else {
+            continue;
+        };
+        let candidate = (
+            HostCandidate {
+                hostname: member.hostname.clone(),
+                address,
+            },
+            port,
+        );
+        if found.as_ref().is_some_and(|other| *other != candidate) {
+            return Err(());
+        }
+        found = Some(candidate);
+    }
+    Ok(found)
+}
+
 fn checksum(digits: &[u8]) -> u8 {
     digits
         .iter()

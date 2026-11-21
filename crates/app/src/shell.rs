@@ -23,17 +23,27 @@ use crate::ui::{Ui, scaled};
 
 pub fn content(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
-    let mut pages = view().flex_col().gap(scaled(&z, 12.0)).p(scaled(&z, 12.0));
-    for entry in nav::NAV.iter() {
-        if let nav::NavKind::Page(render) = &entry.kind {
-            pages = pages.child(page_region(ui, entry.id, *render));
-        }
-    }
-    view()
-        .flex_col()
-        .flex_1()
-        .bg(rgb(BG))
-        .child(scroll().flex_1().child(pages))
+    let selected = ui.page;
+    let dashboard = ui.clone();
+    let other = ui.clone();
+    view().flex_col().flex_1().bg(rgb(BG)).child(
+        when(
+            move || selected.get() == nav::NEXUS,
+            move || crate::pages::nexus(&dashboard).into_element(),
+        )
+        .otherwise(move || {
+            let ui = &other;
+            let mut pages = view().flex_col().gap(scaled(&z, 12.0)).p(scaled(&z, 12.0));
+            for entry in nav::NAV.iter() {
+                if entry.id != nav::NEXUS
+                    && let nav::NavKind::Page(render) = &entry.kind
+                {
+                    pages = pages.child(page_region(ui, entry.id, *render));
+                }
+            }
+            scroll().flex_1().child(pages)
+        }),
+    )
 }
 
 fn page_region(ui: &Ui, id: &'static str, render: fn(&Ui) -> AnyElement) -> impl IntoElement {

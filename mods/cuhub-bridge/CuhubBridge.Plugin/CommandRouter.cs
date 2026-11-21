@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
@@ -32,6 +33,19 @@ namespace CuhubBridge.Plugin
         }
 
         internal CommandOutcome Execute(string commandId, JObject parameters)
+        {
+            // A handler exception would otherwise escape into Unity's Update pump and drop every later frame in the batch.
+            try
+            {
+                return Dispatch(commandId, parameters);
+            }
+            catch (Exception ex)
+            {
+                return CommandOutcome.Failure(Protocol.Errors.Unavailable, "command '" + commandId + "' failed: " + ex.Message);
+            }
+        }
+
+        CommandOutcome Dispatch(string commandId, JObject parameters)
         {
             switch (commandId)
             {

@@ -20,6 +20,7 @@ mod state;
 mod tasks;
 mod widgets;
 
+pub(crate) use bridge::{bridge_color, bridge_text};
 #[allow(unused_imports)]
 pub use delete::*;
 pub use fx::*;

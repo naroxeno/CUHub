@@ -5,27 +5,37 @@ use crate::i18n;
 use crate::palette::*;
 use crate::shell::nav;
 use crate::ui::batch::batch_checkbox;
-use crate::ui::{LocalModRow, Ui, button, danger_button, panel, pix, rise_in, scaled, spinner};
+use crate::ui::{LocalModRow, Ui, button, panel, pix, rise_in, scaled};
 use cuhub_core::mods::ModStatus;
 use nsh_core::prelude::*;
 
+mod actions;
+mod bridge;
+use actions::{bulk_menu, row_actions};
+use bridge::{bridge_section, is_bridge_row};
+
 pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
-    let summary = ui.clone();
     let empty = ui.clone();
     let empty_ui = ui.clone();
     let empty_z = z;
     let refresh = ui.clone();
-    let bulk_state = ui.clone();
-    let bulk_locked = ui.clone();
-    let bulk_free = ui.clone();
-    let bulk_z = z;
     let select_ui = ui.clone();
     let refresh_watch = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
+    let local_rows = ui.local_rows;
+    let bridge_install = ui.bridge_install;
+    let visible_rows = computed(move || {
+        let status = bridge_install.get();
+        local_rows
+            .get()
+            .into_iter()
+            .filter(|row| !is_bridge_row(row, status.as_ref()))
+            .collect::<Vec<_>>()
+    });
     let rows = each(
-        ui.local_rows,
+        move || visible_rows.get(),
         |row| row.row_key(),
         move |row, _| {
             let row = row.get();
@@ -46,8 +56,13 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                         .items_center()
                         .justify_between()
                         .gap(scaled(&z, 8.0))
+                        .px(scaled(&z, 8.0))
+                        .py(scaled(&z, 4.0))
+                        .bg(rgb(SURFACE_RAISED))
+                        .border_b(scaled(&z, 1.0))
+                        .border_b_color(rgb(BORDER_DIM))
                         .child(pix(
-                            move || t!("local.count", count = summary.mods.get().len()),
+                            move || t!("local.count", count = visible_rows.get().len()),
                             11.0,
                             TEXT_MUTED,
                             &z,
@@ -58,13 +73,7 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                                 .flex_wrap()
                                 .items_center()
                                 .gap(scaled(&z, 8.0))
-                                .child(
-                                    when(
-                                        move || bulk_state.mod_files_busy(),
-                                        move || mod_bulk_buttons(&bulk_z, &bulk_locked, false),
-                                    )
-                                    .otherwise(move || mod_bulk_buttons(&bulk_z, &bulk_free, true)),
-                                )
+                                .child(bulk_menu(&z, ui))
                                 .child(batch_select_button(&z, &select_ui))
                                 .child(
                                     when(
@@ -94,7 +103,6 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                     move || empty.mods.get().is_empty(),
                     move || empty_state(&empty_z, &empty_ui),
                 ))
-                .child(table_header(&z))
                 .child(rows)
                 .child(bridge_section(&z, ui)),
         )
@@ -102,145 +110,52 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     )
 }
 
-fn bridge_section(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
-    let z = *z;
-    let state = ui.clone();
-    let loaded = ui.clone();
-    let busy = ui.clone();
-    let action = ui.clone();
-    let status_text = ui.clone();
-    view()
-        .flex_col()
-        .gap(scaled(&z, 6.0))
-        .pt(scaled(&z, 10.0))
-        .border_t(scaled(&z, 1.0))
-        .border_t_color(rgb(BORDER_DIM))
-        .child(pix(move || t!("local.bridge_title"), 11.0, TEXT, &z))
-        .child(pix(
-            move || t!("local.bridge_description"),
-            10.0,
-            TEXT_MUTED,
-            &z,
-        ))
-        .child(
-            view()
-                .flex_row()
-                .flex_wrap()
-                .items_center()
-                .gap(scaled(&z, 8.0))
-                .child(pix(
-                    move || state.bridge_install_label(),
-                    10.0,
-                    TEXT_MUTED,
-                    &z,
-                ))
-                .child(when(
-                    move || loaded.bridge_loaded(),
-                    move || pix(move || t!("local.bridge_loaded"), 10.0, ACCENT, &z),
-                ))
-                .child(
-                    when(
-                        move || busy.bridge_install_busy.get(),
-                        move || button(&z, move || t!("local.bridge_installing"), false, || {}),
-                    )
-                    .otherwise({
-                        let action = action.clone();
-                        move || {
-                            let action = action.clone();
-                            button(
-                                &z,
-                                move || t!("local.bridge_install"),
-                                true,
-                                move || action.start_bridge_install(),
-                            )
-                        }
-                    }),
-                ),
-        )
-        .child(when(
-            move || !status_text.bridge_install_text.get().is_empty(),
-            move || {
-                pix(
-                    move || status_text.bridge_install_text.get(),
-                    10.0,
-                    TEXT_MUTED,
-                    &z,
-                )
-            },
-        ))
-}
-
-fn mod_bulk_buttons(z: &Signal<u8>, ui: &Ui, enabled: bool) -> View {
-    let z = *z;
-    let disable_ui = ui.clone();
-    let enable_ui = ui.clone();
-    let delete_ui = ui.clone();
-    view()
-        .flex_row()
-        .items_center()
-        .gap(scaled(&z, 8.0))
-        .child(button(
-            &z,
-            move || t!("local.disable_all"),
-            enabled,
-            move || {
-                disable_ui.set_all_mods_enabled(false);
-            },
-        ))
-        .child(button(
-            &z,
-            move || t!("local.enable_all"),
-            enabled,
-            move || {
-                enable_ui.set_all_mods_enabled(true);
-            },
-        ))
-        .child(danger_button(
-            &z,
-            move || t!("common.delete_all"),
-            enabled,
-            move || {
-                delete_ui.request_delete_all();
-            },
-        ))
-}
-
 fn batch_select_button(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
     let z = *z;
+    let available = ui.clone();
     let watch = ui.clone();
     let clear = ui.clone();
     let select = ui.clone();
     when(
-        move || crate::ui::batch::all_updatable_selected(&watch),
-        move || {
-            let clear = clear.clone();
-            button(
-                &z,
-                move || t!("local.batch_clear"),
-                true,
-                move || {
-                    clear.clear_batch_selection();
-                },
-            )
-        },
+        move || crate::ui::batch::updatable_count(&available) == 0,
+        move || pix(move || t!("local.no_updates"), 10.0, TEXT_MUTED, &z),
     )
-    .otherwise({
+    .otherwise(move || {
+        let clear = clear.clone();
         let select = select.clone();
-        move || {
+        let watch = watch.clone();
+        when(
+            move || crate::ui::batch::all_updatable_selected(&watch),
+            move || {
+                let clear = clear.clone();
+                button(
+                    &z,
+                    move || t!("local.batch_clear"),
+                    true,
+                    move || {
+                        clear.clear_batch_selection();
+                    },
+                )
+            },
+        )
+        .otherwise({
             let select = select.clone();
-            let label = select.clone();
-            button(
-                &z,
-                move || {
-                    t!(
-                        "local.batch_select_all",
-                        count = crate::ui::batch::updatable_count(&label)
-                    )
-                },
-                true,
-                move || select.select_updatable(),
-            )
-        }
+            move || {
+                let select = select.clone();
+                let label = select.clone();
+                button(
+                    &z,
+                    move || {
+                        t!(
+                            "local.batch_select_all",
+                            count = crate::ui::batch::updatable_count(&label)
+                        )
+                    },
+                    true,
+                    move || select.select_updatable(),
+                )
+            }
+        })
     })
 }
 
@@ -288,233 +203,218 @@ fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
 }
 
 fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
-    let zs = z;
-    let z = *z;
+    let details = signal(false);
+    let zoom = *z;
     let item = &row.item;
-    let disabled = item.disabled;
-    let name_color = if disabled { DANGER } else { TEXT };
-    let meta_color = if disabled { DANGER } else { TEXT_MUTED };
-    let detail_color = if disabled { DANGER } else { TEXT_DIM };
     let update_ready = row.can_update();
-    let status_key = if update_ready && item.status != ModStatus::OutOfDate {
-        "status.update_available"
-    } else {
-        i18n::status_key(item.status)
-    };
-    let color = if update_ready && item.status != ModStatus::OutOfDate {
-        WARN
-    } else {
-        status_color(item.status)
-    };
-    let mut state = pix(move || t!(status_key), 11.0, color, &z);
-    if update_ready {
-        state = state.animation(
-            KeyframeAnimation::new(Keyframes::Pulse)
-                .duration(1800.0)
-                .frame_rate(10.0),
-        );
-    }
-    let detail_key = i18n::status_detail_key(item.status);
-    let missing = item.missing_dependencies.join(", ");
-    let conflicts = item.incompatible_with.join(", ");
-    let has_missing = !item.missing_dependencies.is_empty();
-    let has_conflicts = !item.incompatible_with.is_empty();
-    let mut name_cell = view()
+    let (status_key, color) = update_status(row);
+    let mut identity = view()
+        .flex_1()
+        .min_w(scaled(z, 120.0))
         .flex_row()
         .items_center()
-        .gap(scaled(&z, 6.0))
-        .w(percentage(0.38));
+        .gap(scaled(z, 6.0));
     if update_ready {
-        name_cell = name_cell.child(batch_checkbox(zs, ui, row.source_key.clone(), true));
+        identity = identity.child(batch_checkbox(z, ui, row.source_key.clone(), true));
     }
-    name_cell = name_cell.child(pix(item.name.clone(), 12.0, name_color, &z));
+    let marker = if update_ready {
+        WARN
+    } else if item.disabled {
+        TEXT_DIM
+    } else {
+        ACCENT
+    };
+    identity = identity.child(mod_marker(z, marker));
+    let name_color = if item.disabled { TEXT_MUTED } else { TEXT };
+    identity = identity.child(
+        pix(item.name.clone(), 12.0, name_color, z)
+            .min_w(px(0.0))
+            .flex_1()
+            .truncate(),
+    );
     if row.loaded {
-        name_cell = name_cell.child(pix(t!("local.loaded"), 10.0, ACCENT, &z));
+        identity = identity.child(pix(move || t!("local.loaded"), 10.0, ACCENT, z).flex_shrink_0());
     }
+    let version = visible_version(row);
+    let detail_row = row.clone();
+
     view()
         .flex_col()
-        .border_b(scaled(&z, 1.0))
+        .border_b(scaled(z, 1.0))
         .border_b_color(rgb(BORDER_DIM))
-        .border_l(scaled(&z, 2.0))
-        .border_l_color(rgb(color))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)).border_b_color(rgb(BORDER)))
+        .px(scaled(z, 6.0))
+        .py(scaled(z, 5.0))
+        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
         .child(
             view()
                 .flex_row()
+                .flex_wrap()
                 .items_center()
-                .h(scaled(&z, 24.0))
-                .px(scaled(&z, 6.0))
-                .child(name_cell)
-                .child(view().w(percentage(0.18)).child(pix(
-                    item.version_label(),
+                .gap(scaled(z, 8.0))
+                .child(identity)
+                .child(pix(
+                    move || version.clone().unwrap_or_else(|| "—".into()),
                     11.0,
-                    meta_color,
-                    &z,
-                )))
-                .child(view().w(percentage(0.24)).child(pix(
-                    item.author_label(),
-                    11.0,
-                    meta_color,
-                    &z,
-                )))
-                .child(view().w(percentage(0.20)).child(state)),
-        )
-        .child(
-            view()
-                .flex_row()
-                .items_center()
-                .gap(scaled(&z, 12.0))
-                .px(scaled(&z, 6.0))
-                .pb(scaled(&z, 3.0))
-                .child(pix(item.evidence_label(), 10.0, detail_color, &z).flex_shrink_0())
+                    TEXT_MUTED,
+                    z,
+                ))
                 .child(
-                    view().flex_1().min_w(px(0.0)).child(
-                        pix(
-                            move || {
-                                let mut text = t!(detail_key);
-                                if has_missing {
-                                    text.push_str(&t!("status_detail.missing", list = missing));
-                                }
-                                if has_conflicts {
-                                    text.push_str(&t!("status_detail.conflicts", list = conflicts));
-                                }
-                                text
-                            },
-                            10.0,
-                            detail_color,
-                            &z,
-                        )
-                        .truncate(),
-                    ),
-                ),
+                    view()
+                        .flex_row()
+                        .flex_wrap()
+                        .items_center()
+                        .gap(scaled(z, 6.0))
+                        .child(when(
+                            move || status_key != "status.disabled",
+                            move || pix(move || t!("local.enabled"), 10.0, TEXT_MUTED, &zoom),
+                        ))
+                        .child(pix(move || t!(status_key), 10.0, color, z)),
+                )
+                .child(row_actions(z, row, ui, details)),
         )
-        .child(source_line(&z, row, ui))
+        .child(row_warnings(z, row))
+        .child(when(
+            move || details.get(),
+            move || row_details(&zoom, &detail_row),
+        ))
 }
 
-fn source_line(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
-    let mut line = view()
-        .flex_row()
+fn mod_marker(z: &Signal<u8>, color: u32) -> View {
+    view()
+        .w(scaled(z, 14.0))
+        .h(scaled(z, 14.0))
+        .flex_shrink_0()
         .items_center()
-        .gap(scaled(z, 8.0))
-        .px(scaled(z, 6.0))
-        .pb(scaled(z, 3.0));
-    if !row.source.text.is_empty() {
-        let color = if row.source.warning {
-            WARN
-        } else if row.item.disabled {
-            DANGER
-        } else {
-            TEXT_MUTED
-        };
-        line = line.child(
+        .justify_center()
+        .bg(rgb(SURFACE_RAISED))
+        .border(scaled(z, 1.0))
+        .border_color(rgb(BORDER_DIM))
+        .child(
             view()
-                .flex_1()
-                .min_w(px(0.0))
-                .child(pix(row.source.text.clone(), 10.0, color, z).truncate()),
-        );
-    }
-    if !row.source.can_check && row.source.repo.is_some() {
-        line = line.child(spinner(z));
-    }
-    if row.source.can_pin() {
-        let pin_ui = ui.clone();
-        let key = row.source_key.clone();
-        let options = row.source.options.clone();
-        let pin_key = row.source.pin_key();
-        line = line.child(button(
-            z,
-            move || t!(pin_key),
-            true,
-            move || {
-                pin_ui.cycle_source_pin(key.clone(), options.clone());
-            },
-        ));
-    }
-    if row.source.can_check
-        && let Some(repo) = row.source.repo.clone()
-    {
-        let check_ui = ui.clone();
-        let key = row.source_key.clone();
-        line = line.child(button(
-            z,
-            move || t!("common.check"),
-            true,
-            move || {
-                check_ui.check_source(key.clone(), repo.clone());
-            },
-        ));
-    }
+                .w(scaled(z, 6.0))
+                .h(scaled(z, 6.0))
+                .border(scaled(z, 2.0))
+                .border_color(rgb(color)),
+        )
+}
+
+fn visible_version(row: &LocalModRow) -> Option<String> {
+    use cuhub_core::{sources::SourceKind, version::HubVersion};
+
+    let installed = row.item.installed_version.as_ref()?;
     if row.can_update() {
-        let update_ui = ui.clone();
-        let key = row.source_key.clone();
-        line = line.child(button(
+        let candidate = match row.source.effective {
+            Some(SourceKind::Github) => {
+                row.source.release_version.as_ref().map(ToString::to_string)
+            }
+            _ => row.item.expected_version.clone(),
+        };
+        if let Some(candidate) = candidate
+            && let Some(current) = HubVersion::parse_external(installed)
+            && let Some(next) = HubVersion::parse_external(&candidate)
+            && current < next
+        {
+            return Some(format!("{installed} → {candidate}"));
+        }
+    }
+    Some(installed.clone())
+}
+
+fn update_status(row: &LocalModRow) -> (&'static str, u32) {
+    use cuhub_core::sources::SourceKind;
+
+    if row.item.disabled {
+        ("status.disabled", TEXT_MUTED)
+    } else if row.can_update() {
+        ("status.update_available", WARN)
+    } else if row.source.effective == Some(SourceKind::Github) {
+        use cuhub_core::version::HubVersion;
+
+        let installed = row
+            .item
+            .installed_version
+            .as_deref()
+            .and_then(HubVersion::parse_external);
+        if matches!((installed.as_ref(), row.source.release_version.as_ref()), (Some(current), Some(latest)) if current >= latest)
+        {
+            ("local.no_newer_github", TEXT_MUTED)
+        } else {
+            ("status.update_unknown", TEXT_MUTED)
+        }
+    } else if row.item.status == ModStatus::UpToDate {
+        ("local.no_newer_catalogue", TEXT_MUTED)
+    } else {
+        (
+            i18n::status_key(row.item.status),
+            status_color(row.item.status),
+        )
+    }
+}
+
+fn row_warnings(z: &Signal<u8>, row: &LocalModRow) -> View {
+    let mut warnings = view().flex_col();
+    let item = &row.item;
+    if !item.missing_dependencies.is_empty() {
+        let list = item.missing_dependencies.join(", ");
+        warnings = warnings.child(pix(
+            move || t!("status_detail.missing", list = list),
+            10.0,
+            WARN,
             z,
-            move || t!("common.update"),
-            true,
-            move || {
-                update_ui.update_source(key.clone());
-            },
         ));
     }
-    if row.managed {
-        line = line.child(pix(t!("local.managed_by_profile"), 10.0, TEXT_MUTED, z));
+    if !item.incompatible_with.is_empty() {
+        let list = item.incompatible_with.join(", ");
+        warnings = warnings.child(pix(
+            move || t!("status_detail.conflicts", list = list),
+            10.0,
+            WARN,
+            z,
+        ));
     }
-    let toggle_ui = ui.clone();
-    let toggle_key = row.source_key.clone();
-    let enable = row.item.disabled;
-    let toggle_label_key = if enable {
-        "common.enable"
-    } else {
-        "common.disable"
-    };
-    let toggle_z = *z;
-    let toggle_watch = ui.clone();
-    line = line.child(
-        when(
-            move || toggle_watch.mod_files_busy(),
-            move || button(&toggle_z, move || t!(toggle_label_key), false, || {}),
-        )
-        .otherwise({
-            let toggle_ui = toggle_ui.clone();
-            move || {
-                let toggle_ui = toggle_ui.clone();
-                let toggle_key = toggle_key.clone();
-                button(
-                    &toggle_z,
-                    move || t!(toggle_label_key),
-                    true,
-                    move || {
-                        toggle_ui.set_mod_enabled(toggle_key.clone(), enable);
-                    },
-                )
-            }
-        }),
-    );
-    let delete_watch = ui.clone();
-    let delete_z = *z;
-    line = line.child(
-        when(
-            move || delete_watch.mod_files_busy(),
-            move || danger_button(&delete_z, move || t!("common.delete"), false, || {}),
-        )
-        .otherwise({
-            let delete_ui = ui.clone();
-            let delete_key = row.source_key.clone();
-            move || {
-                let delete_ui = delete_ui.clone();
-                let delete_key = delete_key.clone();
-                danger_button(
-                    &delete_z,
-                    move || t!("common.delete"),
-                    true,
-                    move || {
-                        delete_ui.request_delete_mod(delete_key.clone());
-                    },
-                )
-            }
-        }),
-    );
-    line
+    warnings
+}
+
+fn row_details(z: &Signal<u8>, row: &LocalModRow) -> View {
+    let detail_key = i18n::status_detail_key(row.item.status);
+    let author = row
+        .item
+        .author
+        .clone()
+        .filter(|name| !name.trim().is_empty());
+    let mut details = view()
+        .flex_col()
+        .mt(scaled(z, 5.0))
+        .px(scaled(z, 8.0))
+        .py(scaled(z, 5.0))
+        .gap(scaled(z, 3.0))
+        .bg(rgb(SURFACE_RAISED))
+        .border_l(scaled(z, 2.0))
+        .border_l_color(rgb(ACCENT))
+        .child(pix(row.item.name.clone(), 11.0, TEXT, z))
+        .child(pix(
+            move || author.clone().unwrap_or_else(|| t!("nexus.unknown_author")),
+            10.0,
+            TEXT_MUTED,
+            z,
+        ))
+        .child(pix(row.item.evidence_label(), 10.0, TEXT_MUTED, z))
+        .child(pix(move || t!(detail_key), 10.0, TEXT_MUTED, z))
+        .child(pix(
+            row.source.text.clone(),
+            10.0,
+            if row.source.warning { WARN } else { TEXT_MUTED },
+            z,
+        ));
+    if row.managed {
+        details = details.child(pix(
+            move || t!("local.managed_by_profile"),
+            10.0,
+            TEXT_MUTED,
+            z,
+        ));
+    }
+    details
 }
 
 pub(super) fn status_color(status: ModStatus) -> u32 {
@@ -524,39 +424,4 @@ pub(super) fn status_color(status: ModStatus) -> u32 {
         ModStatus::UpToDate => ACCENT,
         ModStatus::Unlisted | ModStatus::Unknown => TEXT_MUTED,
     }
-}
-
-fn table_header(z: &Signal<u8>) -> impl IntoElement {
-    let z = *z;
-    view()
-        .flex_row()
-        .items_center()
-        .h(scaled(&z, 20.0))
-        .px(scaled(&z, 6.0))
-        .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER))
-        .child(view().w(percentage(0.38)).child(pix(
-            move || t!("local.table.name"),
-            10.0,
-            TEXT_MUTED,
-            &z,
-        )))
-        .child(view().w(percentage(0.18)).child(pix(
-            move || t!("local.table.version"),
-            10.0,
-            TEXT_MUTED,
-            &z,
-        )))
-        .child(view().w(percentage(0.24)).child(pix(
-            move || t!("local.table.author"),
-            10.0,
-            TEXT_MUTED,
-            &z,
-        )))
-        .child(view().w(percentage(0.20)).child(pix(
-            move || t!("local.table.state"),
-            10.0,
-            TEXT_MUTED,
-            &z,
-        )))
 }

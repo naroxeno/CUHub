@@ -1,5 +1,6 @@
 //! Sidebar: wide labeled tree with group headers, narrow icon rail, fold toggle and footer.
 
+use nsh_base::tooltip;
 use nsh_core::prelude::*;
 use nsh_core::{LayoutAnimation, LayoutTransition};
 
@@ -80,7 +81,7 @@ fn search_box(ui: Ui, narrow: bool) -> impl IntoElement {
         .child(pix("?", 10.0, TEXT_DIM, &z))
         .child(when(
             move || !narrow,
-            move || pix(t!("nav.search"), 11.0, TEXT_MUTED, &z),
+            move || pix(move || t!("nav.search"), 11.0, TEXT_MUTED, &z),
         ))
 }
 
@@ -172,8 +173,9 @@ fn fold_toggle(ui: Ui, narrow: bool) -> impl IntoElement {
 fn group_header(ui: Ui, group: &'static str) -> impl IntoElement {
     let z = ui.zoom;
     let press = ui.clone();
-    let lit = ui.clone();
+    let active_child = ui.clone();
     let open = ui.clone();
+    let expanded = ui.clone();
     let key = nav::GROUPS
         .iter()
         .find(|candidate| candidate.id == group)
@@ -188,106 +190,134 @@ fn group_header(ui: Ui, group: &'static str) -> impl IntoElement {
         .bg(rgb(SURFACE))
         .border_b(scaled(&z, 1.0))
         .border_b_color(rgb(BORDER_DIM))
-        .border_l(scaled(&z, 2.0))
-        .border_l_color(rgb(SURFACE))
         .hover(|s| s.bg(rgb(SURFACE_RAISED)))
+        .focus_visible(|s| s.bg(rgb(BORDER_DIM)))
         .active(|s| s.bg(rgb(BORDER_DIM)))
+        .cursor(Cursor::Pointer)
+        .accessibility_state(move || AccessibilityState {
+            expanded: Some(expanded.nav_closed_group.get() != group),
+            ..AccessibilityState::default()
+        })
         .on_press(move || {
             let closed = press.nav_closed_group.get() == group;
+            animate_layout(fold_animation());
             press.nav_closed_group.set(if closed { "" } else { group });
         })
-        .child(pix_c(
-            move || t!(key),
-            12.0,
-            move || {
-                if nav::in_group(lit.page.get(), group) {
-                    rgb(ACCENT)
-                } else {
-                    rgb(TEXT)
-                }
-            },
-            &z,
-        ))
-        .child(pix_c(
-            move || {
-                if open.nav_closed_group.get() == group {
-                    "▸"
-                } else {
-                    "▾"
-                }
-            },
-            10.0,
-            move || rgb(TEXT_MUTED),
-            &z,
-        ))
+        .child(pix(move || t!(key), 12.0, TEXT, &z))
+        .child(
+            view()
+                .flex_row()
+                .items_center()
+                .gap(scaled(&z, 7.0))
+                .child(when(
+                    move || {
+                        active_child.nav_closed_group.get() == group
+                            && nav::in_group(active_child.page.get(), group)
+                    },
+                    move || view().w(scaled(&z, 4.0)).h(scaled(&z, 4.0)).bg(rgb(ACCENT)),
+                ))
+                .child(pix(
+                    move || {
+                        if open.nav_closed_group.get() == group {
+                            "▸"
+                        } else {
+                            "▾"
+                        }
+                    },
+                    10.0,
+                    TEXT_MUTED,
+                    &z,
+                )),
+        )
 }
 
-fn nav_row(ui: Ui, entry: &'static NavEntry, child: bool) -> impl IntoElement {
+fn nav_row(ui: Ui, entry: &'static NavEntry, child: bool) -> View {
     let z = ui.zoom;
-    let bg = ui.clone();
-    let edge = ui.clone();
-    let text = ui.clone();
-    let press = ui.clone();
-    let lit = ui.clone();
-    let glow = motion();
+    let page = ui.page;
     let is_page = matches!(&entry.kind, NavKind::Page(_));
+    let selected = move || is_page && page.get() == entry.id;
+    let glow = motion();
     effect(move || {
-        if is_page && lit.page.get() == entry.id {
+        if selected() {
             glow.play(MotionPreset::FadeIn);
         }
     });
     let key = entry.key;
-    view()
+    let row = view()
         .flex_row()
+        .flex_1()
+        .min_w(px(0.0))
         .items_center()
-        .h(scaled(&z, if child { 26.0 } else { 28.0 }))
+        .h(scaled(&z, if child { 24.0 } else { 28.0 }))
         .bg(move || {
-            if is_page && bg.page.get() == entry.id {
+            if selected() {
                 rgb(SURFACE_RAISED)
             } else {
                 rgb(SURFACE)
             }
         })
-        .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
         .border_l(scaled(&z, 2.0))
         .border_l_color(move || {
-            if is_page && edge.page.get() == entry.id {
+            if selected() {
                 rgb(ACCENT)
             } else {
                 rgb(SURFACE)
             }
         })
+        .px(scaled(&z, 9.0))
         .transition()
         .duration(STATE_MS)
         .hover(|s| s.bg(rgb(SURFACE_RAISED)))
+        .focus_visible(|s| s.bg(rgb(BORDER_DIM)))
         .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
         .cursor(Cursor::Pointer)
-        .on_press(move || run_entry(&press, entry))
-        .child(view().w(scaled(&z, if child { 16.0 } else { 0.0 })))
+        .accessibility_state(move || AccessibilityState {
+            selected: selected(),
+            ..AccessibilityState::default()
+        })
+        .on_press(move || run_entry(&ui, entry))
+        .child(
+            pix_c(
+                move || t!(key),
+                12.0,
+                move || match (selected(), child) {
+                    (true, false) => rgb(ACCENT),
+                    (true, true) => rgb(TEXT),
+                    (false, _) => rgb(TEXT_MUTED),
+                },
+                &z,
+            )
+            .min_w(px(0.0))
+            .truncate()
+            .bind_motion(&glow),
+        );
+    if child {
+        view()
+            .flex_row()
+            .pl(scaled(&z, 17.0))
+            .pr(scaled(&z, 6.0))
+            .child(branch_guide(&z))
+            .child(row)
+    } else {
+        view()
+            .flex_row()
+            .border_b(scaled(&z, 1.0))
+            .border_b_color(rgb(BORDER_DIM))
+            .child(row)
+    }
+}
+
+fn branch_guide(z: &Signal<u8>) -> View {
+    view()
+        .flex_row()
+        .items_center()
+        .border_l(scaled(z, 1.0))
+        .border_l_color(rgb(BORDER_DIM))
         .child(
             view()
-                .w(scaled(&z, 1.0))
-                .h(scaled(&z, if child { 26.0 } else { 28.0 }))
-                .bg(rgb(BORDER)),
-        )
-        .child(view().w(scaled(&z, 8.0)))
-        .child(
-            view().flex_1().px(scaled(&z, 2.0)).child(
-                pix_c(
-                    move || t!(key),
-                    12.0,
-                    move || {
-                        if is_page && text.page.get() == entry.id {
-                            rgb(ACCENT)
-                        } else {
-                            rgb(TEXT_MUTED)
-                        }
-                    },
-                    &z,
-                )
-                .bind_motion(&glow),
-            ),
+                .w(scaled(z, 5.0))
+                .h(scaled(z, 1.0))
+                .bg(rgb(BORDER_DIM)),
         )
 }
 
@@ -297,6 +327,8 @@ fn icon_row(ui: Ui, entry: &'static NavEntry) -> impl IntoElement {
     let edge = ui.clone();
     let text = ui.clone();
     let press = ui.clone();
+    let key = entry.key;
+    let page = ui.page;
     let is_page = matches!(&entry.kind, NavKind::Page(_));
     view()
         .flex_row()
@@ -323,6 +355,13 @@ fn icon_row(ui: Ui, entry: &'static NavEntry) -> impl IntoElement {
         .hover(|s| s.bg(rgb(SURFACE_RAISED)))
         .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
         .cursor(Cursor::Pointer)
+        .focus_visible(|s| s.bg(rgb(BORDER_DIM)))
+        .label(move || t!(key))
+        .accessibility_state(move || AccessibilityState {
+            selected: is_page && page.get() == entry.id,
+            ..AccessibilityState::default()
+        })
+        .tooltip(sidebar_hint(&z, key))
         .on_press(move || run_entry(&press, entry))
         .child(pix_c(
             move || entry.icon.to_owned(),
@@ -338,6 +377,18 @@ fn icon_row(ui: Ui, entry: &'static NavEntry) -> impl IntoElement {
         ))
 }
 
+fn sidebar_hint(z: &Signal<u8>, key: &'static str) -> impl IntoTooltip {
+    tooltip().placement(Placement::Right).child(
+        view()
+            .px(scaled(z, 7.0))
+            .py(scaled(z, 4.0))
+            .bg(rgb(SURFACE_RAISED))
+            .border(scaled(z, 1.0))
+            .border_color(rgb(BORDER_DIM))
+            .child(pix(move || t!(key), 11.0, TEXT, z)),
+    )
+}
+
 fn group_boundary(
     ui: Ui,
     previous: Option<&'static str>,
@@ -348,7 +399,7 @@ fn group_boundary(
         view()
             .h(scaled(&z, 1.0))
             .w_full()
-            .bg(rgb(BORDER))
+            .bg(rgb(BORDER_DIM))
             .into_element()
     } else {
         view().h(px(0.0)).into_element()

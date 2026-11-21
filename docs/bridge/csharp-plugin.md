@@ -16,8 +16,8 @@
 - `CuhubBridge.Plugin`（netstandard2.1）：`dev.cuhub.bridge` 探针，`Update()` 里连固定端点、握手、心跳与 `cmd.invoke` 分发；连不上就退避重连，不影响游戏。`BridgeSession.cs` / `CommandRouter.cs` / `MpBackend.cs` 分文件；MVP 未拆 `Mp` / `Transport` 程序集。
 - TFM 差异：游戏 Unity 2022.3.62f3 的 `UnityEngine.CoreModule.dll` 是 netstandard 2.1，插件用 2.0 会报 CS1705，所以插件取 2.1；Core 保持 2.0。
 - 线程：`BridgeClient` 读线程只解帧入队，写线程只发队列；Unity / CUCoreLib 调用只在 `Update()` 主线程。
-- 命令：`mp.state` 读 `MultiplayerApi` 的 `IsAvailable/IsRunning/IsClient/IsServer/IsHost/BridgeReceiversInstalled/KrokMpVersion`；`mp.host`/`mp.join` 在带 `name` 时先调 `TryConfigureLocalIdentity`，再调 `TryStartLocalQuickTestHost/Client`；命令表外的 id 回 `unknown_command`，命令表内但本 build 未实现的（`mp.leave` / `mp.kick` / `save.*` / `skin.*`）回 `unavailable`，reason 写明 "command declared but not implemented in this build"。
-- 缺 CUCoreLib、方法缺失、返回 false 或反射抛异常时回 `unavailable` 并带原因；`mp.leave`、`mp.kick` 没有公开 API，未实现。
+- 命令：`mp.state` 读 `MultiplayerApi` 的 `IsAvailable/IsRunning/IsClient/IsServer/IsHost/BridgeReceiversInstalled/KrokMpVersion`，并在 `running && server` 时反射 `Together.Net.Transport` → `TransportLiteNetLib.port` 给出扁平 `port`（客人、Steam、读不到都是 `null`）；`mp.host`/`mp.join` 在带 `name` 时先调 `TryConfigureLocalIdentity`，再调 `TryStartLocalQuickTestHost/Client`，成功后回读 `Together.Net` 的角色与端口，回 `{started, host, address, port}`；命令表外的 id 回 `unknown_command`，命令表内但本 build 未实现的（`mp.leave` / `mp.kick` / `save.*` / `skin.*`）回 `unavailable`，reason 写明 "command declared but not implemented in this build"。
+- 失败分三类：参数问题（`address` 缺失/端口解析失败/端口 0/`name` 少于 3 字符）回 `invalid_params`；端口被占用回 `busy`；缺 CUCoreLib/Together、方法缺失、返回 `false`、回读不一致、反射抛异常回 `unavailable` 并带原因。CT 的失败原因只有本地化 `multiplayerStatusMessage`，只拼进 message 当线索，不据此分支。`CommandRouter.Execute` 外层有 catch-all，handler 异常不会冲进 Unity `Update()`。`mp.leave`、`mp.kick` 没有公开 API，未实现。
 - 未实现：`game.state` / `mods.loaded` 推送、权限、`save.*` / `skin.*`；入站 `evt` 全部忽略；`ping` 双向，插件每 10 s 发 `ping` 并回宿主的 `ping`。
 - 自验：临时 console harness（在 `/tmp`，未入库）覆盖帧往返/半截/超大、消息解析、固定端点与共享 token、回环 TCP hello/res，21 项全过；未覆盖真机加载与 CUCoreLib 反射。
 
@@ -42,6 +42,18 @@
 - `MultiplayerBridge.TryConfigureLocalIdentity(string username, string address)`、`TryStartLocalQuickTestHost(string address)`、`TryStartLocalQuickTestClient(string address)` 的签名与调用顺序一致；`address` 的实际语义是 `host:port`，空串时 CUCoreLib 回退 `localhost:7790`。
 - 程序集名是 `CUCoreLib`（`net.cucorelib` 是 BepInEx 插件 GUID）。`MpBackend` 的 `AssemblyNames` 把 GUID 当后备名字不会命中，但先扫 AppDomain，实际无影响。
 - 风险：旧版 CUCoreLib 是否都带 `KrokMpVersion` 未逐一核对；缺该属性时反射读回 null，`mp.state` 的 `krokmp_version` 为 null，状态卡显示 unknown，不抛异常。
+
+## Together 反射：实际端口（2026-11-21）
+
+源码依据 `ref/casualties-together`（程序集名 `CasualtiesMP`，命名空间 `Together`）。插件对 Together 仍是全反射、零引用。
+
+- `Together.Net`（`ScavPrototypeMP/Net/Net.cs`）：`IsRunning` / `IsClient` / `IsServer` / `IsHost` 是 public static 属性（:210-215）；`Transport` 是 public static 属性（:221，`internal set` 只限制写，不影响读）。
+- `Together.TransportLiteNetLib`（:948）：`ip` / `port` 是 public readonly 字段（:950-951），`port` 为 `ushort`。`TransportSteam` 没有端口字段。
+- 房主侧 `NetManager.Start(port)` 直接绑这个端口（:1042）；客人侧同一个字段表示目标端口（:1030/:1036）。所以读取必须用 `IsServer` 门控——只在房主侧把 `port` 当监听端口，客人侧不监听本机端口，`mp.state.port` 恒 null。
+- 读取顺序（`MpBackend.ProbePort`）：Together 缺失或抛异常 → `Unavailable`；`IsRunning` 为假或 `IsServer` 为假 → `NotHosting`；`Transport` 为 null、`port` 字段缺失/类型不是 `ushort`/`port == 0` → `Unavailable`；其余 → `Ready(port)`。类型查找沿用 `FindType`：先扫 `AppDomain.CurrentDomain.GetAssemblies()`，再 `Assembly.Load("CasualtiesMP")` 兜底；**失败不缓存**，下一条命令重试，因此装/卸 Together 后不需要重启游戏。
+- 失败不抛：所有反射包在 try/catch 里，异常转成 `unavailable` + 可读 message。`mp.state` 把 `Unavailable` 映射成 `port: null`（快照不该因探测失败而失败），`mp.host`/`mp.join` 则把 `Unavailable` 映射成 `unavailable` 错误。
+- 端口解析照抄 `Net.TryParseIPPORT`（:720-807）的既有怪癖，见 `docs/bridge/protocol.md` §6.2：无点号主机名带端口会被 CT 当成 IPv6、端口回落 7790。插件不修正这个行为，保证回给宿主的端口与游戏实际绑定的端口一致。
+- 端口占用探测（`MpBackend.IsPortBusy`）：UDP 试绑 `IPAddress.Any`，IPv6 可用时再试 `IPv6Any`，只有 `SocketError.AddressAlreadyInUse` 算占用，其它错误一律不算（不能因为权限或协议栈问题把一次正常开房拦下）。
 
 ## CT 实况（能用的非 API 手段）
 
@@ -73,8 +85,8 @@ MVP 先落地为 Plugin + Core 两个程序集：上图的 `MpBackend` 是 Plugi
 
 | 协议命令 | 落点 | 备注 |
 |---|---|---|
-| mp.state | 反射 `MultiplayerApi` 的布尔与 `KrokMpVersion`（已实现） | 玩家列表仍未接（`Together.ServerMain.AllClientIds`，待真机） |
-| mp.host / mp.join | `TryConfigureLocalIdentity` + `TryStartLocalQuickTestHost/Client` | MVP 已按此反射接通；`address` 格式与 QuickTest 等价性待真机确认 |
+| mp.state | 反射 `MultiplayerApi` 的布尔与 `KrokMpVersion`；`running && server` 时再反射 `Together.Net.Transport` → `TransportLiteNetLib.port`（已实现） | 玩家列表仍未接（`Together.ServerMain.AllClientIds`，待真机）；`port` 只在房主侧非空 |
+| mp.host / mp.join | `TryConfigureLocalIdentity` + `TryStartLocalQuickTestHost/Client`，成功后回读 `Together.Net` 确认并回 `address`/`port` | MVP 已按此反射接通；`address` 解析照 `Net.TryParseIPPORT`；QuickTest 等价性待真机确认 |
 | mp.kick | 走 CT 控制台 `kick` | 需先确认能执行控制台命令（ConsoleCommandRegistry / ConsolePatch） |
 | save.* | `GetKrokMpSaveScope`（internal，反射） | 只读判定 |
 | skin.* | 本地文件 | 与联机无关 |
@@ -82,6 +94,7 @@ MVP 先落地为 Plugin + Core 两个程序集：上图的 `MpBackend` 是 Plugi
 ## 风险
 
 - CT 更新可能改 `Together.*` 成员；CUCoreLib 不跟就一起碎。宿主已把协议不符与最近握手失败写进状态栏，联机页显示 `KrokMpVersion`；普通 `mp.state` 调用的 `KrokMpVersion` 缺失仍按 unknown 显示。
+- `Together.Net.Transport` 或 `TransportLiteNetLib.port` 改名/改类型时：`mp.state.port` 变 null，`mp.host`/`mp.join` 回 `unavailable`（message 带 "has no public ushort port field"），不崩也不假装成功。真机日志出现这句就说明 CT 改了成员，改反射即可，协议不用动。
 - `TryStartLocalQuickTestHost/Client` 名字含 QuickTest，语义可能是测试用快捷入口而非正式 Host；真机要先验证它是否等价于 UI 按钮。
 - 反射到 `Body`/`Limb` 的写法在无 CUCoreLib 时必须自己维护字段白名单，容易越权改数值 → 默认只在 CucoreLibBackend 下开放玩法写，NativeBackend 只读。
 - 控制台命令执行如果靠 Harmony 注入，属于高风险区，需单独评审。

@@ -24,3 +24,8 @@
 ## 常量出处
 
 数据源与缓存策略见 docs/FEATURES.md C1/C2；字段语义见上游 Models/MetadataMod.cs 与 Services/UniversalMetadataService.cs。
+
+
+## 封面缓存与浏览器链接
+
+社区目录的封面只接受 Nexus 静态 CDN 上的 HTTPS 模组资源，拒绝重定向和 URL 凭据。响应上限 2 MiB，PNG、JPEG、WebP 以 URL 哈希命名存进应用数据目录的 `IconCache`，原子写入。实际解码失败由界面回退占位。Nexus 模组页另按固定主机、游戏域和数字模组路径验证。

@@ -3,10 +3,13 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
+use cuhub_core::bridge::handshake::HandshakeError;
+use cuhub_core::bridge::server::BridgeError;
 use cuhub_core::hub::BridgeSnapshot;
 use nsh_core::prelude::*;
 
 use super::state::Ui;
+use crate::palette::{ACCENT, DANGER, TEXT_MUTED};
 
 const POLL_MILLIS: u64 = 2_000;
 
@@ -53,4 +56,47 @@ impl Ui {
             }
         });
     }
+}
+
+pub(crate) fn bridge_text(snapshot: BridgeSnapshot) -> String {
+    if let Some(session) = snapshot.status.session {
+        return t!("statusline.bridge_connected", pid = session.pid);
+    }
+    if !snapshot.game_running {
+        return t!("statusline.bridge_game_off");
+    }
+    if let Some(error) = snapshot.status.last_error.as_ref() {
+        return match error {
+            HandshakeError::BadToken => t!("statusline.bridge_bad_token"),
+            HandshakeError::ProtocolMismatch { host, guest } => {
+                t!(
+                    "statusline.bridge_proto_mismatch",
+                    host = host,
+                    guest = guest
+                )
+            }
+            HandshakeError::Busy { same_pid: true } => t!("statusline.bridge_busy_same"),
+            HandshakeError::Busy { same_pid: false } => t!("statusline.bridge_busy"),
+            HandshakeError::Rejected(_) => t!("statusline.bridge_rejected"),
+        };
+    }
+    if let Some(error) = snapshot.start_error.as_ref() {
+        return match error {
+            BridgeError::PortInUse(port) => t!("statusline.bridge_port_busy", port = port),
+            other => t!("statusline.bridge_failed", error = other),
+        };
+    }
+    t!("statusline.bridge_waiting")
+}
+
+pub(crate) fn bridge_color(snapshot: &BridgeSnapshot) -> u32 {
+    if snapshot.status.session.is_some() {
+        return ACCENT;
+    }
+    if snapshot.game_running
+        && (snapshot.status.last_error.is_some() || snapshot.start_error.is_some())
+    {
+        return DANGER;
+    }
+    TEXT_MUTED
 }

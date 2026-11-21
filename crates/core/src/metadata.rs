@@ -6,7 +6,10 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+mod cover;
 use chrono::{DateTime, Utc};
+pub(crate) use cover::is_cover_url;
+pub use cover::{CoverCache, nexus_public_page};
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

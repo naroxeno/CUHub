@@ -179,6 +179,7 @@ fn strip_suffix_ignore_ascii_case<'a>(value: &'a str, suffix: &str) -> Option<&'
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceEntry {
+    pub nexus_id: Option<u64>,
     pub name: String,
     pub repo: Repo,
     pub matcher: Matcher,
@@ -249,11 +250,21 @@ fn parse_entry_fields(value: Value) -> Result<SourceEntry, String> {
     let name = clean_text(&document.name).ok_or("entry name is empty or invalid")?;
     let repo = Repo::parse(&document.repo).map_err(|error| error.to_string())?;
     let matcher = build_matcher(document.matcher)?;
+    if document.nexus_id == Some(0) {
+        return Err("Nexus mod ID must be positive".into());
+    }
     let asset = match document.asset.as_deref() {
         Some(value) => Some(clean_asset(value).ok_or("asset name is empty or invalid")?),
         None => None,
     };
     Ok(SourceEntry {
+        nexus_id: document
+            .nexus_id
+            .or_else(|| match repo.slug().to_ascii_lowercase().as_str() {
+                "creaturefeaturelarry/casualties-together" => Some(67),
+                "jimmyking9999999/cucorelib" => Some(341),
+                _ => None,
+            }),
         name,
         repo,
         matcher,
@@ -354,6 +365,8 @@ struct ManifestDocument {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EntryDocument {
+    #[serde(rename = "nexusId", default)]
+    nexus_id: Option<u64>,
     name: String,
     repo: String,
     #[serde(rename = "match")]
@@ -631,6 +644,7 @@ mod resolve_tests {
 
     fn entry(name: &str, repo: &str, matcher: Matcher) -> SourceEntry {
         SourceEntry {
+            nexus_id: None,
             name: name.to_owned(),
             repo: Repo::parse(repo).expect("repo"),
             matcher,
