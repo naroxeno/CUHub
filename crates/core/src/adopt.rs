@@ -34,6 +34,7 @@ pub enum AdoptSkip {
     DuplicateName,
     DuplicateTarget,
     BuiltIn,
+    UnsafeFiles,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -95,97 +96,101 @@ pub fn plan_adopt(
     links: &LinkIndex,
 ) -> AdoptPlan {
     let mut plan = AdoptPlan::default();
-    let mut names: BTreeSet<String> = BTreeSet::new();
-    let mut targets: BTreeSet<PathBuf> = BTreeSet::new();
-    for item in mods {
-        let Some(file_name) = item.source_path.file_name().and_then(|name| name.to_str()) else {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::InvalidName));
-            continue;
-        };
-        let id_source = if item.source_path.is_dir() {
-            file_name
-        } else {
-            item.source_path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or(file_name)
-        };
-        let Some(mod_id) = mod_id_for(id_source) else {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::InvalidName));
-            continue;
-        };
-        if item.disabled {
-            plan.skipped.push((item.name.clone(), AdoptSkip::Disabled));
-            continue;
+    for (item, candidate) in classify_mods(mods, plugins_root, store, links) {
+        match candidate {
+            Ok(candidate) => plan.items.push(candidate),
+            Err(reason) => plan.skipped.push((item.name.clone(), reason)),
         }
-        if !is_direct_child(&item.source_path, plugins_root) {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::OutsidePlugins));
-            continue;
-        }
-        if item.source_path == plugins_root.join(crate::bridge::install::BRIDGE_DIR) {
-            plan.skipped.push((item.name.clone(), AdoptSkip::BuiltIn));
-            continue;
-        }
-        let (target, file) = if item.source_path.is_dir() {
-            let deployment = store::scan_source_paths(&item.source_path)
-                .map(|paths| profiles::deployment_from_paths(paths.iter().map(String::as_str)))
-                .unwrap_or(Deployment::Directory);
-            match deployment {
-                Deployment::File(name) => {
-                    let target = plugins_root.join(&name);
-                    (target, Some(name))
-                }
-                Deployment::Directory => (plugins_root.join(&mod_id), None),
-            }
-        } else {
-            (plugins_root.join(file_name), Some(file_name.to_owned()))
-        };
-        let managed = links.get(&item.source_path).is_some()
-            || links.get(&target).is_some()
-            || links.entries().any(|(_, link)| link.mod_id == mod_id);
-        if managed {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::AlreadyManaged));
-            continue;
-        }
-        let version = item
-            .installed_version
-            .as_deref()
-            .or(item.assembly_version.as_deref())
-            .and_then(version_for);
-        let Some(version) = version else {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::MissingVersion));
-            continue;
-        };
-        if store.read_entry(&mod_id, &version).is_some() {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::StoreHasVersion));
-            continue;
-        }
-        if !names.insert(mod_id.clone()) {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::DuplicateName));
-            continue;
-        }
-        if !targets.insert(target.clone()) {
-            plan.skipped
-                .push((item.name.clone(), AdoptSkip::DuplicateTarget));
-            continue;
-        }
-        plan.items.push(AdoptItem {
-            mod_id,
-            version,
-            source: item.source_path.clone(),
-            target,
-            directory: item.source_path.is_dir(),
-            file,
-        });
     }
     plan
+}
+
+pub(crate) fn classify_mods<'a>(
+    mods: &'a [InstalledMod],
+    plugins_root: &'a Path,
+    store: &'a Store,
+    links: &'a LinkIndex,
+) -> impl Iterator<Item = (&'a InstalledMod, Result<AdoptItem, AdoptSkip>)> {
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    let mut targets: BTreeSet<PathBuf> = BTreeSet::new();
+    mods.iter().map(move |item| {
+        let candidate = (|| {
+            let Some(file_name) = item.source_path.file_name().and_then(|name| name.to_str())
+            else {
+                return Err(AdoptSkip::InvalidName);
+            };
+            let id_source = if item.source_path.is_dir() {
+                file_name
+            } else {
+                item.source_path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or(file_name)
+            };
+            let Some(mod_id) = mod_id_for(id_source) else {
+                return Err(AdoptSkip::InvalidName);
+            };
+            if item.disabled {
+                return Err(AdoptSkip::Disabled);
+            }
+            if !is_direct_child(&item.source_path, plugins_root) {
+                return Err(AdoptSkip::OutsidePlugins);
+            }
+            if crate::paths::same_target(
+                &item.source_path,
+                &plugins_root.join(crate::bridge::install::BRIDGE_DIR),
+            ) {
+                return Err(AdoptSkip::BuiltIn);
+            }
+            let (target, file) = if item.source_path.is_dir() {
+                let deployment = store::scan_source_paths(&item.source_path)
+                    .map(|paths| profiles::deployment_from_paths(paths.iter().map(String::as_str)))
+                    .unwrap_or(Deployment::Directory);
+                match deployment {
+                    Deployment::File(name) => {
+                        let target = plugins_root.join(&name);
+                        (target, Some(name))
+                    }
+                    Deployment::Directory => (plugins_root.join(&mod_id), None),
+                }
+            } else {
+                (plugins_root.join(file_name), Some(file_name.to_owned()))
+            };
+            let managed = links.get(&item.source_path).is_some()
+                || links.get(&target).is_some()
+                || links.entries().any(|(_, link)| link.mod_id == mod_id);
+            if managed {
+                return Err(AdoptSkip::AlreadyManaged);
+            }
+            let version = item
+                .installed_version
+                .as_deref()
+                .or(item.assembly_version.as_deref())
+                .and_then(version_for);
+            let Some(version) = version else {
+                return Err(AdoptSkip::MissingVersion);
+            };
+            if store.read_entry(&mod_id, &version).is_some() {
+                return Err(AdoptSkip::StoreHasVersion);
+            }
+            if names.contains(&mod_id) {
+                return Err(AdoptSkip::DuplicateName);
+            }
+            if !targets.insert(target.clone()) {
+                return Err(AdoptSkip::DuplicateTarget);
+            }
+            names.insert(mod_id.clone());
+            Ok(AdoptItem {
+                mod_id,
+                version,
+                source: item.source_path.clone(),
+                target,
+                directory: item.source_path.is_dir(),
+                file,
+            })
+        })();
+        (item, candidate)
+    })
 }
 
 pub fn apply_adopt(
@@ -195,6 +200,10 @@ pub fn apply_adopt(
     game_root: &Path,
     backup_root: &Path,
 ) -> Result<AdoptReport, AdoptError> {
+    links.save_if_changed().map_err(|source| AdoptError::Io {
+        path: links.path().to_path_buf(),
+        source,
+    })?;
     let mut report = AdoptReport {
         backup_dir: unique_backup_dir(backup_root),
         ..AdoptReport::default()

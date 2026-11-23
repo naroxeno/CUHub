@@ -1,10 +1,10 @@
 //! Profiles page: saved deployment profiles plus migrating loose Plugins into the library.
 
+mod migration;
+
 use crate::palette::*;
 use crate::shell::nav;
-use crate::ui::{
-    ProfileRow, ProfilesBusy, Ui, button, danger_button, panel, pix, rise_in, scaled, spinner,
-};
+use crate::ui::{ProfileRow, Ui, button, danger_button, panel, pix, rise_in, scaled};
 use nsh_base::input;
 use nsh_core::prelude::*;
 
@@ -18,7 +18,7 @@ pub fn profiles(ui: &Ui) -> impl IntoElement {
         .gap(scaled(&z, 12.0))
         .bind_motion(&rise_in())
         .child(profile_panel(&list_ui))
-        .child(adopt_panel(&adopt_ui))
+        .child(migration::panel_view(&adopt_ui))
 }
 
 fn profile_panel(ui: &Ui) -> View {
@@ -389,175 +389,4 @@ fn create_confirm_block(ui: &Ui) -> View {
                     move || cancel_ui.profiles_cancel_create(),
                 )),
         )
-}
-
-fn adopt_panel(ui: &Ui) -> View {
-    let z = ui.zoom;
-    let scan_ui = ui.clone();
-    let busy_watch = ui.clone();
-    let stats_watch = ui.clone();
-    let stats_ui = ui.clone();
-    let reasons = ui.profiles.adopt_reasons;
-    let names = ui.profiles.adopt_names;
-    let warning_watch = ui.clone();
-    let warning_ui = ui.clone();
-    let done_watch = ui.clone();
-    let done_ui = ui.clone();
-    let none_watch = ui.clone();
-    let adopt_error_watch = ui.clone();
-    let adopt_error_ui = ui.clone();
-    panel(
-        &z,
-        move || t!("profiles.adopt_title"),
-        view()
-            .flex_col()
-            .gap(scaled(&z, 10.0))
-            .child(pix(move || t!("profiles.adopt_hint"), 11.0, TEXT_MUTED, &z))
-            .child(
-                view()
-                    .flex_row()
-                    .items_center()
-                    .gap(scaled(&z, 8.0))
-                    .child(button(
-                        &z,
-                        move || t!("profiles.adopt_scan"),
-                        true,
-                        move || scan_ui.adopt_scan(),
-                    ))
-                    .child(when(
-                        move || {
-                            matches!(
-                                busy_watch.profiles.busy.get(),
-                                ProfilesBusy::Scan | ProfilesBusy::Adopt
-                            )
-                        },
-                        move || {
-                            view()
-                                .flex_row()
-                                .items_center()
-                                .gap(scaled(&z, 6.0))
-                                .child(spinner(&z))
-                                .child(pix(
-                                    move || t!("profiles.adopt_scanning"),
-                                    10.0,
-                                    TEXT_MUTED,
-                                    &z,
-                                ))
-                        },
-                    )),
-            )
-            .child(when(
-                move || !adopt_error_watch.profiles.adopt_error.get().is_empty(),
-                move || {
-                    let key = adopt_error_ui.profiles.adopt_error.get();
-                    pix(t!(key), 11.0, DANGER, &z)
-                },
-            ))
-            .child(when(
-                move || stats_watch.profiles.adopt_scanned.get(),
-                move || {
-                    let adoptable = stats_ui.profiles.adoptable.get();
-                    let skipped = stats_ui.profiles.adopt_skipped.get();
-                    view()
-                        .flex_col()
-                        .gap(scaled(&z, 4.0))
-                        .child(when(
-                            move || adoptable > 0,
-                            move || {
-                                pix(
-                                    t!("profiles.adopt_adoptable", count = adoptable),
-                                    11.0,
-                                    TEXT,
-                                    &z,
-                                )
-                            },
-                        ))
-                        .child(when(
-                            move || skipped > 0,
-                            move || {
-                                pix(
-                                    t!("profiles.adopt_skipped", count = skipped),
-                                    10.0,
-                                    TEXT_MUTED,
-                                    &z,
-                                )
-                            },
-                        ))
-                        .child(each(
-                            reasons,
-                            |reason| reason.key,
-                            move |reason, _| {
-                                let reason = reason.get();
-                                pix(
-                                    t!(
-                                        "profiles.adopt_reason",
-                                        reason = t!(reason.key),
-                                        count = reason.count
-                                    ),
-                                    10.0,
-                                    TEXT_MUTED,
-                                    &z,
-                                )
-                            },
-                        ))
-                        .child(each(
-                            names,
-                            |name| name.clone(),
-                            move |name, _| {
-                                pix(
-                                    t!("profiles.adopt_name", name = name.get()),
-                                    10.0,
-                                    TEXT_MUTED,
-                                    &z,
-                                )
-                            },
-                        ))
-                },
-            ))
-            .child(when(
-                move || warning_watch.profiles.adoptable.get() > 0,
-                move || adopt_confirm_block(&warning_ui),
-            ))
-            .child(when(
-                move || done_watch.profiles.adopt_done.get().is_some(),
-                move || {
-                    let (count, dir) = done_ui.profiles.adopt_done.get().unwrap_or_default();
-                    pix(
-                        t!("profiles.adopt_done", count = count, dir = dir),
-                        11.0,
-                        ACCENT,
-                        &z,
-                    )
-                },
-            ))
-            .child(when(
-                move || {
-                    none_watch.profiles.adopt_scanned.get()
-                        && none_watch.profiles.adoptable.get() == 0
-                        && none_watch.profiles.adopt_done.get().is_none()
-                },
-                move || pix(t!("profiles.adopt_none"), 11.0, TEXT_MUTED, &z),
-            )),
-    )
-}
-
-fn adopt_confirm_block(ui: &Ui) -> View {
-    let z = ui.zoom;
-    let adoptable = ui.profiles.adoptable;
-    let confirm_ui = ui.clone();
-    view()
-        .flex_col()
-        .gap(scaled(&z, 6.0))
-        .child(pix(
-            move || t!("profiles.adopt_warning", count = adoptable.get()),
-            11.0,
-            WARN,
-            &z,
-        ))
-        .child(danger_button(
-            &z,
-            move || t!("profiles.adopt_confirm"),
-            true,
-            move || confirm_ui.adopt_confirm(),
-        ))
 }

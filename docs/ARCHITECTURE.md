@@ -77,9 +77,9 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 | `nexus_auth` | Nexus key 与 GitHub token 的保存/读取/清除（AES-GCM + 0600；Windows DPAPI 待接） |
 | `nexus` | 直连下载：files.json 选文件、download_link（经 `network`） |
 | `install` | 旧安装链路：压缩包 staging、安装计划、归属检查、备份/替换/回滚；BepInEx 与回退仍用它 |
-| `packages` | 统一安装：`PackagePlan`、下载 → Store → 活动档案 → Links，未托管旧目录先备份 |
+| `packages` | 统一安装：`PackagePlan`、下载 → Store → Plugins 与 Links → 保存活动档案，未托管旧件先备份 |
 | `store` | 内容库：`mods/<modId>/<version>/{payload,entry.json}`，导入校验、哈希、读取、删除 |
-| `links` | 部署账本 `Links.json`：目录/文件链接、退化拷贝、解链；不递归删游戏目录 |
+| `links` | 部署账本 `Links.json`：核对磁盘归属、建链/拷贝、解链和保存账本 |
 | `profiles` | 档案 `Profile` / `ProfileStore`：清单、活动档案、`plan_apply` / `apply_plan` |
 | `adopt` | 把散装模组导入 Store、备份原文件、建链接；迁移不自动执行 |
 | `mods` | 扫描 Plugins、版本证据、更新判定、启用/禁用、删除；不解档案，档案托管由 Hub 在调用前处理 |

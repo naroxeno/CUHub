@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -138,6 +138,18 @@ impl ProfileStore {
         Ok(())
     }
 
+    pub(crate) fn save_deployed(&self, profile: &Profile) -> Result<(), ProfileError> {
+        let saved = if self.active().as_deref() == Some(&profile.name) {
+            self.write_file(profile)
+        } else {
+            self.save(profile)
+        };
+        saved.map_err(|source| ProfileError::Commit {
+            name: profile.name.clone(),
+            source,
+        })
+    }
+
     fn write_file(&self, profile: &Profile) -> io::Result<()> {
         validate_name(&profile.name)?;
         for entry in &profile.entries {
@@ -262,6 +274,14 @@ pub enum ApplyOp {
     },
 }
 
+impl ApplyOp {
+    pub(crate) fn target(&self) -> &Path {
+        match self {
+            Self::Deploy { target, .. } | Self::Remove { target } => target,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ApplyReport {
     pub applied: Vec<ApplyOp>,
@@ -282,6 +302,12 @@ pub enum ProfileError {
     DuplicateMod(String),
     DuplicateTarget(PathBuf),
     OccupiedTarget(PathBuf),
+    AdditionalTarget(PathBuf),
+    PlanChanged,
+    Commit {
+        name: String,
+        source: io::Error,
+    },
     OutsideGame(PathBuf),
     Link(LinkError),
     Apply {
@@ -327,6 +353,18 @@ impl std::fmt::Display for ProfileError {
                     path.display()
                 )
             }
+            Self::PlanChanged => write!(formatter, "deployment changed; review the plan again"),
+            Self::AdditionalTarget(path) => write!(
+                formatter,
+                "the deployment would also change {}; review and apply the profile before retrying",
+                path.display()
+            ),
+            Self::Commit { name, source } => {
+                write!(
+                    formatter,
+                    "deployment completed, but profile \"{name}\" could not be saved or activated: {source}"
+                )
+            }
             Self::OutsideGame(path) => {
                 write!(formatter, "{} is outside the game folder", path.display())
             }
@@ -357,7 +395,7 @@ impl std::error::Error for ProfileError {
         match self {
             Self::Link(error) => Some(error),
             Self::Apply { source, .. } => Some(source.as_ref()),
-            Self::Io { source, .. } => Some(source),
+            Self::Io { source, .. } | Self::Commit { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -370,10 +408,7 @@ impl From<LinkError> for ProfileError {
 }
 
 pub(crate) fn deployment_target(files: &[StoreFile], mod_id: &str, plugins_root: &Path) -> PathBuf {
-    match deployment(files) {
-        Deployment::File(name) => plugins_root.join(name),
-        Deployment::Directory => plugins_root.join(mod_id),
-    }
+    deployment(files).target(mod_id, plugins_root)
 }
 
 pub(crate) fn entry_target(
@@ -431,6 +466,10 @@ pub fn plan_apply(
     if !is_below(plugins_root, game_root) {
         return Err(ProfileError::OutsideGame(plugins_root.to_path_buf()));
     }
+    index.check_loaded().map_err(|source| ProfileError::Io {
+        path: index.path().to_path_buf(),
+        source,
+    })?;
     let mut desired: Vec<(PathBuf, String, String)> = Vec::new();
     let mut targets = BTreeSet::new();
     let mut mods = BTreeSet::new();
@@ -451,31 +490,42 @@ pub fn plan_apply(
             .read_entry(&entry.mod_id, &entry.version)
             .ok_or_else(|| missing_version(&entry.mod_id, &entry.version))?;
         let target = deployment_target(&manifest.files, &entry.mod_id, plugins_root);
-        if !targets.insert(target.clone()) {
+        index.check_target(game_root, &target)?;
+        let target_key = target
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_lowercase();
+        if !targets.insert(target_key) {
             return Err(ProfileError::DuplicateTarget(target));
         }
         desired.push((target, entry.mod_id.clone(), entry.version.clone()));
     }
-    let mut ops: Vec<ApplyOp> = index
-        .entries()
-        .filter_map(|(path, entry)| {
-            let target = Path::new(path);
-            single_component_below(target, plugins_root)?;
-            let current = desired.iter().any(|(desired_target, mod_id, version)| {
-                desired_target.as_path() == target
-                    && *mod_id == entry.mod_id
-                    && *version == entry.version
-            });
-            (!current).then(|| ApplyOp::Remove {
+    let mut ops = Vec::new();
+    for (path, _) in index.entries() {
+        let target = Path::new(path);
+        if target
+            .parent()
+            .is_some_and(|parent| crate::paths::same_directory(parent, plugins_root))
+            && target.file_name().is_some()
+            && !desired
+                .iter()
+                .any(|(desired_target, _, _)| crate::paths::same_target(desired_target, target))
+        {
+            index.check_target(game_root, target)?;
+            index.target_current(target)?;
+            ops.push(ApplyOp::Remove {
                 target: target.to_path_buf(),
-            })
-        })
-        .collect();
+            });
+        }
+    }
     for (target, mod_id, version) in desired {
-        let current = matches!(
-            index.get(&target),
-            Some(entry) if entry.mod_id == mod_id && entry.version == version
-        );
+        let current = match index.get(&target) {
+            Some(entry) => {
+                index.target_current(&target)? && entry.mod_id == mod_id && entry.version == version
+            }
+            None => false,
+        };
         if !current {
             ops.push(ApplyOp::Deploy {
                 target,
@@ -490,12 +540,15 @@ pub fn plan_apply(
 pub(crate) fn check_deployment_targets(
     index: &LinkIndex,
     ops: &[ApplyOp],
+    backed_up_target: Option<&Path>,
 ) -> Result<(), ProfileError> {
     for op in ops {
         let ApplyOp::Deploy { target, .. } = op else {
             continue;
         };
-        if index.get(target).is_some() {
+        if index.get(target).is_some()
+            || backed_up_target.is_some_and(|previous| crate::paths::same_target(previous, target))
+        {
             continue;
         }
         match target.symlink_metadata() {
@@ -518,6 +571,10 @@ pub fn apply_plan(
     game_root: &Path,
     ops: &[ApplyOp],
 ) -> Result<ApplyReport, ProfileError> {
+    index.save_if_changed().map_err(|source| ProfileError::Io {
+        path: index.path().to_path_buf(),
+        source,
+    })?;
     let mut report = ApplyReport::default();
     let mut stopped = None;
     for (position, op) in ops.iter().enumerate() {
@@ -528,11 +585,7 @@ pub fn apply_plan(
         }
         report.applied.push(op.clone());
     }
-    let index_error = if report.applied.is_empty() {
-        None
-    } else {
-        index.save().err()
-    };
+    let index_error = index.save_if_changed().err();
     let (source, index_error) = match (stopped, index_error) {
         (None, None) => return Ok(report),
         (Some(source), index_error) => (source, index_error),
@@ -583,6 +636,15 @@ fn apply_one(
 pub(crate) enum Deployment {
     File(String),
     Directory,
+}
+
+impl Deployment {
+    pub(crate) fn target(&self, mod_id: &str, plugins_root: &Path) -> PathBuf {
+        match self {
+            Self::File(name) => plugins_root.join(name),
+            Self::Directory => plugins_root.join(mod_id),
+        }
+    }
 }
 
 pub(crate) fn deployment(files: &[StoreFile]) -> Deployment {
@@ -638,15 +700,6 @@ fn missing_version(mod_id: &str, version: &str) -> ProfileError {
 fn is_below(candidate: &Path, container: &Path) -> bool {
     candidate.starts_with(container)
         && candidate.components().count() > container.components().count()
-}
-
-fn single_component_below(target: &Path, root: &Path) -> Option<String> {
-    let relative = target.strip_prefix(root).ok()?;
-    let mut parts = relative.components();
-    match (parts.next(), parts.next()) {
-        (Some(Component::Normal(name)), None) => Some(name.to_string_lossy().into_owned()),
-        _ => None,
-    }
 }
 
 fn default_schema_version() -> u32 {

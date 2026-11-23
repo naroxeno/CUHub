@@ -67,6 +67,7 @@ impl Case {
             source: "test".to_owned(),
             target,
             previous,
+            managed_previous: None,
             staging,
             files: packaged,
             single,
@@ -147,6 +148,82 @@ fn single_dll_lands_in_the_store_and_plugins() {
         links.get(&case.plugins.join("GoodMod.dll")).unwrap().mod_id,
         "goodmod"
     );
+}
+
+#[test]
+fn refuses_to_reuse_a_modified_store_payload() {
+    let case = Case::new("modified-store");
+    let target = case.plugins.join("GoodMod.dll");
+    let plan = case.plan(
+        "goodmod",
+        "1",
+        target,
+        None,
+        vec![("GoodMod.dll", b"original")],
+        true,
+    );
+    let report = run_apply(&case, &plan).unwrap();
+    let payload = report.stored.path.join("GoodMod.dll");
+    fs::write(&payload, b"external").unwrap();
+    assert!(matches!(
+        run_apply(&case, &plan),
+        Err(PackageError::StoreChanged(path)) if path == payload
+    ));
+}
+
+#[test]
+fn a_conflict_at_apply_time_does_not_move_the_unmanaged_previous_target() {
+    let case = Case::new("late-conflict");
+    let previous = case.plugins.join("Old.dll");
+    let target = case.plugins.join("New.dll");
+    fs::write(&previous, b"old").unwrap();
+    let plan = case.plan(
+        "goodmod",
+        "1",
+        target.clone(),
+        Some(previous.clone()),
+        vec![("New.dll", b"new")],
+        true,
+    );
+    fs::write(&target, b"external").unwrap();
+    assert!(matches!(
+        run_apply(&case, &plan),
+        Err(PackageError::Profile(ProfileError::OccupiedTarget(path))) if path == target
+    ));
+    assert_eq!(fs::read(previous).unwrap(), b"old");
+    assert_eq!(fs::read(target).unwrap(), b"external");
+    assert_eq!(fs::read_dir(&case.backup).unwrap().count(), 0);
+}
+
+#[test]
+fn a_package_cannot_redeploy_an_unrelated_profile_target() {
+    let case = Case::new("unrelated-repair");
+    let other_target = case.plugins.join("Other.dll");
+    let other = case.plan(
+        "other",
+        "1",
+        other_target.clone(),
+        None,
+        vec![("Other.dll", b"other")],
+        true,
+    );
+    run_apply(&case, &other).unwrap();
+    fs::remove_file(&other_target).unwrap();
+    let target = case.plugins.join("New.dll");
+    let plan = case.plan(
+        "new",
+        "1",
+        target.clone(),
+        None,
+        vec![("New.dll", b"new")],
+        true,
+    );
+    assert!(matches!(
+        run_apply(&case, &plan),
+        Err(PackageError::Profile(ProfileError::AdditionalTarget(path))) if path == other_target
+    ));
+    assert!(!target.exists());
+    assert!(!other_target.exists());
 }
 
 #[test]

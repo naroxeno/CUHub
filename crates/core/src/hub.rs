@@ -30,10 +30,10 @@ use crate::multiplayer::{
 use crate::network::{self, DownloadProgress, Fetch, Network, NetworkError};
 use crate::nexus::{Nexus, NexusAccount, NexusDownload, NexusError};
 use crate::nexus_auth::{GithubTokenStore, KeyStoreError};
-use crate::packages::{self, PackageContext, PackageError, PackagePlan, PackageReport};
+use crate::packages::{PackageError, PackagePlan};
 use crate::paths::{self, PathError};
 use crate::platform;
-use crate::profiles::{self, ApplyOp, ApplyReport, ProfileEntry, ProfileError, ProfileStore};
+use crate::profiles::{self, ProfileEntry, ProfileError, ProfileStore};
 use crate::room::{HostCandidate, RoomCode, RoomError};
 use crate::settings::{Settings, SettingsStore};
 use crate::source_choice::{ChoiceError, SourceChoices};
@@ -45,7 +45,11 @@ use crate::version::HubVersion;
 use crate::bridge::server::{BridgeError, BridgeServer};
 
 mod bridge_host;
+mod migration;
+mod package_plan;
+mod profile_deployment;
 pub use bridge_host::{BridgeInstallReport, BridgeInstallStatus, BridgeSnapshot, HubEvent};
+pub use migration::{MigrationPreview, MigrationRow, MigrationSession};
 
 #[derive(Debug)]
 pub enum HubError {
@@ -434,7 +438,10 @@ pub struct Hub {
 
 impl Hub {
     pub fn open() -> Self {
-        let app_data = platform::app_data_root();
+        Self::open_at(platform::app_data_root())
+    }
+
+    fn open_at(app_data: PathBuf) -> Self {
         let _ = fs::create_dir_all(&app_data);
         let settings_store = SettingsStore::new(app_data.clone());
         let loaded = settings_store.load();
@@ -579,40 +586,8 @@ impl Hub {
         Ok(())
     }
 
-    pub fn plan_profile(&self, name: &str) -> Result<Vec<ApplyOp>, HubError> {
-        let profile = self
-            .profiles
-            .load(name)
-            .ok_or_else(|| HubError::ProfileNotFound(name.to_owned()))?;
-        let game_root = self.game_folder().ok_or(HubError::NoGameFolder)?;
-        let plugins_root = self.plugins_dir()?;
-        let ops = profiles::plan_apply(
-            &profile,
-            &self.links,
-            &self.store,
-            &game_root,
-            &plugins_root,
-        )?;
-        profiles::check_deployment_targets(&self.links, &ops)?;
-        Ok(ops)
-    }
-
-    pub fn apply_profile(&mut self, name: &str) -> Result<ApplyReport, HubError> {
-        self.ensure_game_closed()?;
-        let ops = self.plan_profile(name)?;
-        let game_root = self.game_folder().ok_or(HubError::NoGameFolder)?;
-        let report = profiles::apply_plan(&mut self.links, &self.store, &game_root, &ops)?;
-        self.logs.activity(
-            "Profiles",
-            &format!(
-                "Applied profile {name}: {} operation(s).",
-                report.applied.len()
-            ),
-        );
-        Ok(report)
-    }
-
     pub fn plan_adopt(&self) -> Result<AdoptPlan, HubError> {
+        self.check_link_index()?;
         let plugins_root = self.plugins_dir()?;
         let mods = self.scan_mods()?;
         Ok(adopt::plan_adopt(
@@ -1282,6 +1257,7 @@ impl Hub {
         item: &InstalledMod,
         enabled: bool,
     ) -> Result<usize, HubError> {
+        self.check_link_index()?;
         if self.profile_entry_index(&item.source_path).is_some() {
             return self.set_profile_entry_enabled(item, enabled);
         }
@@ -1304,10 +1280,11 @@ impl Hub {
     }
 
     pub fn set_all_mods_enabled(&mut self, enabled: bool) -> Result<usize, HubError> {
+        self.check_link_index()?;
         self.ensure_game_closed()?;
         let plugins = self.plugins_dir()?;
         let mut changed = 0;
-        if let Some((name, mut profile)) = self.active_profile() {
+        if let Some((_, mut profile)) = self.active_profile() {
             let mut dirty = false;
             for entry in &mut profile.entries {
                 if entry.enabled != enabled {
@@ -1317,8 +1294,7 @@ impl Hub {
                 }
             }
             if dirty {
-                self.profiles.save(&profile).map_err(HubError::Io)?;
-                self.apply_profile(&name)?;
+                self.apply_profile_change(&profile, None)?;
             }
         }
         changed += mods::set_all_enabled_except(&plugins, enabled, &self.managed_targets())?;
@@ -1339,6 +1315,7 @@ impl Hub {
     }
 
     pub fn delete_mod(&mut self, item: &InstalledMod) -> Result<usize, HubError> {
+        self.check_link_index()?;
         if self.profile_entry_index(&item.source_path).is_some() {
             return self.remove_profile_entry(item);
         }
@@ -1366,15 +1343,15 @@ impl Hub {
     }
 
     pub fn delete_all_mods(&mut self) -> Result<usize, HubError> {
+        self.check_link_index()?;
         self.ensure_game_closed()?;
         let plugins = self.plugins_dir()?;
         let mut changed = 0;
-        if let Some((name, mut profile)) = self.active_profile() {
+        if let Some((_, mut profile)) = self.active_profile() {
             if !profile.entries.is_empty() {
                 changed += profile.entries.len();
                 profile.entries.clear();
-                self.profiles.save(&profile).map_err(HubError::Io)?;
-                self.apply_profile(&name)?;
+                self.apply_profile_change(&profile, None)?;
             }
         }
         changed += mods::delete_all_except(&plugins, &self.managed_targets())?;
@@ -1398,8 +1375,7 @@ impl Hub {
             return Ok(0);
         }
         profile.entries[index].enabled = enabled;
-        self.profiles.save(&profile).map_err(HubError::Io)?;
-        self.apply_profile(&name)?;
+        self.apply_profile_change(&profile, Some(&item.source_path))?;
         self.logs.activity(
             "Profiles",
             &format!(
@@ -1417,8 +1393,7 @@ impl Hub {
             return Err(HubError::ManagedByProfile);
         };
         profile.entries.remove(index);
-        self.profiles.save(&profile).map_err(HubError::Io)?;
-        self.apply_profile(&name)?;
+        self.apply_profile_change(&profile, Some(&item.source_path))?;
         self.logs.activity(
             "Profiles",
             &format!("Removed {} from profile {name}.", item.name),
@@ -1546,7 +1521,8 @@ impl Hub {
         let (name, profile) = self.active_profile()?;
         let plugins = self.plugins_dir().ok()?;
         let index = profile.entries.iter().position(|entry| {
-            profiles::entry_target(entry, &self.store, &plugins).as_deref() == Some(path)
+            profiles::entry_target(entry, &self.store, &plugins)
+                .is_some_and(|target| paths::same_target(&target, path))
         })?;
         Some((name, profile, index))
     }
@@ -1563,6 +1539,12 @@ impl Hub {
             }
         }
         targets
+    }
+
+    fn check_link_index(&self) -> Result<(), HubError> {
+        self.links.check_loaded().map_err(|source| {
+            ProfileError::Io { path: self.links.path().to_path_buf(), source }.into()
+        })
     }
 
     fn ensure_game_closed(&self) -> Result<(), HubError> {
@@ -1834,298 +1816,6 @@ impl Hub {
                 .any(|(name, guid)| requirement.matches(name, guid.as_deref()))
         });
         mods::check_requirements(&requirements, installed, self.sources.as_ref())
-    }
-
-    fn stage_download(
-        &self,
-        download: &Path,
-        staging: &Path,
-    ) -> Result<install::StagedArchive, HubError> {
-        let staged = if install::is_dll_file(download) {
-            install::stage_dll(download, staging)
-        } else {
-            install::stage_archive(download, staging)
-        };
-        match staged {
-            Ok(staged) => Ok(staged),
-            Err(error) => {
-                let _ = fs::remove_dir_all(staging);
-                Err(HubError::Install(error.to_string()))
-            }
-        }
-    }
-
-    fn finish_package(
-        &self,
-        staged: &install::StagedArchive,
-        installed: Option<&InstalledMod>,
-        name: Option<&str>,
-        source: &str,
-        requirements: Vec<DependencyRequirement>,
-    ) -> Result<PackagePlan, HubError> {
-        let payload =
-            install::plan_package(staged).map_err(|error| HubError::Plan(error.to_string()))?;
-        let plugins = self.plugins_dir()?;
-        let installed_mods = self.scan_mods()?;
-        let (mod_id, target, previous) =
-            self.package_target(&payload, installed, name, &plugins)?;
-        let mut warnings = Vec::new();
-        let files = Self::package_files_without_duplicates(
-            &payload,
-            &installed_mods,
-            installed.map_or(target.as_path(), |item| item.source_path.as_path()),
-            &mut warnings,
-        );
-        if files.is_empty() {
-            return Err(HubError::Plan(String::from(
-                "the package only contains plugins that are already installed",
-            )));
-        }
-        let mut requirements = requirements;
-        let mut staged_dlls = Vec::new();
-        for file in &files {
-            if !install::is_dll_file(&file.relative) {
-                continue;
-            }
-            requirements.extend(mods::read_dependencies(&file.staged));
-            staged_dlls.push(file.staged.clone());
-        }
-        let issues = self.package_dependency_issues(requirements, &staged_dlls, &installed_mods);
-        if !issues.is_empty() {
-            return Err(HubError::Dependencies(issues));
-        }
-        let detected = files
-            .iter()
-            .filter(|file| install::is_dll_file(&file.relative))
-            .filter_map(|file| mods::read_mod_version(&file.staged))
-            .filter_map(|value| HubVersion::parse_external(value.as_str()))
-            .max();
-        let (version, detected) = match detected {
-            Some(version) => (version.original().to_string(), Some(version)),
-            None => {
-                let fallback = format!("0.0.0-{}", Utc::now().format("%Y%m%d%H%M%S"));
-                warnings.push(format!(
-                    "the package has no readable version; using {fallback}"
-                ));
-                (fallback, None)
-            }
-        };
-        if let Some(installed) = installed
-            && let Some(detected) = detected.as_ref()
-            && let Some(installed_version) = installed
-                .installed_version
-                .as_deref()
-                .and_then(HubVersion::parse_external)
-            && detected < &installed_version
-        {
-            return Err(HubError::Update(format!(
-                "the download contains version {} but {} is installed; refusing to downgrade",
-                detected.original(),
-                installed_version.original()
-            )));
-        }
-        if let Some(installed) = installed
-            && installed.source_path != target
-        {
-            warnings.push(format!(
-                "replaces the existing deployment at {}",
-                installed.source_path.display()
-            ));
-        }
-        Ok(PackagePlan {
-            mod_id,
-            version,
-            source: source.to_string(),
-            target,
-            previous,
-            staging: staged.staging_root.clone(),
-            files,
-            single: payload.single,
-            warnings,
-        })
-    }
-
-    fn package_files_without_duplicates(
-        payload: &install::PackagePayload,
-        installed: &[InstalledMod],
-        target: &Path,
-        warnings: &mut Vec<String>,
-    ) -> Vec<install::PackageFile> {
-        if payload.single {
-            return payload.files.clone();
-        }
-        let mut files = Vec::with_capacity(payload.files.len());
-        for file in &payload.files {
-            if !install::is_dll_file(&file.relative) {
-                files.push(file.clone());
-                continue;
-            }
-            let Some((_, Some(guid))) = mods::read_identity(&file.staged) else {
-                files.push(file.clone());
-                continue;
-            };
-            let Some(existing) = installed.iter().find(|item| {
-                !item.disabled
-                    && item.source_path != target
-                    && item
-                        .guid
-                        .as_deref()
-                        .is_some_and(|installed| installed.eq_ignore_ascii_case(&guid))
-            }) else {
-                files.push(file.clone());
-                continue;
-            };
-            warnings.push(format!(
-                "skipped bundled {} because {} is already installed",
-                file.relative.display(),
-                existing.name
-            ));
-        }
-        files
-    }
-
-    fn package_target(
-        &self,
-        payload: &install::PackagePayload,
-        installed: Option<&InstalledMod>,
-        name: Option<&str>,
-        plugins: &Path,
-    ) -> Result<(String, PathBuf, Option<PathBuf>), HubError> {
-        let managed = installed.and_then(|item| self.links.get(&item.source_path));
-        let profile_id = installed.and_then(|item| {
-            self.profile_entry_index(&item.source_path)
-                .map(|(_, profile, index)| profile.entries[index].mod_id.clone())
-        });
-        let is_managed = managed.is_some() || profile_id.is_some();
-        let mod_id = if let Some(id) = managed.map(|entry| entry.mod_id.clone()).or(profile_id) {
-            id
-        } else if let Some(item) = installed {
-            let raw = if item.source_path.is_dir() {
-                item.source_path.file_name()
-            } else {
-                item.source_path.file_stem()
-            }
-            .and_then(|value| value.to_str())
-            .unwrap_or("mod");
-            install::normalize_install_name(raw)
-        } else {
-            let name = name.ok_or_else(|| HubError::Plan(String::from("missing mod name")))?;
-            install::normalize_install_name(name)
-        };
-        let target = if payload.single {
-            let file = payload
-                .files
-                .first()
-                .and_then(|file| file.relative.file_name())
-                .ok_or_else(|| HubError::Plan(String::from("package has no file name")))?;
-            plugins.join(file)
-        } else {
-            plugins.join(&mod_id)
-        };
-        if !paths::is_inside(&target, plugins) {
-            return Err(HubError::Plan(format!(
-                "{} is outside the Plugins folder",
-                target.display()
-            )));
-        }
-        let previous =
-            installed.and_then(|item| (!is_managed).then(|| item.source_path.clone()));
-        if let Some(item) = installed {
-            if target != item.source_path && (target.exists() || target.symlink_metadata().is_ok())
-            {
-                return Err(HubError::Plan(format!(
-                    "{} already exists",
-                    target.display()
-                )));
-            }
-        } else if target.exists() || target.symlink_metadata().is_ok() {
-            return Err(HubError::Plan(format!(
-                "{} already exists",
-                target.display()
-            )));
-        }
-        Ok((mod_id, target, previous))
-    }
-
-    pub fn prepare_package_update(
-        &self,
-        download: &Path,
-        installed: &InstalledMod,
-        staging: &Path,
-        source: &str,
-    ) -> Result<PackagePlan, HubError> {
-        let staged = self.stage_download(download, staging)?;
-        let requirements = self
-            .catalogs
-            .dependencies
-            .requirements_for(&[installed.name.as_str()]);
-        let result = self.finish_package(&staged, Some(installed), None, source, requirements);
-        if result.is_err() {
-            self.discard_staging(&staged.staging_root);
-        }
-        result
-    }
-
-    pub fn check_package_guid(&self, package: &PackagePlan, expected: &str) -> Result<(), HubError> {
-        if package.files.iter().any(|file| {
-            install::is_dll_file(&file.relative)
-                && mods::read_identity(&file.staged)
-                    .and_then(|(_, guid)| guid)
-                    .is_some_and(|guid| guid.eq_ignore_ascii_case(expected))
-        }) {
-            return Ok(());
-        }
-        self.discard_staging(&package.staging);
-        Err(HubError::Plan(format!(
-            "the selected package does not contain the expected BepInEx plugin {expected}"
-        )))
-    }
-
-    pub fn prepare_nexus_package(
-        &self,
-        archive: &Path,
-        id: u64,
-        name: &str,
-    ) -> Result<PackagePlan, HubError> {
-        let staged = self.stage_download(archive, &self.staging_root())?;
-        let requirements = self.catalogs.dependencies.requirements_for(&[name]);
-        let result = self.finish_package(
-            &staged,
-            None,
-            Some(name),
-            &format!("nexus:{id}"),
-            requirements,
-        );
-        if result.is_err() {
-            self.discard_staging(&staged.staging_root);
-        }
-        result
-    }
-
-    pub fn apply_package(&mut self, plan: &PackagePlan) -> Result<PackageReport, HubError> {
-        self.ensure_game_closed()?;
-        let game = self.game_folder().ok_or(HubError::NoGameFolder)?;
-        let plugins = self.plugins_dir()?;
-        let backup = self.backup_root();
-        let report = packages::apply(
-            plan,
-            PackageContext {
-                store: &self.store,
-                links: &mut self.links,
-                profiles: &self.profiles,
-                game_root: &game,
-                plugins_root: &plugins,
-                backup_root: &backup,
-            },
-        )?;
-        self.logs.activity(
-            "Packages",
-            &format!(
-                "Installed {} file(s) from {} into the store; profile {}.",
-                report.files, plan.mod_id, report.profile
-            ),
-        );
-        Ok(report)
     }
 
     pub fn plan_download(

@@ -294,7 +294,7 @@ fn applying_links_targets_and_keeps_the_store_untouched() {
 }
 
 #[test]
-fn replaces_an_older_version_remove_then_deploy() {
+fn replaces_an_older_version_in_one_operation() {
     let dir = temp_dir("profiles-change");
     let game = game_dir(&dir);
     let plugins = game.join("BepInEx/Plugins");
@@ -330,15 +330,9 @@ fn replaces_an_older_version_remove_then_deploy() {
         ..Default::default()
     };
     let ops = plan_apply(&profile, &index, &store, &game, &plugins).unwrap();
-    assert_eq!(
-        ops,
-        vec![
-            remove_op(&target),
-            deploy_op(&target, "com.author.solo", "2.0.0"),
-        ]
-    );
+    assert_eq!(ops, vec![deploy_op(&target, "com.author.solo", "2.0.0")]);
     let report = apply_plan(&mut index, &store, &game, &ops).unwrap();
-    assert_eq!(report.applied.len(), 2);
+    assert_eq!(report.applied.len(), 1);
     assert_eq!(fs::read(&target).unwrap(), b"MZ-v2");
     assert_eq!(index.get(&target).unwrap().version, "2.0.0");
     let reloaded = LinkIndex::load(&dir);
@@ -606,7 +600,7 @@ fn rejects_unmanaged_target_before_removing_the_old_deployment() {
     let ops = plan_apply(&next, &index, &store, &game, &plugins).unwrap();
     assert_eq!(ops[0], remove_op(&old));
     assert!(matches!(
-        check_deployment_targets(&index, &ops),
+        check_deployment_targets(&index, &ops, None),
         Err(ProfileError::OccupiedTarget(path)) if path == occupied
     ));
     assert_eq!(fs::read(&old).unwrap(), b"old");
@@ -634,6 +628,59 @@ fn reports_completed_operations_when_the_index_cannot_be_saved() {
     assert_eq!(report.applied, ops);
     assert!(report.remaining.is_empty());
     assert!(matches!(*source, ProfileError::Io { path, .. } if path == index.path()));
+    assert_eq!(fs::read(&target).unwrap(), b"MZ");
+    fs::remove_dir(index.path()).unwrap();
+    let retry = apply_plan(&mut index, &store, &game, &[]).unwrap();
+    assert!(retry.applied.is_empty());
+    assert!(LinkIndex::load(&dir).get(&target).is_some());
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn redeploys_when_the_recorded_target_was_deleted() {
+    let dir = temp_dir("profiles-repair-missing");
+    let game = game_dir(&dir);
+    let plugins = game.join("BepInEx/Plugins");
+    let store = Store::new(dir.clone());
+    import(&dir, &store, "test", "1", &[("Test.dll", b"MZ")]);
+    let profile = Profile {
+        entries: vec![entry("test", "1")],
+        ..Default::default()
+    };
+    let target = plugins.join("Test.dll");
+    let mut index = LinkIndex::load(&dir);
+    let ops = plan_apply(&profile, &index, &store, &game, &plugins).unwrap();
+    apply_plan(&mut index, &store, &game, &ops).unwrap();
+    fs::remove_file(&target).unwrap();
+    let repair = plan_apply(&profile, &index, &store, &game, &plugins).unwrap();
+    assert_eq!(repair, ops);
+    apply_plan(&mut index, &store, &game, &repair).unwrap();
     assert_eq!(fs::read(target).unwrap(), b"MZ");
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn recognizes_a_deployment_recorded_with_different_parent_casing() {
+    let dir = temp_dir("profiles-parent-case");
+    let game = game_dir(&dir);
+    let legacy_plugins = game.join("BepInEx/Plugins");
+    let current_plugins = game.join("BepInEx/plugins");
+    let store = Store::new(dir.clone());
+    import(&dir, &store, "test", "1", &[("Test.dll", b"MZ")]);
+    let mut profile = Profile {
+        entries: vec![entry("test", "1")],
+        ..Default::default()
+    };
+    let mut index = LinkIndex::load(&dir);
+    let deploy = plan_apply(&profile, &index, &store, &game, &legacy_plugins).unwrap();
+    apply_plan(&mut index, &store, &game, &deploy).unwrap();
+    let index = LinkIndex::load(&dir);
+    let unchanged = plan_apply(&profile, &index, &store, &game, &current_plugins).unwrap();
+    assert!(unchanged.is_empty());
+
+    profile.entries.clear();
+    let removal = plan_apply(&profile, &index, &store, &game, &current_plugins).unwrap();
+    assert_eq!(removal, vec![remove_op(&legacy_plugins.join("Test.dll"))]);
     fs::remove_dir_all(dir).unwrap();
 }

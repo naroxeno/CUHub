@@ -1965,33 +1965,13 @@ profiles.adopt_title:
   zh-CN: "内容库迁移"
   ja: "コンテンツライブラリへの移行"
 profiles.adopt_hint:
-  en: "Scan Plugins for loose mods, move them into the content library and deploy them as links. Original files are backed up first."
-  zh-CN: "扫描 Plugins 里的散装模组，移入内容库并以链接方式部署；原文件会先备份。"
-  ja: "Plugins 内の未管理 MOD を走査し、コンテンツライブラリへ移動してリンクとして配置します。元ファイルは先にバックアップされます。"
+  en: "Scan for installed mods to import into a new profile. You can also choose to reinstall individual mods from GitHub."
+  zh-CN: "扫描已装模组并导入新档案。你也可以逐项选择从 GitHub 重装。"
+  ja: "インストール済み MOD をスキャンして新しいプロファイルに取り込みます。個別に GitHub から再インストールすることもできます。"
 profiles.adopt_scan:
   en: "Scan existing mods"
   zh-CN: "扫描现有模组"
   ja: "既存 MOD をスキャン"
-profiles.adopt_scanning:
-  en: "Scanning..."
-  zh-CN: "正在扫描…"
-  ja: "スキャン中…"
-profiles.adopt_adoptable:
-  en: "%{count} mods can be migrated."
-  zh-CN: "可迁移 %{count} 个模组。"
-  ja: "%{count} 件の MOD を移行できます。"
-profiles.adopt_skipped:
-  en: "%{count} skipped."
-  zh-CN: "跳过 %{count} 个。"
-  ja: "%{count} 件をスキップ。"
-profiles.adopt_name:
-  en: "· %{name}"
-  zh-CN: "· %{name}"
-  ja: "· %{name}"
-profiles.adopt_reason:
-  en: "- %{reason}: %{count}"
-  zh-CN: "· %{reason}：%{count}"
-  ja: "· %{reason}: %{count}"
 profiles.adopt_skip_disabled:
   en: "disabled mod"
   zh-CN: "已禁用的模组"
@@ -2028,26 +2008,90 @@ profiles.adopt_skip_builtin:
   en: "installed by CUHub"
   zh-CN: "由 CUHub 安装"
   ja: "CUHub によりインストール"
-profiles.adopt_warning:
-  en: "Move %{count} mods into the content library and back up the originals to Backups/Adopt-…? This changes files inside the game folder."
-  zh-CN: "要把 %{count} 个模组移入内容库，并将原文件备份到 Backups/Adopt-… 吗？这会改动游戏目录里的文件。"
-  ja: "%{count} 件の MOD をコンテンツライブラリへ移動し、元ファイルを Backups/Adopt-… にバックアップしますか？ゲームフォルダ内のファイルが変更されます。"
 profiles.adopt_confirm:
   en: "Migrate"
   zh-CN: "开始迁移"
   ja: "移行する"
-profiles.adopt_done:
-  en: "Migrated %{count} mods. Backups: %{dir}"
-  zh-CN: "已迁移 %{count} 个模组。备份目录：%{dir}"
-  ja: "%{count} 件の MOD を移行しました。バックアップ: %{dir}"
 profiles.adopt_none:
   en: "Nothing to migrate."
   zh-CN: "没有可迁移的模组。"
   ja: "移行対象はありません。"
-profiles.adopt_partial:
-  en: "Migration stopped partway; completed items were kept. See Plugins for what remains."
-  zh-CN: "迁移中途停止，已完成的部分已保留；剩余项见 Plugins。"
-  ja: "移行が途中で停止しました。完了分は保持されています。残りは Plugins を確認してください。"
+profiles.migration_item:
+  en: "%{name} · Local version %{version}"
+  zh-CN: "%{name} · 本地版本 %{version}"
+  ja: "%{name} · ローカル版 %{version}"
+profiles.migration_unknown:
+  en: "Unknown"
+  zh-CN: "未知"
+  ja: "不明"
+profiles.migration_skipped:
+  en: "Skipped (%{reason})"
+  zh-CN: "已跳过（%{reason}）"
+  ja: "スキップ（%{reason}）"
+profiles.migration_unsafe:
+  en: "files could not be safely read"
+  zh-CN: "无法安全读取文件"
+  ja: "ファイルを安全に読み取れません"
+profiles.migration_default:
+  en: "Default action · Import original files"
+  zh-CN: "默认动作 · 导入原文件"
+  ja: "既定の操作 · 元ファイルを取り込む"
+profiles.migration_no_source:
+  en: "No GitHub source identified"
+  zh-CN: "未识别到 GitHub 来源"
+  ja: "GitHub ソースが見つかりません"
+profiles.migration_guid:
+  en: "GUID match"
+  zh-CN: "GUID 匹配"
+  ja: "GUID が一致"
+profiles.migration_dll:
+  en: "DLL name match"
+  zh-CN: "DLL 名称匹配"
+  ja: "DLL 名が一致"
+profiles.migration_name:
+  en: "Display name match (low confidence)"
+  zh-CN: "显示名匹配（低置信）"
+  ja: "表示名が一致（信頼度は低い）"
+profiles.migration_preview:
+  en: "Preview GitHub reinstall"
+  zh-CN: "预览 GitHub 重装"
+  ja: "GitHub からの再インストールを確認"
+profiles.migration_versions:
+  en: "Local version %{local} → Package version %{incoming}"
+  zh-CN: "本地版本 %{local} → 包内版本 %{incoming}"
+  ja: "ローカル版 %{local} → パッケージ版 %{incoming}"
+profiles.migration_old_path:
+  en: "Back up the entire original at %{path}"
+  zh-CN: "整体备份原件 %{path}"
+  ja: "%{path} の元ファイルをすべてバックアップ"
+profiles.migration_target:
+  en: "Deploy to %{path}"
+  zh-CN: "部署到 %{path}"
+  ja: "%{path} に配置"
+profiles.migration_backup_root:
+  en: "Backups go under %{path}. Close the game before continuing."
+  zh-CN: "备份保存在 %{path}。请关闭游戏后继续。"
+  ja: "バックアップ先は %{path} です。ゲームを終了してから続けてください。"
+profiles.migration_reinstall:
+  en: "Back up and reinstall"
+  zh-CN: "备份并重装"
+  ja: "バックアップして再インストール"
+profiles.migration_import:
+  en: "Import remaining original files"
+  zh-CN: "导入其余模组的原文件"
+  ja: "残りの MOD の元ファイルを取り込む"
+profiles.migration_done:
+  en: "Migrated. Backup saved in %{path}"
+  zh-CN: "已迁移。备份保存在 %{path}"
+  ja: "移行しました。バックアップ先は %{path} です。"
+profiles.migration_failed:
+  en: "Migration failed. %{error}"
+  zh-CN: "迁移失败。%{error}"
+  ja: "移行に失敗しました。%{error}"
+profiles.migration_profile_failed:
+  en: "Files were deployed, but saving the profile failed. %{error}"
+  zh-CN: "文件已部署，但档案保存失败。%{error}"
+  ja: "ファイルは配置済みですが、プロファイルの保存に失敗しました。%{error}"
 profiles.error_empty_name:
   en: "Enter a profile name."
   zh-CN: "请输入档案名称。"

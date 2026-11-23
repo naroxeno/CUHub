@@ -424,7 +424,7 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y2 (P0)** 数据：使用来源清单与 Nexus 缓存；行内分别显示来源和已知版本，GitHub 发布标签按需查询，已装时附本地版本。
 - **Y3 (P0)** 匹配：用清单 matcher（guid / dll / name）与已装模组匹配；同一 entry 命中多个已装模组时按 guid > dll > name 取最优，与 `sources::best_match` 的优先级一致。
 - **Y4 (P0)** 搜索与过滤：按名称、仓库、Nexus 作者和描述搜索；安装状态与全部 / GitHub / Nexus 来源筛选可组合；每页 50 行（`NEXUS_PAGE_SIZE` + `page_slice`）；搜索词、过滤与页码只在内存里，不写设置。
-- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成 `PackagePlan`，成功即交给任务中心（A12）的安装卡；卡片里的 Apply 走 `Hub::apply_package`，载荷先进 Store，再写入活动档案并按档案部署。依赖检查被阻断时不进 pending，改为显示任务中心的依赖卡；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。旧 `apply_install` 只保留给 BepInEx 与回退。
+- **Y5 (P0)** 安装：`Hub::prepare_remote_install(entry)` 先做依赖门禁（G7），通过后下载、staging 并生成 `PackagePlan`，成功即交给任务中心（A12）的安装卡；卡片里的 Apply 走 `Hub::apply_package`，载荷先进 Store，再部署至已确认的 Plugins 目标，保存账本后提交活动档案。依赖检查被阻断时不进 pending，改为显示任务中心的依赖卡；准备期间与已有 pending 或依赖待处理时所有行按钮一起禁用；同一时间只接受一份 pending，后来的计划直接丢弃 staging 并提示先处理已有更新。旧 `apply_install` 只保留给 BepInEx 与回退。
 - **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset（精确名缺失时仅回退到唯一同形的版本号资产，同形多资产报错），不再按 Nexus Premium 重新选源；生成 `PackagePlan` 后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级；由 `Links.json` 托管的条目允许更新：新版本进 Store 后替换活动档案里的同 `modId` 条目，并重排链接，不再以 `ManagedByProfile` 拒绝。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进任务中心的安装卡。
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
@@ -439,10 +439,10 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
 
 - **Z1 (P0)** 档案列表：读 `ProfileStore::list()` 与 `active()`，逐行显示名称、当前标记和 `load(name).entries.len()`；启动时（`Ui::new` 之后）在 worker 里读一次，操作成功后自动刷新，另有「刷新」兜底，不做轮询。没有档案时显示说明与新建入口。
 - **Z2 (P0)** 新建：名称输入 + 「从当前部署创建」与「新建空白」。前者把 `Links.json` 的条目映射成 `ProfileEntry{modId,version,enabled:true,source:None,link:kind}`，同一 `modId` 有多个部署时取第一条；后者 `entries` 为空。名称字符集与 core 一致（`[A-Za-z0-9._-]`，不允许 `.`/`..`），core 拒绝时界面显示原因；同名覆盖前二次确认，覆盖时保留原 active 标记。
-- **Z3 (P0)** 应用：先 `plan_profile(name)` 取 `ApplyOp` 条数，内联确认写明「会改动 Plugins、游戏必须关闭」；确认后在 worker 里 `apply_profile(name)`。只有 apply 成功才 `set_active_profile(Some(name))`，失败不改 active。预览及确认后重算计划时检查未托管目标占用，发现冲突时显示路径并在修改 Plugins 前停止。部署中途失败时显示已完成操作数、总数和错误原因。部署成功但活动档案保存失败时单独提示。
+- **Z3 (P0)** 应用：先 `plan_profile(name)` 取 `ApplyOp` 条数，内联确认写明「会改动 Plugins、游戏必须关闭」；确认后在 worker 里 `apply_profile(name)`。只有 apply 成功才 `set_active_profile(Some(name))`，失败不改 active。预览及确认后重算计划时检查未托管目标占用，发现冲突时显示路径并在修改 Plugins 前停止。确认后范围变化需要重新预览。部署中途失败时显示已完成操作数、总数和错误原因，同路径替换失败会尝试恢复旧目标。部署成功但活动档案保存失败时单独提示。
 - **Z4 (P0)** 删除：二次确认；删除当前档案先 `set_active_profile(None)` 再 `profiles().remove(name)`。删除只删档案文件，不回滚已部署文件，确认文案写明这一点。
-- **Z5 (P0)** 扫描迁移：`plan_adopt()` 后显示可迁移数、跳过数与按 `AdoptSkip` 变体的原因计数（已禁用、已在管理、Plugins 之外、由 CUHub 安装、名称不合法、缺版本、内容库已有该版本、重名、目标路径冲突），并逐行列出可迁移项名称；「已在管理」包含目标路径已有链接或 `Links.json` 已有同 mod id 的情况，「由 CUHub 安装」排除固定目录 `Plugins/CuhubBridge` 的桥。扫描中与失败各有状态。扫描只读，不改文件。
-- **Z6 (P0)** 执行迁移：确认框写「将移动 N 个模组到内容库并备份原文件到 Backups/Adopt-…」，并注明会改动游戏目录；确认后在同一个 worker 里重新 `plan_adopt()` 再 `apply_adopt(&plan)`（计划不跨线程），成功后显示 adopted 数与备份目录；`AdoptError::Adopt` 的部分完成保留已完成项并提示剩余。迁移结束且至少一项成功（含部分完成）后 Hub 新建 `adopt_<时间戳>` 档案并设为激活：以当前激活档案为底，替换被迁移的条目、补齐 `Links.json` 未被覆盖的条目，随后刷新档案页。迁移永不默认执行。
+- **Z5 (P0)** 扫描迁移：列出 Plugins 模组的名称、本地版本、GitHub 来源候选、默认动作与跳过原因。默认导入原文件，允许逐项选择 GitHub 重装。扫描只读，已禁用、已托管、内置 Bridge、缺版本和目标冲突等条目列明原因。
+- **Z6 (P0)** 执行迁移：本地导入保留原版本与文件。GitHub 重装先校验插件身份与依赖，显示旧版本、包内版本、整体备份范围和新目标，明确确认后允许同版本重装或升级。降级和无法可靠判定版本时可选本地导入。游戏关闭后核对确认范围，复用 Store、Links 和 Profiles 部署。逐项报告结果与备份位置，所有成功项进入同一新建并激活的 `adopt_*` 档案。
 - **Z7 (P1)** 语言与实现词：新增文案全部走 `nav.profiles` / `profiles.*`（en / zh-CN / ja），界面不出现 plan、staging、manifest 等实现词；破坏性操作的范围写在确认框里。
 - **Z8 (P1)** 线程与一致性：所有 Hub 调用在 worker（`spawn_worker` + `blocking`）里执行，UI 线程只读信号；切换档案不改 `Links.json` 之外的配置，`configOverrides` 仍只持久化、不执行；BepInEx 与 `config` 的部署不受档案应用影响。
 - **Z9 (P1)** 重命名：档案行内「重命名」展开输入框，预填原名；提交时 core 校验名称字符集、目标不存在与原名不变，成功后就地刷新列表。重命名不改变激活状态：激活档案改名后 `active.txt` 跟随新名，已部署文件不受影响；不做同名覆盖确认，目标重名直接报错。

@@ -11,7 +11,8 @@
 - `plugins_dir` 把游戏根解析到 `BepInEx/Plugins`；`scan_mods` 调用 `mods::scan`，再把活动档案里 `enabled=false`、尚未部署的条目补成 synthetic disabled 行，最后写一条活动日志。
 - `remote_install_issues(entry)` 是只读检查：扫描已装模组，把清单条目的 `depends` 与依赖目录合并后交给 `mods::dependencies`，返回缺失/过旧列表，不下载。
 - `prepare_remote_install(entry)` 在下载前先跑一次依赖检查，有问题直接返回 `HubError::Dependencies`；下载并 stage 后再读 staging 里 DLL 的 `BepInDependency` 复查一遍，第二次不通过会删掉 staging 再返回同一错误。通过后生成 `PackagePlan`，不直接写游戏目录。
-- `prepare_package_update(download, installed, staging, source)` 是安装/更新的统一入口：stage、`packages::plan_package`、依赖门禁、版本降级检查后返回 `PackagePlan`；由 `Links.json` 托管的条目允许更新，新版本随后写入活动档案。`apply_package(plan)` 依次入库、写档案、按档案部署。
+- `prepare_package_update(download, installed, staging, source)` 从 staging 生成 `PackagePlan`，校验依赖和降级规则，并按 GUID 去重后的文件确定确认范围。`apply_package(plan)` 入库、复核确认范围、部署并保存账本，最后提交档案。应用档案时也会核对确认后的差异，再更新活动标记。
+- `scan_migration` 只读生成逐项迁移清单。GitHub 重装复用包更新准备，本地导入和 GitHub 重装通过同一迁移会话把成功项提交到新档案。[迁移规则](../adopt/overview.md)
 - `plan_download` / `apply_install` 是旧路径，只保留给 BepInEx 本体与回退，不再处理普通模组的安装/更新。
 - 下载门面都成对提供进度版本：`download_nexus_latest_with_progress`、`download_nexus_latest_cached_with_progress`、`download_github_asset_with_progress`、`prepare_bepinex_with_progress`、`prepare_easytier_with_progress`；旧方法保留原签名，以空回调委托。`prepare_easytier_with_progress` 供 app 在 `start_tunnel` 之前调用：内核已完整（用户指定目录或托管目录）时立即返回，否则下载压缩包并以 `DownloadProgress` 回报，返回安装后的 `easytier::Status`。进度只覆盖压缩包传输，解压、checksum 校验与 staging 阶段没有回调。
 - `is_managed_path` 同时认 `Links.json` 与活动档案的目标路径；`set_mod_enabled` / `set_all_mods_enabled` 对活动档案条目改 `enabled` 并重新应用，散装条目才走 `mods` 的改名。`delete_scope` / `delete_all_scope` 只返回将删的一级条目与文件数（含托管目标）；`delete_mod` 对活动档案条目从档案移除并应用，对只剩 Links 记录的路径返回 `ManagedByProfile`，其余走 `mods` 删除；`delete_all_mods` 先清空活动档案条目再删除散装条目。全部先确认游戏未运行并写活动日志。

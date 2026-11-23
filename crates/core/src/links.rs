@@ -8,6 +8,13 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod copy;
+mod ownership;
+
+use crate::paths::is_link;
+pub(crate) use copy::{copy_file, copy_tree};
+use ownership::{TargetState, inspect};
+
 const INDEX_FILE: &str = "Links.json";
 const MAX_COPY_ENTRIES: usize = 4096;
 
@@ -36,6 +43,12 @@ pub struct LinkEntry {
 pub struct LinkIndex {
     #[serde(skip)]
     file: PathBuf,
+    #[serde(skip)]
+    dirty: bool,
+    #[serde(skip)]
+    load_error: Option<String>,
+    #[serde(skip)]
+    cleanup: Vec<(PathBuf, LinkEntry)>,
     entries: BTreeMap<String, LinkEntry>,
 }
 
@@ -44,7 +57,15 @@ pub enum LinkError {
     OutsideGame(PathBuf),
     NotManaged(PathBuf),
     MissingStore(PathBuf),
-    Io { path: PathBuf, source: io::Error },
+    ChangedTarget(PathBuf),
+    Recovery {
+        source: Box<LinkError>,
+        recovery: Box<LinkError>,
+    },
+    Io {
+        path: PathBuf,
+        source: io::Error,
+    },
 }
 
 impl std::fmt::Display for LinkError {
@@ -58,6 +79,12 @@ impl std::fmt::Display for LinkError {
             }
             Self::MissingStore(path) => {
                 write!(formatter, "{} is missing from the store", path.display())
+            }
+            Self::ChangedTarget(path) => {
+                write!(formatter, "{} has changed outside Cuhub", path.display())
+            }
+            Self::Recovery { source, recovery } => {
+                write!(formatter, "{source}; recovery failed: {recovery}")
             }
             Self::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
         }
@@ -86,41 +113,93 @@ fn lexical_inside(candidate: &Path, container: &Path) -> bool {
         .filter(|part| !matches!(part, Component::CurDir))
         .collect();
     let container: Vec<Component<'_>> = container.components().collect();
-    candidate.len() > container.len() && candidate[..container.len()] == container[..]
+    candidate.len() > container.len()
+        && candidate[..container.len()] == container[..]
+        && candidate[container.len()..]
+            .iter()
+            .all(|part| matches!(part, Component::Normal(_)))
 }
 
 impl LinkIndex {
     pub fn load(app_data: &Path) -> Self {
         let file = app_data.join(INDEX_FILE);
-        match fs::read_to_string(&file) {
-            Ok(raw) => match serde_json::from_str::<Self>(&raw) {
-                Ok(mut index) => {
-                    index.file = file;
-                    index
-                }
-                Err(_) => Self {
-                    file,
-                    entries: BTreeMap::new(),
-                },
+        let loaded = fs::read_to_string(&file)
+            .and_then(|raw| serde_json::from_str::<Self>(&raw).map_err(io::Error::other));
+        let mut index = match loaded {
+            Ok(index) => index,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Self::default(),
+            Err(error) => Self {
+                load_error: Some(error.to_string()),
+                ..Self::default()
             },
-            Err(_) => Self {
-                file,
-                entries: BTreeMap::new(),
-            },
-        }
+        };
+        index.file = file;
+        index
     }
 
     pub fn path(&self) -> &Path {
         &self.file
     }
 
-    pub fn save(&self) -> io::Result<()> {
+    pub fn save(&mut self) -> io::Result<()> {
+        self.check_loaded()?;
         let json = serde_json::to_string_pretty(self).map_err(io::Error::other)?;
-        crate::atomic::replace(&self.file, format!("{json}\n").as_bytes())
+        crate::atomic::replace(&self.file, format!("{json}\n").as_bytes())?;
+        self.dirty = false;
+        self.cleanup_replacements()
+    }
+
+    pub(crate) fn save_if_changed(&mut self) -> io::Result<()> {
+        self.check_loaded()?;
+        if self.dirty {
+            self.save()?;
+        } else {
+            self.cleanup_replacements()?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn check_loaded(&self) -> io::Result<()> {
+        match &self.load_error {
+            Some(error) => Err(io::Error::new(io::ErrorKind::InvalidData, error.clone())),
+            None => Ok(()),
+        }
+    }
+
+    fn cleanup_replacements(&mut self) -> io::Result<()> {
+        while let Some((saved, entry)) = self.cleanup.last() {
+            match inspect(saved, entry).map_err(io::Error::other)? {
+                TargetState::Missing => {}
+                _ => remove_owned(saved, entry).map_err(io::Error::other)?,
+            }
+            if let Some(parent) = saved.parent() {
+                match fs::remove_dir(parent) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(io::Error::other(io_error(parent, error))),
+                }
+            }
+            self.cleanup.pop();
+        }
+        Ok(())
     }
 
     pub fn get(&self, target: &Path) -> Option<&LinkEntry> {
-        self.entries.get(&key(target))
+        self.entries.get(self.entry_key(target)?)
+    }
+
+    fn entry_key(&self, target: &Path) -> Option<&str> {
+        if let Some((spelling, _)) = self.entries.get_key_value(&key(target)) {
+            return Some(spelling);
+        }
+        #[cfg(windows)]
+        return self
+            .entries
+            .keys()
+            .find(|recorded| crate::paths::same_target(Path::new(recorded), target))
+            .map(String::as_str);
+        #[cfg(not(windows))]
+        None
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&str, &LinkEntry)> {
@@ -145,20 +224,21 @@ impl LinkIndex {
         mod_id: &str,
         version: &str,
     ) -> Result<LinkKind, LinkError> {
-        if !lexical_inside(target, game_root) {
-            return Err(LinkError::OutsideGame(target.to_path_buf()));
-        }
-        if !store_source.exists() {
-            return Err(LinkError::MissingStore(store_source.to_path_buf()));
-        }
-        if target.exists() || target.symlink_metadata().is_ok() {
-            self.remove(game_root, target)?;
-        }
-        let (kind, files) = if store_source.is_dir() {
-            deploy_dir(target, store_source)?
-        } else {
-            (deploy_file(target, store_source)?, Vec::new())
+        self.check_target(game_root, target)?;
+        source_metadata(store_source)?;
+        let previous_key = self.entry_key(target).map(str::to_owned);
+        let previous = previous_key.as_ref().and_then(|key| self.entries.get(key));
+        let (kind, files) = match previous {
+            Some(entry) if inspect(target, entry)? != TargetState::Missing => {
+                let (deployed, saved) = replace_target(target, store_source, entry)?;
+                self.cleanup.push((saved, entry.clone()));
+                deployed
+            }
+            _ => deploy_new(target, store_source)?,
         };
+        if let Some(previous_key) = previous_key {
+            self.entries.remove(&previous_key);
+        }
         self.entries.insert(
             key(target),
             LinkEntry {
@@ -169,22 +249,42 @@ impl LinkIndex {
                 files,
             },
         );
+        self.dirty = true;
         Ok(kind)
     }
 
     pub fn remove(&mut self, game_root: &Path, target: &Path) -> Result<(), LinkError> {
-        if !lexical_inside(target, game_root) {
-            return Err(LinkError::OutsideGame(target.to_path_buf()));
-        }
-        let Some(entry) = self.entries.remove(&key(target)) else {
+        self.check_target(game_root, target)?;
+        let Some(recorded) = self.entry_key(target).map(str::to_owned) else {
             return Err(LinkError::NotManaged(target.to_path_buf()));
         };
-        match entry.kind {
-            LinkKind::Junction | LinkKind::Symlink => remove_link(target),
-            LinkKind::Hardlink => remove_file(target),
-            LinkKind::Copy => remove_copy(target, &entry.files),
-        }?;
+        let entry = &self.entries[&recorded];
+        if inspect(target, entry)? != TargetState::Missing {
+            remove_owned(target, entry)?;
+        }
+        self.entries.remove(&recorded);
+        self.dirty = true;
         Ok(())
+    }
+
+    pub(crate) fn check_target(&self, game_root: &Path, target: &Path) -> Result<(), LinkError> {
+        self.check_loaded()
+            .map_err(|error| io_error(&self.file, error))?;
+        if !lexical_inside(target, game_root) || !crate::paths::is_inside(target, game_root) {
+            return Err(LinkError::OutsideGame(target.to_path_buf()));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn target_current(&self, target: &Path) -> Result<bool, LinkError> {
+        match self.get(target) {
+            Some(entry) => Ok(inspect(target, entry)? == TargetState::Owned),
+            None => match target.symlink_metadata() {
+                Ok(_) => Err(LinkError::NotManaged(target.to_path_buf())),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(io_error(target, error)),
+            },
+        }
     }
 
     pub fn verify(&self, game_root: &Path) -> Vec<String> {
@@ -192,7 +292,8 @@ impl LinkIndex {
             .iter()
             .filter(|(path, _)| {
                 let path = Path::new(path);
-                !lexical_inside(path, game_root) || path.symlink_metadata().is_err()
+                self.check_target(game_root, path).is_err()
+                    || !matches!(self.target_current(path), Ok(true))
             })
             .map(|(path, _)| path.clone())
             .collect()
@@ -211,10 +312,109 @@ fn remove_link(target: &Path) -> Result<(), LinkError> {
     let metadata = target
         .symlink_metadata()
         .map_err(|error| io_error(target, error))?;
-    if metadata.file_type().is_symlink() {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_DIRECTORY: u32 = 0x10;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
+            return fs::remove_dir(target).map_err(|error| io_error(target, error));
+        }
+    }
+    if is_link(&metadata) {
         remove_file(target)
     } else {
         fs::remove_dir(target).map_err(|error| io_error(target, error))
+    }
+}
+
+fn remove_owned(target: &Path, entry: &LinkEntry) -> Result<(), LinkError> {
+    match entry.kind {
+        LinkKind::Junction | LinkKind::Symlink => remove_link(target),
+        LinkKind::Hardlink => remove_file(target),
+        LinkKind::Copy if entry.files.is_empty() => remove_file(target),
+        LinkKind::Copy => remove_copy(target, &entry.files),
+    }
+}
+
+fn deploy_new(target: &Path, source: &Path) -> Result<(LinkKind, Vec<String>), LinkError> {
+    match target.symlink_metadata() {
+        Ok(_) => return Err(LinkError::NotManaged(target.to_path_buf())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error(target, error)),
+    }
+    if source_metadata(source)?.is_dir() {
+        deploy_dir(target, source)
+    } else {
+        Ok((deploy_file(target, source)?, Vec::new()))
+    }
+}
+
+fn source_metadata(source: &Path) -> Result<fs::Metadata, LinkError> {
+    match fs::symlink_metadata(source) {
+        Ok(metadata) if !is_link(&metadata) && (metadata.is_file() || metadata.is_dir()) => {
+            Ok(metadata)
+        }
+        Ok(_) => Err(LinkError::MissingStore(source.to_path_buf())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            Err(LinkError::MissingStore(source.to_path_buf()))
+        }
+        Err(error) => Err(io_error(source, error)),
+    }
+}
+
+fn replace_target(
+    target: &Path,
+    source: &Path,
+    entry: &LinkEntry,
+) -> Result<((LinkKind, Vec<String>), PathBuf), LinkError> {
+    let temporary = replacement_directory(target)?;
+    let saved = temporary.join("previous");
+    if let Err(error) = fs::rename(target, &saved) {
+        let _ = fs::remove_dir(&temporary);
+        return Err(io_error(target, error));
+    }
+    let result = inspect(&saved, entry).and_then(|state| {
+        if state == TargetState::Missing {
+            return Err(LinkError::ChangedTarget(saved.clone()));
+        }
+        deploy_new(target, source)
+    });
+    match result {
+        Ok(deployed) => Ok((deployed, saved)),
+        Err(error) => {
+            let restored = match target.symlink_metadata() {
+                Err(missing) if missing.kind() == io::ErrorKind::NotFound => {
+                    fs::rename(&saved, target)
+                }
+                Err(error) => Err(error),
+                Ok(_) => Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "deployment target is occupied",
+                )),
+            };
+            if let Err(recovery) = restored {
+                return Err(LinkError::Recovery {
+                    source: Box::new(error),
+                    recovery: Box::new(io_error(&saved, recovery)),
+                });
+            }
+            let _ = fs::remove_dir(&temporary);
+            Err(error)
+        }
+    }
+}
+
+fn replacement_directory(target: &Path) -> Result<PathBuf, LinkError> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    loop {
+        let id = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = target.with_file_name(format!(".cuhub-replace-{}-{id}", std::process::id()));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(io_error(&path, error)),
+        }
     }
 }
 
@@ -227,21 +427,30 @@ fn remove_copy(target: &Path, files: &[String]) -> Result<(), LinkError> {
             Err(error) => return Err(io_error(&path, error)),
         }
     }
-    prune_empty_dirs(target, files);
-    Ok(())
+    prune_empty_dirs(target, files)
 }
 
-fn prune_empty_dirs(target: &Path, files: &[String]) {
+fn prune_empty_dirs(target: &Path, files: &[String]) -> Result<(), LinkError> {
     let mut dirs: Vec<PathBuf> = files
         .iter()
-        .filter_map(|relative| Path::new(relative).parent().map(Path::to_path_buf))
+        .flat_map(|relative| Path::new(relative).ancestors().skip(1))
+        .filter(|directory| !directory.as_os_str().is_empty())
+        .map(Path::to_path_buf)
         .collect();
     dirs.sort_by_key(|dir| std::cmp::Reverse(dir.components().count()));
     dirs.dedup();
-    for dir in dirs {
-        let _ = fs::remove_dir(target.join(dir));
+    for path in dirs
+        .iter()
+        .map(|dir| target.join(dir))
+        .chain([target.to_path_buf()])
+    {
+        match fs::remove_dir(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_error(&path, error)),
+        }
     }
-    let _ = fs::remove_dir(target);
+    Ok(())
 }
 
 fn deploy_dir(target: &Path, source: &Path) -> Result<(LinkKind, Vec<String>), LinkError> {
@@ -270,20 +479,43 @@ fn deploy_file(target: &Path, source: &Path) -> Result<LinkKind, LinkError> {
     if file_link(target, source).is_ok() {
         return Ok(LinkKind::Symlink);
     }
-    fs::copy(source, target).map_err(|error| io_error(target, error))?;
+    copy_file(source, target)?;
     Ok(LinkKind::Copy)
 }
 
 #[cfg(windows)]
 fn dir_link(target: &Path, source: &Path) -> io::Result<()> {
-    let status = std::process::Command::new("cmd")
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let target = target.components().collect::<PathBuf>();
+    let source = source.components().collect::<PathBuf>();
+    let (Some(target), Some(source)) = (target.to_str(), source.to_str()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid junction path",
+        ));
+    };
+    // cmd still expands percent expressions inside quotes.
+    if [target, source]
+        .iter()
+        .any(|path| path.contains(['%', '"', '\r', '\n']))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "unsupported junction path",
+        ));
+    }
+    let output = std::process::Command::new("cmd")
+        .creation_flags(CREATE_NO_WINDOW)
+        .arg("/D")
+        .arg("/V:OFF")
         .arg("/C")
         .arg("mklink")
         .arg("/J")
-        .arg(target)
-        .arg(source)
-        .status()?;
-    if status.success() {
+        .raw_arg(format!("\"{target}\""))
+        .raw_arg(format!("\"{source}\""))
+        .output()?;
+    if output.status.success() {
         Ok(())
     } else {
         Err(io::Error::other("mklink /J failed"))
@@ -305,127 +537,5 @@ fn file_link(target: &Path, source: &Path) -> io::Result<()> {
     std::os::unix::fs::symlink(source, target)
 }
 
-fn copy_tree(source: &Path, target: &Path) -> Result<Vec<String>, LinkError> {
-    let mut files = Vec::new();
-    let mut pending = vec![PathBuf::new()];
-    while let Some(relative) = pending.pop() {
-        let from = source.join(&relative);
-        let to = target.join(&relative);
-        fs::create_dir_all(&to).map_err(|error| io_error(&to, error))?;
-        let entries = fs::read_dir(&from).map_err(|error| io_error(&from, error))?;
-        for entry in entries {
-            let entry = entry.map_err(|error| io_error(&from, error))?;
-            let child = relative.join(entry.file_name());
-            let kind = entry.file_type().map_err(|error| io_error(&from, error))?;
-            if kind.is_dir() {
-                pending.push(child);
-            } else if kind.is_file() {
-                if files.len() >= MAX_COPY_ENTRIES {
-                    return Err(LinkError::Io {
-                        path: from.clone(),
-                        source: io::Error::other("too many files to copy"),
-                    });
-                }
-                fs::copy(entry.path(), target.join(&child))
-                    .map_err(|error| io_error(&target.join(&child), error))?;
-                files.push(child.to_string_lossy().into_owned());
-            }
-        }
-    }
-    Ok(files)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_support::temp_dir;
-
-    fn store_file(root: &Path) -> PathBuf {
-        let path = root.join("Store/mods/mod/1.0/payload/plugin.dll");
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, b"MZ").unwrap();
-        path
-    }
-
-    #[test]
-    fn deploy_file_then_remove_keeps_store() {
-        let dir = temp_dir("links-file");
-        let game = dir.join("game");
-        fs::create_dir_all(game.join("BepInEx/Plugins")).unwrap();
-        let source = store_file(&dir);
-        let mut index = LinkIndex::load(&dir);
-        let target = game.join("BepInEx/Plugins/plugin.dll");
-        let kind = index.deploy(&game, &target, &source, "mod", "1.0").unwrap();
-        assert!(matches!(
-            kind,
-            LinkKind::Hardlink | LinkKind::Symlink | LinkKind::Copy
-        ));
-        assert!(target.is_file());
-        index.remove(&game, &target).unwrap();
-        assert!(!target.exists());
-        assert!(source.is_file());
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn deploy_dir_then_remove_keeps_store() {
-        let dir = temp_dir("links-dir");
-        let game = dir.join("game");
-        fs::create_dir_all(game.join("BepInEx/Plugins")).unwrap();
-        let source = dir.join("Store/mods/big/1.0/payload");
-        fs::create_dir_all(&source).unwrap();
-        fs::write(source.join("a.dll"), b"MZ").unwrap();
-        let mut index = LinkIndex::load(&dir);
-        let target = game.join("BepInEx/Plugins/big");
-        index.deploy(&game, &target, &source, "big", "1.0").unwrap();
-        index.remove(&game, &target).unwrap();
-        assert!(target.symlink_metadata().is_err());
-        assert!(source.join("a.dll").is_file());
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn remove_refuses_unmanaged_target() {
-        let dir = temp_dir("links-unmanaged");
-        let game = dir.join("game");
-        fs::create_dir_all(game.join("BepInEx/Plugins")).unwrap();
-        let mut index = LinkIndex::load(&dir);
-        let target = game.join("BepInEx/Plugins/user.dll");
-        assert!(matches!(
-            index.remove(&game, &target),
-            Err(LinkError::NotManaged(_))
-        ));
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn deploy_rejects_targets_outside_game() {
-        let dir = temp_dir("links-outside");
-        let game = dir.join("game");
-        fs::create_dir_all(&game).unwrap();
-        let source = store_file(&dir);
-        let mut index = LinkIndex::load(&dir);
-        let outside = dir.join("elsewhere/plugin.dll");
-        assert!(matches!(
-            index.deploy(&game, &outside, &source, "mod", "1.0"),
-            Err(LinkError::OutsideGame(_))
-        ));
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn index_round_trips() {
-        let dir = temp_dir("links-index");
-        let game = dir.join("game");
-        fs::create_dir_all(game.join("BepInEx/Plugins")).unwrap();
-        let source = store_file(&dir);
-        let mut index = LinkIndex::load(&dir);
-        let target = game.join("BepInEx/Plugins/plugin.dll");
-        index.deploy(&game, &target, &source, "mod", "1.0").unwrap();
-        index.save().unwrap();
-        let loaded = LinkIndex::load(&dir);
-        assert!(loaded.get(&target).is_some());
-        assert_eq!(loaded.deployed_for("mod", "1.0").len(), 1);
-        let _ = fs::remove_dir_all(dir);
-    }
-}
+mod tests;

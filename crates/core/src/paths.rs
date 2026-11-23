@@ -29,25 +29,83 @@ impl std::error::Error for PathError {
 }
 
 pub fn find_child(parent: &Path, name: &str) -> Option<PathBuf> {
+    #[cfg(not(windows))]
     let exact = parent.join(name);
+    #[cfg(not(windows))]
     if exact.exists() {
         return Some(exact);
     }
-    let entries = fs::read_dir(parent).ok()?;
+    let entries = match fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(_) => {
+            let exact = parent.join(name);
+            return exact.exists().then_some(exact);
+        }
+    };
+    let mut folded = None;
     for entry in entries.flatten() {
-        if entry
-            .file_name()
-            .to_string_lossy()
-            .eq_ignore_ascii_case(name)
-        {
+        let file_name = entry.file_name();
+        if file_name == name {
             return Some(entry.path());
         }
+        if folded.is_none() && file_name.to_string_lossy().eq_ignore_ascii_case(name) {
+            folded = Some(entry.path());
+        }
     }
-    None
+    folded
+}
+
+pub(crate) fn same_directory(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    #[cfg(windows)]
+    return matches!((left.canonicalize(), right.canonicalize()), (Ok(left), Ok(right)) if left == right);
+    #[cfg(not(windows))]
+    false
+}
+
+pub(crate) fn same_target(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        let (Some(left_parent), Some(right_parent)) = (left.parent(), right.parent()) else {
+            return false;
+        };
+        let names = left
+            .file_name()
+            .and_then(|name| name.to_str())
+            .zip(right.file_name().and_then(|name| name.to_str()));
+        names.is_some_and(|(left_name, right_name)| {
+            left_name.eq_ignore_ascii_case(right_name)
+                && same_directory(left_parent, right_parent)
+                && (left_name == right_name
+                    || (left.symlink_metadata().is_ok()
+                        && right.symlink_metadata().is_ok()
+                        && find_child(left_parent, left_name)
+                            .zip(find_child(right_parent, right_name))
+                            .is_some_and(|(left, right)| left.file_name() == right.file_name())))
+        })
+    }
+    #[cfg(not(windows))]
+    false
 }
 
 pub fn resolve_child(parent: &Path, name: &str) -> PathBuf {
     find_child(parent, name).unwrap_or_else(|| parent.join(name))
+}
+
+pub(crate) fn is_link(metadata: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    metadata.file_type().is_symlink()
 }
 
 pub fn is_inside(candidate: &Path, container: &Path) -> bool {

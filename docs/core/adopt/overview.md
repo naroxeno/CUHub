@@ -2,7 +2,7 @@
 
 ## 职责
 
-把已经躺在 Plugins 里的旧模组收编进 Store，并原地替换成链接。两段式：`plan_adopt` 只读产出清单，`apply_adopt` 才动文件。
+判断 Plugins 下的散装模组能否收编进 Store，并确定本地导入的部署目标。档案页通过 Hub 的迁移流程复用这些判断。扫描只读，确认后才部署。
 
 ## 清单规则
 
@@ -10,14 +10,16 @@
 - mod id：目录型取目录名，单 DLL 取文件名去扩展名；统一小写，非法字符转 `-`。版本优先 `installedVersion`，其次 `assemblyVersion`。
 - 目标路径与档案部署同一规则：目录型按 Store manifest 计算——恰好一个单段 `.dll` 时目标为 `Plugins/<文件名>`，否则为 `Plugins/<mod_id>`（目录名被规范化，如 `Better Mod` → `better-mod`）；单文件模组保留原文件名。这样迁移后的链接目标与 `deployment_target` 一致，切换档案时不会重定位。
 
-## 执行顺序
+## 档案页迁移
 
-先 import 进 Store（失败即停，原文件不动）→ 把原文件移到 `Backups/Adopt-<时间戳>/` → `LinkIndex::deploy` → 写回 `Links.json`。部分失败用 `AdoptError::Adopt { report, source }` 返回，`adopted` 与 `remaining` 合起来等于输入项；已移走的原文件在备份目录里，不会丢。
+- 本地导入默认保留文件与版本，Store 来源记录为 `adopt`，档案条目没有远端来源。扫描列出原路径、默认动作和跳过原因，确认时显示原件、新目标与备份根目录。目录内的链接、不可读取的文件和已占用的新路径会阻断导入。
+- GitHub 只显示最高优先级的命中，保留同级候选让玩家选。准备后校验包内插件身份与实际版本，依赖检查排除即将移除的旧目录。无法确认唯一对应 DLL、无法比较版本或检测到降级时，玩家仍可选择本地导入。迁移不调用 Nexus 下载。
+- 两种动作都经 `PackagePlan` 在游戏关闭后执行。确认前展示的旧路径是整项备份范围。执行前复核文件范围、档案和新目标，发生变化则要求重新扫描或预览。备份和恢复沿用包部署规则。[包部署](../packages/overview.md)
 
 ## 与档案的关系
 
-`Hub::apply_adopt` 在至少一项迁移成功后（含部分完成）调用 `profiles::checkpoint` 新建 `adopt_<时间戳>` 档案并设为激活，档案规则见 `docs/core/profiles/overview.md`。
+一次扫描对应一个迁移会话。首项成功部署后提交并激活新的 `adopt_<时间戳>` 档案，之后成功的本地导入和 GitHub 重装都进入同一档案。每项报告执行结果和可用的备份位置，部署后档案保存失败单独显示。
 
 ## 边界
 
-不处理 config 收编、不做迁移界面、不自动执行；单文件模组依赖 `Store::import_file`，目录模组走 `import_dir`。
+迁移由玩家触发，仅部署 Plugins 下的散装模组。已托管和禁用条目、内置 Bridge、`BepInEx/config` 保持原样。内容库和备份目录须位于 Plugins 和 config 之外。首版逐项准备 GitHub 重装，依赖按当前部署检查。整批回滚、依赖自动安装与迁移撤销留到后续。

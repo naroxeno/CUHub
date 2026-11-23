@@ -114,15 +114,6 @@ impl Store {
         version: &str,
         source: &str,
     ) -> Result<StoredMod, StoreError> {
-        if !fs::metadata(src)
-            .map_err(|error| io_error(src, error))?
-            .is_dir()
-        {
-            return Err(StoreError::Io {
-                path: src.to_path_buf(),
-                source: io::Error::new(io::ErrorKind::InvalidInput, "not a directory"),
-            });
-        }
         let files = scan_source(src)?;
         self.import_files(files, src, mod_id, version, source)
     }
@@ -135,7 +126,7 @@ impl Store {
         source: &str,
     ) -> Result<StoredMod, StoreError> {
         let metadata = fs::symlink_metadata(src).map_err(|error| io_error(src, error))?;
-        if !metadata.file_type().is_file() {
+        if !metadata.is_file() || crate::paths::is_link(&metadata) {
             return Err(StoreError::Io {
                 path: src.to_path_buf(),
                 source: io::Error::new(io::ErrorKind::InvalidInput, "not a regular file"),
@@ -342,6 +333,16 @@ fn is_plain_directory(entry: &fs::DirEntry) -> bool {
 }
 
 fn scan_source(src: &Path) -> Result<Vec<SourceFile>, StoreError> {
+    let metadata = fs::symlink_metadata(src).map_err(|error| io_error(src, error))?;
+    if crate::paths::is_link(&metadata) {
+        return Err(StoreError::SourceSymlink(src.to_path_buf()));
+    }
+    if !metadata.is_dir() {
+        return Err(io_error(
+            src,
+            io::Error::new(io::ErrorKind::InvalidInput, "not a directory"),
+        ));
+    }
     let mut files = Vec::new();
     let mut pending: Vec<(PathBuf, Vec<String>)> = vec![(src.to_path_buf(), Vec::new())];
     while let Some((directory, segments)) = pending.pop() {
@@ -349,7 +350,7 @@ fn scan_source(src: &Path) -> Result<Vec<SourceFile>, StoreError> {
         for entry in entries {
             let entry = entry.map_err(|error| io_error(&directory, error))?;
             let path = entry.path();
-            let kind = entry.file_type().map_err(|error| io_error(&path, error))?;
+            let metadata = fs::symlink_metadata(&path).map_err(|error| io_error(&path, error))?;
             let name = entry
                 .file_name()
                 .into_string()
@@ -362,23 +363,20 @@ fn scan_source(src: &Path) -> Result<Vec<SourceFile>, StoreError> {
                 })?;
             let mut child = segments.clone();
             child.push(name);
-            if kind.is_symlink() {
+            if crate::paths::is_link(&metadata) {
                 return Err(StoreError::SourceSymlink(path));
             }
-            if kind.is_dir() {
+            if metadata.is_dir() {
                 pending.push((path, child));
                 continue;
             }
-            if !kind.is_file() {
+            if !metadata.is_file() {
                 return Err(StoreError::Io {
                     path,
                     source: io::Error::new(io::ErrorKind::Unsupported, "not a regular file"),
                 });
             }
-            let len = entry
-                .metadata()
-                .map_err(|error| io_error(&path, error))?
-                .len();
+            let len = metadata.len();
             if len > MAX_FILE_BYTES {
                 return Err(StoreError::FileTooLarge { path, len });
             }

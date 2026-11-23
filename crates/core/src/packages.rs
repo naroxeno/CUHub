@@ -6,15 +6,17 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
-use chrono::Utc;
 use sha2::{Digest, Sha256};
 
 use crate::install::{FileAction, Layout, PackageFile, PlannedFile, UpgradePlan};
 use crate::links::{LinkError, LinkIndex};
 use crate::profiles::{
-    ApplyOp, ApplyReport, Profile, ProfileEntry, ProfileError, ProfileStore, apply_plan, plan_apply,
+    ApplyOp, ApplyReport, Profile, ProfileEntry, ProfileError, ProfileStore, apply_plan,
+    check_deployment_targets, deployment_target, plan_apply,
 };
-use crate::store::{Store, StoreEntry, StoreError, StoredMod};
+use crate::store::{Store, StoreEntry, StoreError, StoredMod, scan_source_paths};
+
+mod backup;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackagePlan {
@@ -23,6 +25,7 @@ pub struct PackagePlan {
     pub source: String,
     pub target: PathBuf,
     pub previous: Option<PathBuf>,
+    pub managed_previous: Option<PathBuf>,
     pub staging: PathBuf,
     pub files: Vec<PackageFile>,
     pub single: bool,
@@ -105,11 +108,22 @@ pub enum PackageError {
     Profile(ProfileError),
     Link(LinkError),
     MissingPayload(PathBuf),
-    PayloadConflict { mod_id: String, version: String },
+    PayloadConflict {
+        mod_id: String,
+        version: String,
+    },
     InvalidRelative(PathBuf),
     ProfileMissing(String),
-    ProfileSave(io::Error),
-    Io { path: PathBuf, source: io::Error },
+    StoreChanged(PathBuf),
+    AfterBackup {
+        backup: PathBuf,
+        source: Box<PackageError>,
+        recovery: Option<Result<(), Box<PackageError>>>,
+    },
+    Io {
+        path: PathBuf,
+        source: io::Error,
+    },
 }
 
 impl From<StoreError> for PackageError {
@@ -153,7 +167,22 @@ impl std::fmt::Display for PackageError {
             Self::ProfileMissing(name) => {
                 write!(formatter, "profile \"{name}\" is missing")
             }
-            Self::ProfileSave(error) => write!(formatter, "could not save the profile: {error}"),
+            Self::StoreChanged(path) => {
+                write!(formatter, "stored payload has changed: {}", path.display())
+            }
+            Self::AfterBackup {
+                backup,
+                source,
+                recovery,
+            } => {
+                write!(formatter, "{source}; backup: {}", backup.display())?;
+                match recovery {
+                    Some(Ok(())) => write!(formatter, "; previous files were restored")?,
+                    Some(Err(error)) => write!(formatter, "; recovery failed: {error}")?,
+                    None => {}
+                }
+                Ok(())
+            }
             Self::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
         }
     }
@@ -165,41 +194,68 @@ pub fn apply(
     plan: &PackagePlan,
     context: PackageContext<'_>,
 ) -> Result<PackageReport, PackageError> {
+    let profile = active_or_default(context.profiles, context.links)?;
+    apply_to_profile(plan, context, profile, Some(&plan.source))
+}
+
+pub(crate) fn apply_to_profile(
+    plan: &PackagePlan,
+    context: PackageContext<'_>,
+    mut profile: Profile,
+    profile_source: Option<&str>,
+) -> Result<PackageReport, PackageError> {
     let stored = import_package(plan, context.store)?;
-    let mut profile = active_or_default(context.profiles, context.links)?;
     profile.active = true;
     profile.entries.retain(|entry| entry.mod_id != plan.mod_id);
     profile.entries.push(ProfileEntry {
         mod_id: plan.mod_id.clone(),
         version: plan.version.clone(),
         enabled: true,
-        source: Some(plan.source.clone()),
+        source: profile_source.map(str::to_owned),
         link: None,
     });
-    let ops = plan_apply(
+    let mut ops = plan_apply(
         &profile,
         context.links,
         context.store,
         context.game_root,
         context.plugins_root,
     )?;
-    let backup = if plan.previous.as_ref().is_some_and(|path| path.exists())
-        && ops
-            .iter()
-            .any(|op| matches!(op, ApplyOp::Deploy { target, .. } if target == &plan.target))
-    {
-        plan.previous
-            .as_deref()
-            .map(|path| backup_path(path, context.backup_root))
-            .transpose()?
-    } else {
-        None
-    };
-    let applied = apply_plan(context.links, context.store, context.game_root, &ops)?;
+    check_scope(plan, &context, &ops)?;
+    let deploying = ops.iter().any(|op| matches!(op, ApplyOp::Deploy { .. }));
+    let previous = plan.previous.as_deref().filter(|_| deploying);
+    check_deployment_targets(context.links, &ops, previous)?;
+    context
+        .links
+        .save_if_changed()
+        .map_err(|source| PackageError::Io {
+            path: context.links.path().to_path_buf(),
+            source,
+        })?;
+    let backup = previous
+        .map(|path| backup::save(path, context.backup_root))
+        .transpose()?
+        .flatten();
+    ops.sort_by_key(|op| matches!(op, ApplyOp::Remove { .. }));
+    let applied =
+        apply_plan(context.links, context.store, context.game_root, &ops).map_err(|error| {
+            if let (Some(previous), Some(backup)) = (previous, &backup) {
+                let deployed = context.links.get(&plan.target).is_some_and(|entry| {
+                    entry.mod_id == plan.mod_id && entry.version == plan.version
+                });
+                let recovery = (!deployed).then(|| backup::restore(previous, backup));
+                after_backup(error.into(), backup, recovery)
+            } else {
+                error.into()
+            }
+        })?;
     context
         .profiles
-        .save(&profile)
-        .map_err(PackageError::ProfileSave)?;
+        .save_deployed(&profile)
+        .map_err(|error| match &backup {
+            Some(backup) => after_backup(error.into(), backup, None),
+            None => error.into(),
+        })?;
     let profile_name = profile.name.clone();
     Ok(PackageReport {
         stored,
@@ -208,6 +264,81 @@ pub fn apply(
         profile: profile_name,
         applied,
     })
+}
+
+fn check_scope(
+    plan: &PackagePlan,
+    context: &PackageContext<'_>,
+    ops: &[ApplyOp],
+) -> Result<(), PackageError> {
+    let manifest = context
+        .store
+        .read_entry(&plan.mod_id, &plan.version)
+        .ok_or_else(|| PackageError::MissingPayload(plan.target.clone()))?;
+    if deployment_target(&manifest.files, &plan.mod_id, context.plugins_root) != plan.target
+        || context
+            .links
+            .get(&plan.target)
+            .is_some_and(|entry| entry.mod_id != plan.mod_id)
+    {
+        return Err(ProfileError::PlanChanged.into());
+    }
+    for op in ops {
+        let allowed = match op {
+            ApplyOp::Deploy {
+                target,
+                mod_id,
+                version,
+            } => target == &plan.target && mod_id == &plan.mod_id && version == &plan.version,
+            ApplyOp::Remove { target } => {
+                plan.managed_previous
+                    .as_ref()
+                    .is_some_and(|previous| crate::paths::same_target(previous, target))
+                    && context
+                        .links
+                        .get(target)
+                        .is_some_and(|entry| entry.mod_id == plan.mod_id)
+            }
+        };
+        if !allowed {
+            return Err(ProfileError::AdditionalTarget(op.target().to_path_buf()).into());
+        }
+    }
+    if let Some(previous) = &plan.previous {
+        if previous.parent() != Some(context.plugins_root) || context.links.get(previous).is_some()
+        {
+            return Err(ProfileError::PlanChanged.into());
+        }
+        context.links.check_target(context.game_root, previous)?;
+    }
+    if let Some(previous) = &plan.managed_previous {
+        context.links.check_target(context.game_root, previous)?;
+        if context.links.get(previous).is_none() {
+            match previous.symlink_metadata() {
+                Ok(_) => return Err(ProfileError::PlanChanged.into()),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(source) => {
+                    return Err(PackageError::Io {
+                        path: previous.clone(),
+                        source,
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn after_backup(
+    error: PackageError,
+    backup: &Path,
+    recovery: Option<Result<(), PackageError>>,
+) -> PackageError {
+    PackageError::AfterBackup {
+        backup: backup.to_path_buf(),
+        source: Box::new(error),
+        recovery: recovery.map(|result| result.map_err(Box::new)),
+    }
 }
 
 fn import_package(plan: &PackagePlan, store: &Store) -> Result<StoredMod, PackageError> {
@@ -244,6 +375,7 @@ fn import_package(plan: &PackagePlan, store: &Store) -> Result<StoredMod, Packag
                     version: plan.version.clone(),
                 });
             }
+            verify_stored_payload(&path, &entry)?;
             Ok(StoredMod {
                 mod_id: plan.mod_id.clone(),
                 version: plan.version.clone(),
@@ -253,6 +385,21 @@ fn import_package(plan: &PackagePlan, store: &Store) -> Result<StoredMod, Packag
         }
         Err(error) => Err(PackageError::Store(error)),
     }
+}
+
+fn verify_stored_payload(root: &Path, entry: &StoreEntry) -> Result<(), PackageError> {
+    let actual =
+        scan_source_paths(root).map_err(|_| PackageError::StoreChanged(root.to_path_buf()))?;
+    if actual.len() != entry.files.len() {
+        return Err(PackageError::StoreChanged(root.to_path_buf()));
+    }
+    for file in &entry.files {
+        let path = root.join(&file.path);
+        if actual.binary_search(&file.path).is_err() || hash_file(&path)? != file.sha256 {
+            return Err(PackageError::StoreChanged(path));
+        }
+    }
+    Ok(())
 }
 
 fn same_payload(plan: &PackagePlan, entry: &StoreEntry) -> Result<bool, PackageError> {
@@ -335,93 +482,6 @@ fn active_or_default(profiles: &ProfileStore, links: &LinkIndex) -> Result<Profi
         });
     }
     Ok(profile)
-}
-
-fn backup_path(source: &Path, root: &Path) -> Result<PathBuf, PackageError> {
-    let stamp = Utc::now().format("Package-%Y%m%d-%H%M%S").to_string();
-    let mut directory = root.join(&stamp);
-    let mut counter = 2;
-    while directory.symlink_metadata().is_ok() {
-        directory = root.join(format!("{stamp}-{counter}"));
-        counter += 1;
-    }
-    fs::create_dir_all(&directory).map_err(|source| PackageError::Io {
-        path: directory.clone(),
-        source,
-    })?;
-    let name = source
-        .file_name()
-        .ok_or_else(|| PackageError::InvalidRelative(source.to_path_buf()))?;
-    let destination = directory.join(name);
-    move_path(source, &destination)?;
-    Ok(directory)
-}
-
-fn move_path(source: &Path, destination: &Path) -> Result<(), PackageError> {
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).map_err(|error| PackageError::Io {
-            path: parent.to_path_buf(),
-            source: error,
-        })?;
-    }
-    match fs::rename(source, destination) {
-        Ok(()) => Ok(()),
-        Err(_) => {
-            copy_tree(source, destination)?;
-            remove_path(source)
-        }
-    }
-}
-
-fn copy_tree(source: &Path, destination: &Path) -> Result<(), PackageError> {
-    let metadata = fs::symlink_metadata(source).map_err(|error| PackageError::Io {
-        path: source.to_path_buf(),
-        source: error,
-    })?;
-    if metadata.is_dir() {
-        fs::create_dir_all(destination).map_err(|error| PackageError::Io {
-            path: destination.to_path_buf(),
-            source: error,
-        })?;
-        for entry in fs::read_dir(source).map_err(|error| PackageError::Io {
-            path: source.to_path_buf(),
-            source: error,
-        })? {
-            let entry = entry.map_err(|error| PackageError::Io {
-                path: source.to_path_buf(),
-                source: error,
-            })?;
-            copy_tree(&entry.path(), &destination.join(entry.file_name()))?;
-        }
-        Ok(())
-    } else {
-        fs::copy(source, destination)
-            .map(|_| ())
-            .map_err(|error| PackageError::Io {
-                path: destination.to_path_buf(),
-                source: error,
-            })
-    }
-}
-
-fn remove_path(path: &Path) -> Result<(), PackageError> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
-            fs::remove_dir_all(path).map_err(|source| PackageError::Io {
-                path: path.to_path_buf(),
-                source,
-            })
-        }
-        Ok(_) => fs::remove_file(path).map_err(|source| PackageError::Io {
-            path: path.to_path_buf(),
-            source,
-        }),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(source) => Err(PackageError::Io {
-            path: path.to_path_buf(),
-            source,
-        }),
-    }
 }
 
 fn is_plain_relative(path: &Path) -> bool {
