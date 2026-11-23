@@ -288,6 +288,11 @@ fn accept_loop(listener: TcpListener, shared: Arc<ServerShared>) {
                     let _ = stream.shutdown(Shutdown::Both);
                     break;
                 }
+                if let Err(error) = stream.set_nonblocking(false) {
+                    shared.logs.error("Bridge connection", &error);
+                    let _ = stream.shutdown(Shutdown::Both);
+                    continue;
+                }
                 let _ = stream.set_nodelay(true);
                 match handshake::accept(&mut stream, &shared) {
                     Ok(info) => start_session(stream, peer, info, &shared),

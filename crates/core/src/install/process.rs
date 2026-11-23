@@ -3,6 +3,9 @@
 use std::io;
 use std::path::Path;
 
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 pub fn game_running(game_root: &Path) -> io::Result<bool> {
     #[cfg(target_os = "linux")]
     {
@@ -68,9 +71,13 @@ fn wine_game_process(proc_root: &Path, game_root: &Path) -> bool {
 
 #[cfg(target_os = "windows")]
 fn windows_game_running() -> io::Result<bool> {
-    let output = std::process::Command::new("tasklist")
+    use std::os::windows::process::CommandExt;
+
+    let mut command = std::process::Command::new("tasklist");
+    command
         .args(["/FO", "CSV", "/NH"])
-        .output()?;
+        .creation_flags(CREATE_NO_WINDOW);
+    let output = command.output()?;
     let text = String::from_utf8_lossy(&output.stdout).to_ascii_lowercase();
     Ok(text.contains("casualtiesunknown.exe"))
 }

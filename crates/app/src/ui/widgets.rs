@@ -6,7 +6,7 @@ use nsh_core::prelude::*;
 use super::fx::{PRESS_SHIFT, states};
 use crate::palette::*;
 
-pub const PIXEL_FONT: FontAsset = asset!("fonts/fusion-pixel-12px-proportional-zh_hans.otf");
+pub const PIXEL_FONT: FontAsset = asset!("fonts/fusion-pixel-12px-proportional-zh_hans.ttf");
 
 pub const NEXUS_PAGE_SIZE: usize = 50;
 

@@ -230,6 +230,26 @@ fn handshake_lists_commands_and_round_trips_a_command() {
 }
 
 #[test]
+fn handshake_waits_for_the_guest_to_send_hello() {
+    let fixture = Fixture::new(
+        "delayed-hello",
+        BridgeOptions::default(),
+        &BridgeSettings::default(),
+    );
+    let mut stream = connect(fixture.port);
+    thread::sleep(Duration::from_millis(100));
+
+    hello_ok(send_hello(
+        &mut stream,
+        TOKEN,
+        4243,
+        PROTO_MAJOR,
+        "cuhub.delayed",
+    ));
+    assert!(wait_until(|| fixture.server.status().session.is_some()));
+}
+
+#[test]
 fn bad_token_is_rejected_with_a_failure_and_recorded_in_the_status() {
     let fixture = Fixture::new(
         "bad-token",

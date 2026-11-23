@@ -14,7 +14,7 @@
 - `nsh.json`：`name` / `id` / `version` / `build` / `rust`（crate 目录）/ `root`（根组件名）/ `capabilities`（可选）。
 - `src/lib.rs`：`#[component] pub fn App() -> impl IntoElement`；`#[native_module("...")] fn native(registry)` 里 `registry.assets(assets!())` + `registry.register::<App>()`。
 - `src/main.rs`：按平台 `use nsh_platform_linux as platform;`，`platform::run_app(platform::AppSource::Rust(Root::of::<App>()), platform::AppOptions { title, app_id, size, ..Default::default() })`；`cargo run` 直接跑。
-- `assets/`：`asset!("fonts/x.otf")` 编译期读入；`assets!()` 把整个目录随 app 发布。字体 `FontAsset { uri, family }`，family 来自字体 name table，用 `fc-scan --format '%{family}'` 查（Fusion Pixel 是 `Fusion Pixel 12px Prop zh_hans`）。
+- `assets/`：`asset!("fonts/x.ttf")` 编译期读入；`assets!()` 把整个目录随 app 发布。字体 `FontAsset { uri, family }`，family 来自字体 name table。Fusion Pixel 使用官方 12px proportional zh_hans TTF；此前的 OTF 中“装”字映射到了空轮廓，不能用于界面。
 - `nsh run` 是调试 runner（改代码重建重启）；另有 `nsh check` / `nsh test` / `nsh build` / `nsh package`。
 
 ## 渲染模型
@@ -67,7 +67,7 @@
 
 - headless：`nsh-testing` + `nsh_engine::{EngineConfig, Root}`；`Headless::start(config)`、`app.type_text(id, text)`、`app.press(selector)`、`app.wait_for(selector)`、`app.screen().texts()`；在 `cargo test` 里跑，不需要显示器。CLI 的 `--trace` 打印原生操作与耗时。
 - `nsh package --target linux` 默认产出 `.nsh/out/<Name>/`（可执行文件、`nsh/bundle.nshc`、`nsh/assets`、`nsh/app.json`、`.desktop`、PNG、`.tar.gz`）；Windows 另出 zip 和 Inno Setup 安装器。`just package` / `package-*` 传 `--out dist/<platform>`，产物落在仓库根 `dist/linux|windows|macos/`。
-- `just package-windows` 会在 `nsh package` 之后运行 `scripts/windows-installer.sh`：把 `LICENSE`、`README.md`、`README.zh-CN.md` 与 `docs/third-party/terracotta.md` 放进 stage，重打 `Cuhub.zip`，再给 `.iss` 补 publisher / `LicenseFile` / 升级与卸载清理，最后用 `iscc` 重编译 `Cuhub-setup.exe`。不要直接分发 `nsh package` 生成的原始 setup，它缺这些文件。
+- `just package-windows` 在 Windows 下以 Niubash 的 `niu` 执行配方与 `scripts/windows-installer.sh`；缺少 Unix `zip` / Python 时分别回退到 PowerShell 的 `Compress-Archive` 与 `scripts/patch-windows-installer.ps1`，并从当前用户的 Inno Setup 7 默认安装目录寻找 `ISCC.exe`。脚本会把 `LICENSE`、`README.md`、`README.zh-CN.md` 与 `docs/third-party/terracotta.md` 放进 stage，重打 `Cuhub.zip`，再给 `.iss` 补 publisher / `LicenseFile` / 升级与卸载清理，最后重编译 `Cuhub-setup.exe`。不要直接分发 `nsh package` 生成的原始 setup，它缺这些文件。
 - 打包要 release runner，Linux 运行需要 GTK 4.14+ 与 GStreamer，构建还要 clang；Windows 打包额外需要 `zip`、`python3` 和 Wine 下的 Inno Setup 6（`iscc`）。
 - Windows 安装器已在 Wine 隔离前缀验证：安装树含 exe、字体、LICENSE、README 与 docs；卸载不留文件；重装会清掉已知旧文件。原生 Windows 仍需实机确认。安装器界面仍是英文（Inno 未带 `ChineseSimplified.isl`）。
 - 单文件打包与体积还没测；Windows 交叉编译已跑通。

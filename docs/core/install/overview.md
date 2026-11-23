@@ -19,7 +19,7 @@
 
 ## 游戏进程
 
-- Linux 先看 `/proc/<pid>/exe` 是否落在游戏根内；Proton/Wine 的 exe 是 `wine64-preloader`，这时再看 `/proc/<pid>/cwd` 是否在游戏根内，且 `/proc/<pid>/cmdline` 第一个参数的文件名以 `.exe` 结尾并存在于该工作目录；命中即视为游戏运行。Windows 用 `tasklist` 查进程名，macOS 用 `pgrep`。
+- Linux 先看 `/proc/<pid>/exe` 是否落在游戏根内；Proton/Wine 的 exe 是 `wine64-preloader`，这时再看 `/proc/<pid>/cwd` 是否在游戏根内，且 `/proc/<pid>/cmdline` 第一个参数的文件名以 `.exe` 结尾并存在于该工作目录；命中即视为游戏运行。Windows 用隐藏窗口的 `tasklist` 查进程名，避免状态轮询反复闪出控制台；macOS 用 `pgrep`。
 
 ## 布局
 

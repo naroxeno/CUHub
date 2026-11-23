@@ -22,8 +22,17 @@ install -m 0644 docs/third-party/terracotta.md "$stage/docs/third-party/terracot
 install -m 0644 LICENSE "$dist/LICENSE"
 
 rm -f "$dist/Cuhub.zip"
-( cd "$dist" && zip -qr Cuhub.zip Cuhub )
+if command -v zip >/dev/null 2>&1; then
+    ( cd "$dist" && zip -qr Cuhub.zip Cuhub )
+elif command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command \
+        "Compress-Archive -LiteralPath '$stage' -DestinationPath '$dist/Cuhub.zip' -CompressionLevel Optimal"
+else
+    echo "zip or powershell.exe is required to build Cuhub.zip" >&2
+    exit 1
+fi
 
+if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
 python3 - "$dist/Cuhub.iss" <<'PY'
 import pathlib
 import re
@@ -84,9 +93,24 @@ if "[UninstallDelete]" not in text:
 
 path.write_text(text, encoding="utf-8")
 PY
+elif command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
+        scripts/patch-windows-installer.ps1 "$dist/Cuhub.iss"
+else
+    echo "python3 or powershell.exe is required to update Cuhub.iss" >&2
+    exit 1
+fi
 
 rm -rf "$dist/Output"
-( cd "$dist" && iscc Cuhub.iss )
+if command -v iscc >/dev/null 2>&1; then
+    iscc_cmd=iscc
+elif [ -x "$LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe" ]; then
+    iscc_cmd="$LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe"
+else
+    echo "Inno Setup 7 is required to build Cuhub-setup.exe" >&2
+    exit 1
+fi
+( cd "$dist" && "$iscc_cmd" Cuhub.iss )
 if [ ! -f "$dist/Output/Cuhub-setup.exe" ]; then
     echo "iscc did not produce Output/Cuhub-setup.exe" >&2
     exit 1

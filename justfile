@@ -1,7 +1,10 @@
 # Cuhub build entrypoints. Run `just` for the list.
 
 # Prefer the user's own cargo (~/.cargo/bin) over the system one.
-export PATH := home_directory() + "/.cargo/bin:" + env_var("PATH")
+user_home := if os() == "windows" { env_var("USERPROFILE") } else { home_directory() }
+export PATH := user_home + "/.cargo/bin:" + env_var("PATH")
+
+set windows-shell := ["niu", "-c"]
 
 # Cross builds: package-windows runs here through cargo-xwin (cargo install
 # --locked cargo-xwin, rustup target add x86_64-pc-windows-msvc), package-macos
@@ -75,7 +78,7 @@ package-linux:
 package-windows:
     rm -rf dist/windows
     nsh package --target windows --out dist/windows
-    ./scripts/windows-installer.sh
+    niu ./scripts/windows-installer.sh
 
 # macOS .app in dist/macos; needs a Mac, nsh links the AppKit runner against the SDK.
 package-macos:
