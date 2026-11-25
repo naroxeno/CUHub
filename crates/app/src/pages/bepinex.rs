@@ -1,8 +1,11 @@
 //! BepInEx install and status overlay with its actions.
 
+use crate::app_state::Ui;
+use crate::components::{
+    button, choice_button, fade_in, panel, pix, pix_c, rise_in, scaled, spinner,
+};
 use crate::palette::*;
 use crate::shell::nav;
-use crate::ui::{Ui, button, fade_in, panel, pix, pix_c, rise_in, scaled, spinner};
 use cuhub_core::install::{Flavor, Mode};
 use nsh_core::prelude::*;
 
@@ -150,55 +153,36 @@ pub(super) fn bepinex_status_line(z: &Signal<u8>, ui: &Ui) -> Text {
             t!("bepinex.not_installed")
         },
         12.0,
-        move || {
+        theme_color_with(move || {
             let Some(status) = tone.bepinex.get() else {
-                return rgb(TEXT_DIM);
+                return TEXT_DIM;
             };
             if status.il2cpp {
-                rgb(DANGER)
+                DANGER
             } else if status.complete {
-                rgb(ACCENT)
+                ACCENT
             } else if status.installed {
-                rgb(WARN)
+                WARN
             } else {
-                rgb(TEXT_MUTED)
+                TEXT_MUTED
             }
-        },
+        }),
         z,
     )
 }
 
 pub(super) fn bepinex_flavor_button(ui: &Ui, flavor: Flavor, z: &Signal<u8>) -> Text {
-    let colored = ui.clone();
-    let bordered = ui.clone();
+    let selected = ui.bepinex_flavor;
     let pressed = ui.clone();
-    pix_c(
+    choice_button(
+        z,
         move || match flavor {
             Flavor::Lts => t!("bepinex.flavor_lts"),
             Flavor::Experimental => t!("bepinex.flavor_experimental"),
         },
-        12.0,
-        move || {
-            if colored.bepinex_flavor.get() == flavor {
-                rgb(ACCENT)
-            } else {
-                rgb(TEXT_MUTED)
-            }
-        },
-        z,
+        move || selected.get() == flavor,
+        move || pressed.set_bepinex_flavor(flavor),
     )
-    .px(scaled(z, 10.0))
-    .py(scaled(z, 4.0))
-    .bg(rgb(SURFACE_RAISED))
-    .border(scaled(z, 1.0))
-    .border_color(move || {
-        if bordered.bepinex_flavor.get() == flavor {
-            rgb(ACCENT)
-        } else {
-            rgb(BORDER_DIM)
-        }
-    })
-    .on_press(move || pressed.set_bepinex_flavor(flavor))
 }
 
 pub(super) fn bepinex_actions(z: &Signal<u8>, ui: &Ui) -> View {

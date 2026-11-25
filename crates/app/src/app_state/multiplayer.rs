@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use super::Ui;
-use super::mp_control::{PortFollow, join_port, port_follow};
+use super::multiplayer_rules::{PortFollow, join_port, port_follow};
 
 const POLL_MILLIS: u64 = 1500;
 const DISCOVERY_TICKS: u32 = 40;

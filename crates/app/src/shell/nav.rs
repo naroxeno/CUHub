@@ -2,8 +2,9 @@
 
 use nsh_core::prelude::*;
 
+use super::icon_masks;
+use crate::app_state::Ui;
 use crate::pages;
-use crate::ui::Ui;
 
 pub const NEXUS: &str = "nexus";
 pub const REMOTE: &str = "remote";
@@ -25,7 +26,7 @@ pub struct NavGroup {
 pub struct NavEntry {
     pub id: &'static str,
     pub key: &'static str,
-    pub icon: &'static str,
+    pub icon: [u8; 8],
     pub group: Option<&'static str>,
     pub kind: NavKind,
 }
@@ -84,63 +85,63 @@ pub static NAV: [NavEntry; 9] = [
     NavEntry {
         id: HOME,
         key: "nav.hub_home",
-        icon: "HM",
+        icon: icon_masks::HOME,
         group: None,
         kind: NavKind::Page(home),
     },
     NavEntry {
         id: NEXUS,
         key: "nav.nexus_dashboard",
-        icon: "NX",
+        icon: icon_masks::NEXUS,
         group: Some(GROUP_MODS),
         kind: NavKind::Page(nexus),
     },
     NavEntry {
         id: REMOTE,
         key: "nav.remote_mods",
-        icon: "RM",
+        icon: icon_masks::REMOTE,
         group: Some(GROUP_MODS),
         kind: NavKind::Page(remote),
     },
     NavEntry {
         id: LOCAL,
         key: "nav.local_mods",
-        icon: "LC",
+        icon: icon_masks::LOCAL,
         group: Some(GROUP_MODS),
         kind: NavKind::Page(local),
     },
     NavEntry {
         id: PROFILES,
         key: "nav.profiles",
-        icon: "PF",
+        icon: icon_masks::PROFILES,
         group: Some(GROUP_MODS),
         kind: NavKind::Page(profiles),
     },
     NavEntry {
         id: MULTIPLAYER,
         key: "nav.multiplayer",
-        icon: "MP",
+        icon: icon_masks::MULTIPLAYER,
         group: None,
         kind: NavKind::Page(multiplayer),
     },
     NavEntry {
         id: SKINS,
         key: "nav.skins_backups",
-        icon: "SK",
+        icon: icon_masks::SKINS,
         group: None,
         kind: NavKind::Page(skins),
     },
     NavEntry {
         id: SETTINGS,
         key: "nav.settings",
-        icon: "ST",
+        icon: icon_masks::SETTINGS,
         group: None,
         kind: NavKind::Page(settings),
     },
     NavEntry {
         id: ABOUT,
         key: "nav.about",
-        icon: "AB",
+        icon: icon_masks::ABOUT,
         group: None,
         kind: NavKind::Page(about),
     },
@@ -149,7 +150,7 @@ pub static NAV: [NavEntry; 9] = [
 pub static LAUNCH_ENTRY: NavEntry = NavEntry {
     id: LAUNCH,
     key: "topbar.launch",
-    icon: "GO",
+    icon: icon_masks::LAUNCH,
     group: None,
     kind: NavKind::Action(launch),
 };

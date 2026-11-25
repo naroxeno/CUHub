@@ -519,7 +519,7 @@ impl Ui {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::rows::build_nexus_rows;
+    use crate::app_state::rows::build_nexus_rows;
     use cuhub_core::{metadata::parse_mods, sources::SourceManifest};
 
     #[test]

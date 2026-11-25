@@ -2,8 +2,9 @@
 
 use nsh_core::prelude::*;
 
+use crate::app_state::Ui;
+use crate::components::{button, panel, pix, rise_in, scaled};
 use crate::palette::*;
-use crate::ui::{Ui, button, panel, pix, rise_in, scaled};
 
 const REPOSITORY: &str = "https://github.com/naroxeno/CUHub";
 const ISSUES: &str = "https://github.com/naroxeno/CUHub/issues";

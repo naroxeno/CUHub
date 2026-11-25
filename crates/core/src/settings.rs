@@ -1,7 +1,7 @@
 //! Settings model, tolerant loading and atomic saving. No UI state.
 
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::bridge::command::BridgeSettings;
 
 const SETTINGS_FILE: &str = "Settings.json";
+const THEME_FILE: &str = "Theme.toml";
+const THEME_MAX_BYTES: u64 = 32 * 1024;
 const DEFAULT_BACKUP_DIR: &str = "Backups";
 const DEFAULT_STORE_DIR: &str = "Store";
 const DEFAULT_PROTECTED_DIR: &str = "ProtectedFiles";
@@ -28,6 +30,7 @@ pub struct Settings {
     pub disable_auto_delete_imported_parent_files: bool,
     pub ui_scale: u8,
     pub language: String,
+    pub theme: String,
     pub high_contrast_mode: bool,
     pub easter_eggs_enabled: bool,
     pub easter_eggs_preference_initialized: bool,
@@ -54,6 +57,7 @@ impl Default for Settings {
             disable_auto_delete_imported_parent_files: false,
             ui_scale: DEFAULT_UI_SCALE,
             language: "system".to_owned(),
+            theme: "copper".to_owned(),
             high_contrast_mode: false,
             easter_eggs_enabled: false,
             easter_eggs_preference_initialized: false,
@@ -89,6 +93,32 @@ impl SettingsStore {
 
     pub fn path(&self) -> &Path {
         &self.file
+    }
+
+    pub(crate) fn custom_theme(&self) -> io::Result<Option<String>> {
+        let path = self.file.with_file_name(THEME_FILE);
+        let metadata = match fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        if !metadata.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Expected a regular file.",
+            ));
+        }
+        let mut text = String::new();
+        fs::File::open(path)?
+            .take(THEME_MAX_BYTES + 1)
+            .read_to_string(&mut text)?;
+        if text.len() as u64 > THEME_MAX_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Theme exceeds 32 KiB.",
+            ));
+        }
+        Ok(Some(text))
     }
 
     pub fn load(&self) -> LoadedSettings {
@@ -203,6 +233,7 @@ mod tests {
             game_path: "/games/Casualties Unknown".to_owned(),
             ui_scale: 3,
             language: "zh-CN".to_owned(),
+            theme: "tokyonight".to_owned(),
             ignored_dependency_names: vec!["SomeDep".to_owned()],
             home_order: vec!["mods".to_owned(), "game".to_owned()],
             setup_completed: true,
@@ -215,12 +246,30 @@ mod tests {
         assert!(raw.contains("homeOrder"));
         assert!(!raw.contains("home_order"));
         assert!(raw.contains("\"language\": \"zh-CN\""));
+        assert!(raw.contains("\"theme\": \"tokyonight\""));
         assert!(raw.contains("\"setupCompleted\": true"));
         assert!(!raw.contains("game_path"));
         assert!(raw.ends_with('\n'));
         let loaded = store.load();
         assert_eq!(loaded.settings, settings);
         assert!(loaded.warning.is_none());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn custom_theme_is_optional_and_bounded() {
+        let dir = temp_dir("settings-theme");
+        let store = SettingsStore::new(&dir);
+        let theme = dir.join(THEME_FILE);
+        assert_eq!(store.custom_theme().unwrap(), None);
+        let source = "[colors]\naccent = \"#123456\"";
+        fs::write(&theme, source).unwrap();
+        assert_eq!(store.custom_theme().unwrap().as_deref(), Some(source));
+        fs::write(&theme, vec![b' '; THEME_MAX_BYTES as usize + 1]).unwrap();
+        assert_eq!(
+            store.custom_theme().unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
         let _ = fs::remove_dir_all(dir);
     }
 

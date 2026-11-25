@@ -75,7 +75,7 @@ pub struct TaskCard {
     pub kind: TaskKind,
     pub title: String,
     pub subtitle: String,
-    pub lines: Vec<(String, u32)>,
+    pub lines: Vec<(String, ColorRole)>,
     pub progress: Option<TaskProgress>,
     pub status: String,
     pub buttons: Vec<TaskButton>,

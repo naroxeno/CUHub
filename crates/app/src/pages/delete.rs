@@ -1,7 +1,8 @@
 //! Delete confirmation overlay.
 
+use crate::app_state::Ui;
+use crate::components::{button, danger_button, fade_in, panel, pix, rise_in, scaled};
 use crate::palette::*;
-use crate::ui::{Ui, button, danger_button, fade_in, panel, pix, rise_in, scaled};
 use nsh_core::prelude::*;
 
 pub fn delete_overlay(ui: &Ui) -> impl IntoElement {

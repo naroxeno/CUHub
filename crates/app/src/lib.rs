@@ -1,18 +1,19 @@
 //! Cuhub app crate: the nsh root component and the shell it renders.
 
+mod app_state;
+mod components;
 mod i18n;
 mod pages;
 mod palette;
 mod setup;
 mod shell;
-mod ui;
 
 use nsh_core::desktop::{WindowAttributes, WindowFrameStyle};
 use nsh_core::element::desktop::current_window;
 use nsh_core::prelude::*;
 
-use crate::palette::BG;
-use crate::ui::Ui;
+use crate::app_state::Ui;
+use crate::palette::{BG, theme_color};
 
 #[native_module("cuhub/native")]
 fn native(registry: &mut Registry) {
@@ -32,7 +33,7 @@ pub fn App() -> impl IntoElement {
     let mut root = view()
         .flex_col()
         .size_full()
-        .bg(rgb(BG))
+        .bg(theme_color(BG))
         .child(shell::title_bar(&ui))
         .child(
             view()

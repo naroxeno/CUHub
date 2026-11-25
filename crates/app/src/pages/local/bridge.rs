@@ -6,8 +6,9 @@ use cuhub_core::bridge::install::{CORE_FILE, PLUGIN_FILE};
 use cuhub_core::hub::BridgeInstallStatus;
 use nsh_core::prelude::*;
 
+use crate::app_state::{LocalModRow, Ui, bridge_color, bridge_text};
+use crate::components::{button, pix, pix_c, scaled};
 use crate::palette::*;
-use crate::ui::{LocalModRow, Ui, bridge_color, bridge_text, button, pix, pix_c, scaled};
 
 pub(super) fn is_bridge_row(row: &LocalModRow, status: Option<&BridgeInstallStatus>) -> bool {
     status.is_some_and(|status| {
@@ -36,11 +37,11 @@ pub(super) fn bridge_section(z: &Signal<u8>, ui: &Ui) -> View {
         .gap(scaled(&z, 6.0))
         .px(scaled(&z, 9.0))
         .py(scaled(&z, 7.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border(scaled(&z, 1.0))
-        .border_color(rgb(BORDER_DIM))
+        .border_color(theme_color(BORDER_DIM))
         .border_l(scaled(&z, 2.0))
-        .border_l_color(rgb(LINK))
+        .border_l_color(theme_color(LINK))
         .child(
             view()
                 .flex_row()
@@ -54,7 +55,7 @@ pub(super) fn bridge_section(z: &Signal<u8>, ui: &Ui) -> View {
         .child(pix_c(
             move || bridge_text(snapshot.get()),
             10.0,
-            move || rgb(bridge_color(&snapshot.get())),
+            theme_color_with(move || bridge_color(&snapshot.get())),
             &z,
         ))
         .child(

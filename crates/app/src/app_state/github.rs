@@ -7,6 +7,7 @@ impl Ui {
     pub fn save_github_token(&self) {
         let token = self.github_token_draft.get();
         if token.trim().is_empty() {
+            self.github_token_check.set(t!("notice.paste_github_token"));
             self.notice.set(t!("notice.paste_github_token"));
             return;
         }
@@ -18,11 +19,14 @@ impl Ui {
             Ok(()) => {
                 self.github_token_saved.set(true);
                 self.github_token_draft.set(String::new());
+                self.github_token_check.set(t!("notice.github_token_saved"));
                 self.notice.set(t!("notice.github_token_saved"));
             }
-            Err(error) => self
-                .notice
-                .set(t!("notice.save_github_token_failed", error = error)),
+            Err(error) => {
+                let message = t!("notice.save_github_token_failed", error = error);
+                self.github_token_check.set(message.clone());
+                self.notice.set(message);
+            }
         }
     }
 
@@ -78,12 +82,15 @@ impl Ui {
             Ok(()) => {
                 self.github_token_saved.set(false);
                 self.github_token_draft.set(String::new());
-                self.github_token_check.set(t!("notice.no_token_saved"));
+                self.github_token_check
+                    .set(t!("notice.github_token_cleared"));
                 self.notice.set(t!("notice.github_token_cleared"));
             }
-            Err(error) => self
-                .notice
-                .set(t!("notice.clear_github_token_failed", error = error)),
+            Err(error) => {
+                let message = t!("notice.clear_github_token_failed", error = error);
+                self.github_token_check.set(message.clone());
+                self.notice.set(message);
+            }
         }
     }
 }

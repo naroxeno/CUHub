@@ -74,6 +74,7 @@ impl Ui {
     pub fn save_nexus_key(&self) {
         let key = self.nexus_key_draft.get();
         if key.trim().is_empty() {
+            self.nexus_key_check.set(t!("notice.paste_nexus_key"));
             self.notice.set(t!("notice.paste_nexus_key"));
             return;
         }
@@ -85,11 +86,14 @@ impl Ui {
             Ok(()) => {
                 self.nexus_key_saved.set(true);
                 self.nexus_key_draft.set(String::new());
+                self.nexus_key_check.set(t!("notice.nexus_key_saved"));
                 self.notice.set(t!("notice.nexus_key_saved"));
             }
-            Err(error) => self
-                .notice
-                .set(t!("notice.save_nexus_key_failed", error = error)),
+            Err(error) => {
+                let message = t!("notice.save_nexus_key_failed", error = error);
+                self.nexus_key_check.set(message.clone());
+                self.notice.set(message);
+            }
         }
     }
 
@@ -142,11 +146,14 @@ impl Ui {
             Ok(()) => {
                 self.nexus_key_saved.set(false);
                 self.nexus_key_draft.set(String::new());
+                self.nexus_key_check.set(t!("notice.nexus_key_cleared"));
                 self.notice.set(t!("notice.nexus_key_cleared"));
             }
-            Err(error) => self
-                .notice
-                .set(t!("notice.clear_nexus_key_failed", error = error)),
+            Err(error) => {
+                let message = t!("notice.clear_nexus_key_failed", error = error);
+                self.nexus_key_check.set(message.clone());
+                self.notice.set(message);
+            }
         }
     }
 }

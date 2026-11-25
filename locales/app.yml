@@ -20,9 +20,9 @@ pending.nexus_fallback:
   zh-CN: "Nexus 下载失败：%{error}。改用 GitHub。"
   ja: "Nexus のダウンロードに失敗しました: %{error}。GitHub に切り替えます。"
 app.name:
-  en: "CUHUB"
-  zh-CN: "CUHUB"
-  ja: "CUHUB"
+  en: "Cuprum"
+  zh-CN: "Cuprum"
+  ja: "Cuprum"
 nav.mods:
   en: "Mods"
   zh-CN: "模组"
@@ -508,9 +508,9 @@ local.bridge_title:
   zh-CN: "CUHub Bridge"
   ja: "CUHub Bridge"
 local.bridge_description:
-  en: "Connects CUHub to the game for multiplayer status and controls."
-  zh-CN: "连接 CUHub 和游戏，用于显示联机状态和控制开房、加入。"
-  ja: "CUHub をゲームに接続し、マルチプレイの状態表示と操作を提供します。"
+  en: "Connects Cuprum to the game for multiplayer status and controls."
+  zh-CN: "连接 Cuprum 和游戏，用于显示联机状态和控制开房、加入。"
+  ja: "Cuprum をゲームに接続し、マルチプレイの状態表示と操作を提供します。"
 local.bridge_status_not_installed:
   en: "Not installed"
   zh-CN: "未安装"
@@ -708,9 +708,9 @@ multiplayer.state_elevation:
   zh-CN: "需要管理员权限"
   ja: "管理者権限が必要です"
 multiplayer.state_elevation_hint:
-  en: "Restart Cuhub as administrator (on Linux, grant CAP_NET_ADMIN) so it can create the virtual network adapter."
-  zh-CN: "请以管理员身份重新打开 Cuhub（Linux 需授予 CAP_NET_ADMIN），它才能创建虚拟网卡。"
-  ja: "仮想ネットワークアダプターを作るため、Cuhub を管理者として開き直してください（Linux は CAP_NET_ADMIN を付与）。"
+  en: "Restart Cuprum as administrator (on Linux, grant CAP_NET_ADMIN) so it can create the virtual network adapter."
+  zh-CN: "请以管理员身份重新打开 Cuprum（Linux 需授予 CAP_NET_ADMIN），它才能创建虚拟网卡。"
+  ja: "仮想ネットワークアダプターを作るため、Cuprum を管理者として開き直してください（Linux は CAP_NET_ADMIN を付与）。"
 multiplayer.connected_detail:
   en: "LAN address %{ip} · port %{port}"
   zh-CN: "局域网地址 %{ip} · 端口 %{port}"
@@ -912,8 +912,8 @@ multiplayer.core_missing:
   zh-CN: "这个目录里没有可用的 EasyTier，开房时会自动下载。"
   ja: "このフォルダーに使える EasyTier がありません。ルーム作成時に自動ダウンロードします。"
 multiplayer.error_elevation:
-  en: "Hosting and joining need administrator rights. Reopen Cuhub as administrator."
-  zh-CN: "开房和加入需要管理员权限，请以管理员身份重新打开 Cuhub。"
+  en: "Hosting and joining need administrator rights. Reopen Cuprum as administrator."
+  zh-CN: "开房和加入需要管理员权限，请以管理员身份重新打开 Cuprum。"
   ja: "ルームの作成・参加には管理者権限が必要です。管理者として Cuhub を開き直してください。"
 multiplayer.error_not_found:
   en: "No host found yet. Check the room code, host port and whether the host is online."
@@ -1067,10 +1067,14 @@ settings.theme:
   en: "Theme"
   zh-CN: "主题"
   ja: "テーマ"
-settings.theme_pixel:
-  en: "Pixel (fixed)"
-  zh-CN: "像素（固定）"
-  ja: "ピクセル（固定）"
+settings.theme_custom:
+  en: "Custom"
+  zh-CN: "自定义"
+  ja: "カスタム"
+notice.theme_invalid:
+  en: "Could not load Theme.toml: %{error}"
+  zh-CN: "无法读取 Theme.toml：%{error}"
+  ja: "Theme.toml を読み込めません：%{error}"
 settings.storage:
   en: "Storage"
   zh-CN: "存储"
@@ -2005,9 +2009,9 @@ profiles.adopt_skip_target:
   zh-CN: "目标路径冲突"
   ja: "配置先が競合"
 profiles.adopt_skip_builtin:
-  en: "installed by CUHub"
-  zh-CN: "由 CUHub 安装"
-  ja: "CUHub によりインストール"
+  en: "installed by Cuprum"
+  zh-CN: "由 Cuprum 安装"
+  ja: "Cuprum によりインストール"
 profiles.adopt_confirm:
   en: "Migrate"
   zh-CN: "开始迁移"
@@ -2723,8 +2727,8 @@ multiplayer.guest_port_hint:
   ja: "空欄ならホストポートを自動検出します。検出対象を絞るときだけ入力してください。"
 multiplayer.bridge_wait_game:
   en: "You can set up a room now. In-game actions require the game to be running."
-  zh-CN: "现在就可以创建或加入 CUHub 房间。游戏内操作要等游戏启动。"
-  ja: "CUHub ルームは先に作成・参加できます。ゲーム内の操作にはゲームの起動が必要です。"
+  zh-CN: "现在就可以创建或加入 Cuprum 房间。游戏内操作要等游戏启动。"
+  ja: "Cuprum ルームは先に作成・参加できます。ゲーム内の操作にはゲームの起動が必要です。"
 multiplayer.finding_host:
   en: "Looking for the host…"
   zh-CN: "正在寻找房主…"
@@ -2742,3 +2746,24 @@ multiplayer.game_host_returned:
   en: "The host is back. Rejoin in the game with the address shown here."
   zh-CN: "房主已重新上线，请用这里显示的地址在游戏内重新加入。"
   ja: "ホストが戻りました。表示されているアドレスでゲームに再参加してください。"
+
+settings.category_game:
+  en: "Game & Mods"
+  zh-CN: "游戏与模组"
+  ja: "ゲームと MOD"
+settings.category_appearance:
+  en: "Appearance & Language"
+  zh-CN: "外观与语言"
+  ja: "外観と言語"
+settings.category_services:
+  en: "Services & Credentials"
+  zh-CN: "服务与凭据"
+  ja: "サービスと認証情報"
+settings.current_store:
+  en: "Active content library"
+  zh-CN: "当前内容库"
+  ja: "現在のコンテンツライブラリ"
+settings.credential_saved:
+  en: "Credential saved"
+  zh-CN: "凭据已保存"
+  ja: "認証情報を保存済み"

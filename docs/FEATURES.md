@@ -48,7 +48,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 | L Hub Home | 公告、历史公告、What Changed、发布信息、外链、Credits | P1 |
 | M Nexus 凭据与直连下载 | key 保存/加密、files.json 选文件、download_link、落盘 | P1 |
 | N Steam 启动 | app id 解析、steam:// 启动、回退 | P0 |
-| O 外观系统 | 像素风固定调色板、1px 双框、像素字体、整数缩放、语义状态色 | P1 |
+| O 外观系统 | 像素风主题、1px 双框、像素字体、整数缩放、语义状态色 | P1 |
 | P 设置与迁移 | 全部设置项、旧配置迁移、JSON 容错 | P0 |
 | Q 日志/诊断/崩溃报告 | 会话日志、保留策略、崩溃报告、诊断命令、自检命令 | P0 |
 | R 多人页（虚拟局域网） | EasyTier 隧道、C1 房间码、房主发现、连接状态与对端表 | P1 |
@@ -252,28 +252,29 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### O. 外观系统（像素风）
 
-视觉基准是游戏内 UI（截图存于会话记录）：纯黑底、面板悬浮、1px 硬边、方角、无渐变、无阴影、无过渡动画。应用窗口本身就是黑底，**不显示游戏画面**，也不做半透明／毛玻璃。
+视觉基准是游戏内 UI 的像素硬边、方角与面板层级。默认主题 Copper 用中性深灰区分背景与面板，浅绿色标记操作和选中状态。窗口不显示游戏画面，也不做渐变、阴影或毛玻璃。
 
-- **O1 (P0)** 调色板固定，用户不可改写（色值取自游戏 UI 的像素采样，非臆造）：
+- **O1 (P0)** 内置 Copper、Console、One Dark、Tokyo Night，并可读取应用数据目录下的 `Theme.toml`。见[主题说明](app/palette/overview.md)。下表是默认 Copper 色板。
 
 | token | 值 | 用途 |
 |---|---|---|
-| `bg` | `#000000` | 窗口与页面底 |
-| `surface` | `#0B0B0B` | 面板底 |
-| `surface_raised` | `#141414` | 列表行、输入框、状态栏 |
-| `border` | `#FFFFFF` | 面板／对话框 1px 外框 |
-| `border_dim` | `#3A3A3A` | 行分隔线、内框、禁用描边 |
-| `text` | `#F2F2F2` | 正文 |
-| `text_muted` | `#A0A0A0` | 作者、统计、次要说明 |
-| `text_dim` | `#6D6D6D` | 占位符、禁用文字 |
-| `accent` | `#39DE82` | 已安装／可用／数值／主按钮 |
-| `accent_press` | `#168301` | 按下态、强调底 |
-| `warn` | `#FFF622` | 有更新、警告、倒计时 |
-| `danger` | `#FF0000` | 错误、破坏性操作、禁用标记 |
-| `link` | `#00FFFF` | 外链、焦点框 |
-| `request` | `#FF66FF` | 分享码请求（游戏调色板外的唯一补充色） |
+| `bg` | `#131415` | 窗口与页面底 |
+| `surface` | `#222324` | 面板底 |
+| `surface_raised` | `#303132` | 悬停行、输入框、控件底 |
+| `border` | `#827C75` | 控件与区域分界 |
+| `border_dim` | `#44423F` | 行分隔线、次要描边 |
+| `text` | `#EEE8DE` | 正文 |
+| `text_muted` | `#C0B9AF` | 作者、统计、次要说明 |
+| `text_dim` | `#A29990` | 占位符、辅助说明 |
+| `accent` | `#A0E4BC` | 已安装、可用、数值、启动按钮文字 |
+| `accent_surface` | `#22372F` | 选中导航、启动按钮底、控件悬停底 |
+| `accent_press` | `#345748` | 控件按下底 |
+| `warn` | `#FFB980` | 有更新、警告、倒计时 |
+| `danger` | `#F09893` | 错误、破坏性操作、禁用标记 |
+| `link` | `#A2C9D3` | 外链、焦点框 |
+| `request` | `#DCABD6` | 分享码请求 |
 
-- **O2 (P0)** 语义映射：绿=可用／已装／正向；黄=更新／警告／计时；红=禁用／错误／破坏性；青=链接／焦点；品红=分享码请求；灰阶只表达层级，不表达状态。
+- **O2 (P0)** 语义映射由主题定义。各页面共享同一组配色角色。
 - **O3 (P0)** 字体：内嵌「Fusion Pixel 12px」（OFL，含中英日字形），缺字形回落「Ark Pixel 12px」，再回落系统等宽；字号只有 12/24/36 三档（= 12px × 缩放）；1x 下正文行高 16px、列表行高 24px。禁用字体平滑与亚像素定位，文本基线必须落在整数像素。
 - **O4 (P0)** 缩放：1x / 2x / 3x，默认 2x。所有尺寸按整数倍放大，1px 描边在 2x/3x 下为 2px/3px（保持 1 逻辑像素）；图标 16×16 逻辑像素，只做整数倍。
 - **O5 (P0)** 面板规格：外框 1px `border`，向内让 2px 再画 1px 内框；标题嵌在上边框中央，左右各留 8px 断口（游戏里的「需求」「信息」「SAVE SLOTS」即此做法）；分节标题用 `warn` 或 `text`。
@@ -291,11 +292,11 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 设置页分组（每组一节，字段逐项复刻）：
 
 - **P1 (P0) Folders**：Game folder（文本框 + Browse… + Detect）、Downloads folder（文本框 + Browse…）、Keep imported archives 开关（tooltip 说明“关=装完就移走”）。
-- **P2 (P1) Appearance**：界面缩放三档（1x / 2x / 3x，默认 2x，改后即时生效）、高对比模式开关（见 O12）、一行说明“界面配色固定，跟随游戏风格”；**不**提供字号滑块、取色器与自定义预设（见 O13）。
+- **P2 (P1) Appearance**：界面缩放三档（1x / 2x / 3x，默认 2x，改后即时生效）；主题选中后当前视图立即换色，并在下次启动时恢复选择。
 - **P3 (P1) Nexus Mods**：key 输入 + Save / Clear + 说明“Premium 才能直连下载，可选”。
 - **P4 (P1) Extras**：Enable easter eggs（“下次启动生效”）。
 - **P5 (P1) Diagnostics**：说明文字、Copy report、Open logs folder。
-- **P6 (P0)** 设置模型字段（17 个，全部要落盘）：gamePath、downloadPath、backupPath("Backups")、disableAutoDeleteImportedParentFiles、uiScale(2)、language("system"，跟随设备或 BCP 47 语言标签)、highContrastMode(false)、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、dashboardShowAdultMods、ignoredDependencyNames[]、homeOrder[]、setupCompleted(false，向导完成或跳过时置 true)。旧字段（textSize、四个颜色、activeUiPreset、animatedRgbEnabled、customUiPresets、themeColoursInitialized、rebrandThemeInitialized、缓存兼容性字段）读取时忽略、保存时丢弃。
+- **P6 (P0)** 设置模型字段：gamePath、downloadPath、backupPath("Backups")、disableAutoDeleteImportedParentFiles、uiScale(2)、language("system"，跟随设备或 BCP 47 语言标签)、theme("copper")、highContrastMode(false)、protectedFilesPath("ProtectedFiles")、easterEggsEnabled、easterEggsPreferenceInitialized、localModsShareColumnCollapsed/Visible、dashboardListView、dashboardShowAdultMods、ignoredDependencyNames[]、homeOrder[]、setupCompleted(false，向导完成或跳过时置 true)。旧字段（textSize、四个颜色、activeUiPreset、animatedRgbEnabled、customUiPresets、themeColoursInitialized、rebrandThemeInitialized、缓存兼容性字段）读取时忽略、保存时丢弃。
 - **P7 (P0)** 容错：JSON 解析失败不覆盖原文件，本次用默认值；数值越界夹紧（界面缩放 1–3、缩放档位非法则回落 2x）。
 - **P8 (P1)** 写入用缩进 JSON，便于用户手改。
 - **P9 (P1)** 设置页顶部固定「重新运行设置向导 / Run setup again / セットアップを再実行」按钮，始终可见；点击重开向导，不弹确认、不清已保存的设置，向导内每步仍即时保存。
@@ -429,7 +430,7 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
 
-实现状态（2026-11-19）：`crates/app/src/ui/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。GitHub 发布版本可按需查询，操作按钮按安装状态显示。清单已改为启动拉取 `naroxeno/CUHub-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。2026-11-20：GitHub 更新支持清单 asset 精确名缺失时按版本号形状唯一回退，同形多资产仍报错。
+实现状态（2026-11-19）：`crates/app/src/app_state/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。GitHub 发布版本可按需查询，操作按钮按安装状态显示。清单已改为启动拉取 `naroxeno/CUHub-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。2026-11-20：GitHub 更新支持清单 asset 精确名缺失时按版本号形状唯一回退，同形多资产仍报错。
 
 边界：只读清单，不在应用内编辑或抓取；不重托管模组、不伪造下载 URL；游戏进程检查、路径越界与目标已存在由 core 拒绝，界面只展示错误。
 
@@ -447,7 +448,7 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
 - **Z8 (P1)** 线程与一致性：所有 Hub 调用在 worker（`spawn_worker` + `blocking`）里执行，UI 线程只读信号；切换档案不改 `Links.json` 之外的配置，`configOverrides` 仍只持久化、不执行；BepInEx 与 `config` 的部署不受档案应用影响。
 - **Z9 (P1)** 重命名：档案行内「重命名」展开输入框，预填原名；提交时 core 校验名称字符集、目标不存在与原名不变，成功后就地刷新列表。重命名不改变激活状态：激活档案改名后 `active.txt` 跟随新名，已部署文件不受影响；不做同名覆盖确认，目标重名直接报错。
 
-实现状态（2026-11-19）：Z1–Z7 的界面部分已落地——`crates/app/src/ui/profiles.rs` 负责行模型、worker 与错误映射，`crates/app/src/pages/profiles.rs` 负责视图与内联确认；同日起安装/更新统一走 Store：`packages::apply` 先入库再写入活动档案，未迁移的散装模组在更新时被收编并备份原文件。未做：DESIGN-v2 §3 的 M4 整合包（pack manifest 导入/导出、CUPK1 打包）未开始；档案区还没有 `configOverrides` 编辑、条目级启用/禁用与条目复制（字段已存在，无 UI 入口）；迁移撤销（undo adopt）与内容库删除/清空的两段式入口未做。迁移收尾自动新建 `adopt_<时间戳>` 激活档案、档案重命名、迁移目标与档案部署规则统一、迁移排除自带桥并列出可迁移名称（2026-11-20）。
+实现状态（2026-11-19）：Z1–Z7 的界面部分已落地——`crates/app/src/app_state/profiles.rs` 负责行模型、worker 与错误映射，`crates/app/src/pages/profiles.rs` 负责视图与内联确认；同日起安装/更新统一走 Store：`packages::apply` 先入库再写入活动档案，未迁移的散装模组在更新时被收编并备份原文件。未做：DESIGN-v2 §3 的 M4 整合包（pack manifest 导入/导出、CUPK1 打包）未开始；档案区还没有 `configOverrides` 编辑、条目级启用/禁用与条目复制（字段已存在，无 UI 入口）；迁移撤销（undo adopt）与内容库删除/清空的两段式入口未做。迁移收尾自动新建 `adopt_<时间戳>` 激活档案、档案重命名、迁移目标与档案部署规则统一、迁移排除自带桥并列出可迁移名称（2026-11-20）。
 
 边界：迁移只处理 Plugins 下的散装条目，被跳过的条目原样保留；删除档案不回滚已部署文件；档案应用只按 `Links.json` 重建 Plugins 根层部署，不触碰 `BepInEx/config`；路径越界、游戏运行中与目标冲突由 core 拒绝，界面只展示错误。
 
@@ -493,7 +494,7 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
 - 存储：`Storage.getItem / setItem`（每 app 私有，无需 capability）。
 - 通知：`Notifications.show / on`。
 - 图片：`Image` 元素 + `objectPosition`；远程图片受 `capabilities.network.hosts` 限制，本地资源始终允许。
-- 主题：`theme` → design tokens（`token()`）；**运行时改色的路径需实测**（见 4.3）。
+- 主题：语义色绑定 app 的色板信号，切换时刷新现有样式。
 - 打包：`nsh run/dev/check/build/package`，`nsh.json` 里声明 capabilities。
 
 ### 4.2 需要 Rust 自己实现的部分（nsh 不提供）
@@ -518,7 +519,7 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
 ### 4.3 需要先做 nsh 验证（spike）
 
 1. **大列表与网格**：50+ 卡片、封面异步加载、列表内展开详情、保持滚动位置；是否虚拟化、是否支持 ZIndex/浮层（详情浮层压在网格上）。
-2. **像素样式与缩放**：固定调色板能否只靠 design tokens 落地（无需运行时改色）；1x/2x/3x 整数缩放下 1px 双框、像素字体字距与描边是否精确对齐（Linux 软件渲染下发虚与否）。
+2. **像素样式与缩放**：1x/2x/3x 整数缩放下 1px 双框、像素字体字距与描边是否精确对齐（Linux 软件渲染下发虚与否）。
 3. **自绘位图合成**：把合成结果交给 `Image` 显示像素级精确（无插值）、可缩放平移（Viewbox 等价物）。
 4. **文件监视 + 后台任务 → UI 线程**：`notify` 线程回调如何安全更新 signal/状态栏。
 5. **模态与确认**：`Dialog`（自定义）与 `AlertDialog`（原生）在 Windows/Linux 的表现，以及“确认后才执行”的 await 链。

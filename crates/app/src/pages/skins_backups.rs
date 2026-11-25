@@ -1,7 +1,8 @@
 //! The skins and backups page.
 
+use crate::app_state::Ui;
+use crate::components::{button, panel, pix, rise_in, scaled};
 use crate::palette::*;
-use crate::ui::{Ui, button, panel, pix, rise_in, scaled};
 use nsh_core::prelude::*;
 
 pub fn skins_backups(ui: &Ui) -> impl IntoElement {

@@ -1,12 +1,9 @@
 //! Combined remote catalogue: filters, rows, pager and empty state.
 
+use crate::app_state::{RemoteFilter, RemoteRow, RemoteSource, Ui, nexus_page_count};
+use crate::components::{button, choice_button, panel, pix, rise_in, scaled, spinner, text_input};
 use crate::palette::*;
 use crate::shell::nav;
-use crate::ui::{
-    RemoteFilter, RemoteRow, RemoteSource, Ui, button, nexus_page_count, panel, pix, pix_c,
-    rise_in, scaled, spinner,
-};
-use nsh_base::input;
 use nsh_core::prelude::*;
 
 pub fn remote_mods(ui: &Ui) -> impl IntoElement {
@@ -32,19 +29,11 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
                 .items_center()
                 .gap(scaled(&z, 8.0))
                 .child(
-                    input()
+                    text_input(&z)
                         .value(ui.remote_query)
                         .placeholder(move || t!("remote.search_placeholder"))
-                        .font_family(crate::ui::PIXEL_FONT.family)
-                        .text_size(scaled(&z, 12.0))
-                        .h(scaled(&z, 24.0))
                         .flex_1()
                         .min_w(scaled(&z, 160.0))
-                        .px(scaled(&z, 6.0))
-                        .bg(rgb(SURFACE_RAISED))
-                        .border(scaled(&z, 1.0))
-                        .border_color(rgb(BORDER))
-                        .text_color(rgb(TEXT))
                         .on_change(move |text: &str| search.set_remote_query(text.to_owned())),
                 )
                 .child(remote_filters(&z, ui))
@@ -108,42 +97,14 @@ fn remote_filter_button(
     filter: RemoteFilter,
     label_key: &'static str,
 ) -> Text {
-    let z = *z;
     let apply = ui.clone();
     let current = ui.remote_filter;
-    pix_c(
+    choice_button(
+        z,
         move || t!(label_key),
-        11.0,
-        move || {
-            if current.get() == filter {
-                rgb(ACCENT)
-            } else {
-                rgb(TEXT_MUTED)
-            }
-        },
-        &z,
+        move || current.get() == filter,
+        move || apply.set_remote_filter(filter),
     )
-    .px(scaled(&z, 8.0))
-    .py(scaled(&z, 3.0))
-    .bg(move || {
-        if current.get() == filter {
-            rgb(SURFACE_RAISED)
-        } else {
-            rgb(SURFACE)
-        }
-    })
-    .border(scaled(&z, 1.0))
-    .border_color(move || {
-        if current.get() == filter {
-            rgb(ACCENT)
-        } else {
-            rgb(BORDER_DIM)
-        }
-    })
-    .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-    .active(|s| s.bg(rgb(BORDER_DIM)))
-    .on_press(move || apply.set_remote_filter(filter))
-    .flex_shrink_0()
 }
 
 fn source_filters(z: &Signal<u8>, ui: &Ui) -> View {
@@ -156,25 +117,12 @@ fn source_filters(z: &Signal<u8>, ui: &Ui) -> View {
         (RemoteSource::Nexus, "remote.nexus_source"),
     ] {
         let ui = ui.clone();
-        row = row.child(
-            pix_c(
-                move || t!(key),
-                11.0,
-                move || {
-                    rgb(if current.get() == source {
-                        ACCENT
-                    } else {
-                        TEXT_MUTED
-                    })
-                },
-                &z,
-            )
-            .px(scaled(&z, 8.0))
-            .py(scaled(&z, 3.0))
-            .border(scaled(&z, 1.0))
-            .border_color(rgb(BORDER_DIM))
-            .on_press(move || ui.set_remote_source(source)),
-        );
+        row = row.child(choice_button(
+            &z,
+            move || t!(key),
+            move || current.get() == source,
+            move || ui.set_remote_source(source),
+        ));
     }
     row
 }
@@ -321,9 +269,9 @@ fn remote_row(z: &Signal<u8>, row: &RemoteRow, ui: &Ui) -> View {
         .px(scaled(&z, 6.0))
         .py(scaled(&z, 6.0))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
+        .border_b_color(theme_color(BORDER_DIM))
         .border_l(scaled(&z, 2.0))
-        .border_l_color(rgb(if installed { ACCENT } else { SURFACE }))
+        .border_l_color(theme_color(if installed { ACCENT } else { SURFACE }))
 }
 
 fn remote_pager(z: &Signal<u8>, ui: &Ui) -> View {

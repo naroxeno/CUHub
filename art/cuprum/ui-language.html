@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuprum · UI 设计预览</title>
+<style>
+@font-face{font-family:Fusion;src:url(../../crates/app/assets/fonts/fusion-pixel-12px-proportional-zh_hans.ttf)}
+:root{color-scheme:dark;--bg:#131415;--panel:#1b1c1d;--raised:#242526;--line:#353330;--field:#77716a;--ink:#eee8de;--muted:#b4ada3;--green:#a0e4bc;--selection:#22372f;--copper:#ffb980;--red:#f09893;--link:#a2c9d3}
+*{box-sizing:border-box}
+body{margin:0;background:#101112;color:var(--ink);font:16px Fusion,monospace;padding:28px}
+button,input{font:inherit;color:inherit} button{cursor:pointer}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offset:3px}
+h1,h2,p{margin:0}h1{font-size:32px;font-weight:normal}h2{font-size:20px;font-weight:normal}
+p{line-height:1.6;color:var(--muted)}
+.app{max-width:1160px;margin:auto;background:var(--bg);border:1px solid var(--field);min-height:690px;display:grid;grid-template-columns:188px minmax(0,1fr);grid-template-rows:52px 1fr 40px}
+header,footer{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+footer{border-bottom:0;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+.brand,.actions,.row,.status{display:flex;align-items:center;gap:12px}
+.brand img{width:32px;height:32px;image-rendering:pixelated}.brand strong{font-size:23px;font-weight:normal}
+small,.muted{color:var(--muted)} small{font-size:14px}
+aside{display:flex;flex-direction:column;gap:6px;background:var(--panel);padding:24px 12px 14px;border-right:1px solid var(--line)}
+aside button{text-align:left;background:none;border:1px solid transparent;padding:12px;color:var(--muted)}
+aside button[aria-pressed=true]{color:var(--green);background:var(--selection);border-left:2px solid var(--green);padding-left:11px}
+aside hr{width:100%;border:0;border-top:1px solid var(--line);margin:8px 0}
+
+main{padding:30px 32px 36px}.page{display:grid;gap:24px;align-content:start}.page[hidden]{display:none}
+.heading{display:flex;align-items:end;justify-content:space-between;gap:12px}.heading p{margin-top:8px}
+.btn,input{min-height:38px;padding:8px 12px;border:1px solid var(--field);background:var(--raised)}
+.btn:hover,aside button:hover{background:#30312f;color:var(--ink)}.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--green);border-color:var(--green);color:#17241e}
+.btn.primary:hover{background:#c2efd3}.btn.danger{border-color:var(--red);color:var(--red)}
+input{min-width:0}input[type=search]{flex:1}
+.actions{flex-wrap:wrap}
+.green{color:var(--green)}.copper{color:var(--copper)}.red{color:var(--red)}
+.dot{width:7px;height:7px;background:currentColor;display:inline-block}
+.panel{background:var(--panel);border:1px solid var(--line)}
+.row{display:grid;grid-template-columns:minmax(150px,2fr) minmax(82px,1fr) minmax(82px,1fr) 60px;padding:12px 16px;border-top:1px solid var(--line);min-height:63px;gap:10px}
+.row:hover{background:var(--raised)}.row.head{min-height:0;border-top:0;color:var(--muted);font-size:14px}
+.row small{display:block;margin-top:4px}.row .btn{min-height:0;padding:5px 8px}.row[hidden]{display:none}
+.inset{padding:18px;display:grid;gap:12px}.columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+fieldset.panel{border:1px solid var(--field);margin:0;min-width:0}legend{padding:0 8px;margin-left:10px;color:var(--ink)}
+label{display:grid;gap:6px;color:var(--muted)}.status{font-size:15px}
+.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.swatch{display:grid;gap:8px;padding:12px;border:1px solid var(--line);min-width:0}
+.swatch i{height:28px;background:var(--sample);display:block;border:1px solid var(--field)}.swatch code{font-size:12px;color:var(--muted)}
+dialog{background:var(--panel);color:var(--ink);border:3px double var(--field);padding:24px;max-width:360px}dialog::backdrop{background:#0a0b0bc9}dialog p{margin:12px 0 20px}
+a{color:var(--link)}
+@media(max-width:760px){body{padding:0}.app{grid-template-columns:1fr}.app header,.app footer{grid-column:1}aside{flex-direction:row;flex-wrap:wrap;padding:8px;border-right:0}aside hr{display:none}main{padding:20px}.columns{grid-template-columns:1fr}.heading{align-items:start;flex-direction:column}.row{grid-template-columns:minmax(95px,2fr) 1fr 1fr 48px;padding:10px;font-size:14px}}
+</style>
+<div class="app">
+<header><div class="brand"><img src="../../crates/app/assets/branding/cuprum.png" alt=""><strong>Cuprum</strong></div><small>UI 设计预览</small></header>
+<aside aria-label="导航">
+<button data-page="mods" aria-pressed="true">本地模组</button>
+<button data-page="network" aria-pressed="false">多人游戏</button>
+<hr>
+<button data-page="kit" aria-pressed="false">控件与状态</button>
+</aside>
+<main>
+<section class="page" id="mods">
+<div class="heading"><div><h1>本地模组</h1><p>当前档案 <span class="green">默认</span></p></div><button class="btn primary" data-dialog="导入模组">＋ 导入模组</button></div>
+<div class="actions"><input type="search" id="search" placeholder="搜索模组…" aria-label="搜索模组"><button class="btn" id="updates" aria-pressed="false">仅可更新</button></div>
+<div class="panel" id="list">
+<div class="row head"><span>模组</span><span>版本</span><span>状态</span><span>操作</span></div>
+<div class="row" data-update><div>Casualties Together<small>BepInEx 插件</small></div><span>1.4.0</span><span class="copper">可更新</span><button class="btn" data-dialog="Casualties Together">详情</button></div>
+<div class="row"><div>CU Core Lib<small>依赖库</small></div><span>0.8.2</span><span class="green">已启用</span><button class="btn" data-dialog="CU Core Lib">详情</button></div>
+<div class="row"><div>Inventory Tweaks<small>BepInEx 插件</small></div><span>2.1.0</span><span class="muted">已禁用</span><button class="btn" data-dialog="Inventory Tweaks">详情</button></div>
+</div>
+<small id="results">显示 3 个模组</small>
+</section>
+<section class="page" id="network" hidden>
+<div class="heading"><div><h1>多人游戏</h1><p>创建房间，或使用朋友分享的房间码。</p></div><span class="status muted"><i class="dot"></i>未连接</span></div>
+<div class="columns">
+<fieldset class="panel inset"><legend>创建房间</legend><label>游戏端口<input type="number" value="7790" min="1" max="65535"></label><button class="btn primary" data-dialog="创建房间">创建房间</button></fieldset>
+<fieldset class="panel inset"><legend>加入房间</legend><label>房间码<input placeholder="粘贴房间码"></label><button class="btn" data-dialog="加入房间">加入房间</button></fieldset>
+</div>
+</section>
+<section class="page" id="kit" hidden>
+<h1>控件与状态</h1>
+<div class="swatches" id="swatches"></div>
+<div class="panel inset"><h2>操作</h2><div class="actions"><button class="btn primary" data-dialog="应用档案">应用档案</button><button class="btn" data-dialog="查看差异">查看差异</button><button class="btn danger" data-dialog="删除备份">删除备份</button></div></div>
+<div class="panel inset"><h2>状态</h2><div class="actions"><span class="status green"><i class="dot"></i>已连接</span><span class="status copper"><i class="dot"></i>可更新</span><span class="status red"><i class="dot"></i>部署失败</span><span class="status muted"><i class="dot"></i>已禁用</span></div></div>
+</section>
+</main>
+<footer><span>游戏未运行</span><span>桥接未连接</span></footer>
+</div>
+<dialog id="detail"><form method="dialog"><h2 id="detail-title"></h2><p>交互原型。此操作仅用于预览控件和对话框。</p><button class="btn">关闭</button></form></dialog>
+<script>
+const pages = document.querySelectorAll("[data-page]");
+for (const tab of pages) {
+  tab.addEventListener("click", () => {
+    for (const item of pages) {
+      const selected = item === tab;
+      item.setAttribute("aria-pressed", selected);
+      document.getElementById(item.dataset.page).hidden = !selected;
+    }
+  });
+}
+const search = document.getElementById("search");
+const updates = document.getElementById("updates");
+function filterRows() {
+  const query = search.value.trim().toLowerCase();
+  const onlyUpdates = updates.getAttribute("aria-pressed") === "true";
+  let count = 0;
+  for (const row of document.querySelectorAll("#list .row:not(.head)")) {
+    row.hidden = !row.textContent.toLowerCase().includes(query) || (onlyUpdates && !row.hasAttribute("data-update"));
+    if (!row.hidden) count++;
+  }
+  document.getElementById("results").textContent = "显示 " + count + " 个模组";
+}
+search.addEventListener("input", filterRows);
+updates.addEventListener("click", () => {
+  const selected = updates.getAttribute("aria-pressed") !== "true";
+  updates.setAttribute("aria-pressed", selected);
+  updates.classList.toggle("primary", selected);
+  filterRows();
+});
+const dialog = document.getElementById("detail");
+for (const button of document.querySelectorAll("[data-dialog]")) {
+  button.addEventListener("click", () => {
+    document.getElementById("detail-title").textContent = button.dataset.dialog;
+    dialog.showModal();
+  });
+}
+const tokens = [["岩底","bg"],["岩面","panel"],["抬高面","raised"],["铜绿","green"],["暖铜","copper"],["赤褐红","red"]];
+for (const [label, token] of tokens) {
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--" + token).trim();
+  const swatch = document.createElement("div");
+  swatch.className = "swatch";
+  swatch.style.setProperty("--sample", color);
+  swatch.innerHTML = "<i></i><span>" + label + "</span><code>" + color.toUpperCase() + "</code>";
+  document.getElementById("swatches").append(swatch);
+}
+</script>
+</html>

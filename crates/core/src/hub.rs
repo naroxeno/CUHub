@@ -559,6 +559,10 @@ impl Hub {
         self.settings_store.path()
     }
 
+    pub fn custom_theme(&self) -> io::Result<Option<String>> {
+        self.settings_store.custom_theme()
+    }
+
     pub fn save_settings(&mut self, settings: &Settings) -> io::Result<()> {
         let mut normalized = settings.clone();
         normalized.clamp_ui_scale();

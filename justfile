@@ -2,9 +2,10 @@
 
 # Prefer the user's own cargo (~/.cargo/bin) over the system one.
 user_home := if os() == "windows" { env_var("USERPROFILE") } else { home_directory() }
-export PATH := user_home + "/.cargo/bin:" + env_var("PATH")
+export PATH := user_home + "/.cargo/bin:" + user_home + "/.local/bin:" + env_var("PATH")
 
 set windows-shell := ["niu", "-c"]
+installer_shell := if os() == "windows" { "niu" } else { "sh" }
 
 # Cross builds: package-windows runs here through cargo-xwin (cargo install
 # --locked cargo-xwin, rustup target add x86_64-pc-windows-msvc), package-macos
@@ -78,7 +79,7 @@ package-linux:
 package-windows:
     rm -rf dist/windows
     nsh package --target windows --out dist/windows
-    niu ./scripts/windows-installer.sh
+    {{installer_shell}} ./scripts/windows-installer.sh
 
 # macOS .app in dist/macos; needs a Mac, nsh links the AppKit runner against the SDK.
 package-macos:

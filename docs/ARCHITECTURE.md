@@ -103,14 +103,14 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 - `pages`：nexus、remote_mods、local_mods、profiles、multiplayer、skins_backups、home（Hub Home 磁贴）、settings、about。
 - `setup`：首启设置向导（六步全窗层），读写 Hub 设置，含内容库位置；BepInEx 步只读。
 - `ui`：字体、像素文字、面板（1px 双框 + 标题断口）、按钮与缩放 helper；组件多了再拆 `components`。
-- `palette`：像素调色板 token 与图标着色（固定常量，不做运行时派生）。
+- `palette`：在 app 内把 TOML 配色解析为语义色板。视图和图标绑定 UI 线程上的色板信号，切换时原地重绘。
 - `assets`：内嵌像素字体、16×16 图标集。
 
 ## 8. 持久化
 
 - 用户数据全在应用数据目录（布局见 `docs/FEATURES.md` §3），不在安装目录、不进仓库、不进日志。
 - 可执行文件旁 `Data/` 可覆盖内嵌目录数据（依赖、不兼容、发布说明、离线公告）。
-- 设置写缩进 JSON；凭据单独加密文件；其余缓存均为可丢弃文件。
+- 设置写缩进 JSON，含当前主题 ID。core 只读应用数据目录下的可选 `Theme.toml`，解析和呈现在 app。凭据单独加密文件，其余缓存均为可丢弃文件。
 
 ## 9. spike 结论与剩余未决
 
@@ -138,5 +138,5 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 ## 10. 明确不做
 
 - 自更新、遥测、匿名安装 ID、应用内卸载器、Supabase 订阅源。
-- 插件系统、配置 DSL、事件总线、用户自定义主题。
+- 插件系统、配置 DSL、事件总线。
 - 通用 RPC、任意代码执行、宿主驱动的文件读写；桥只调用游戏侧声明过的命令 id。

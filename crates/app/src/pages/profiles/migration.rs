@@ -5,10 +5,9 @@ use cuhub_core::hub::{MigrationPreview, MigrationRow};
 use cuhub_core::sources::MatchKind;
 use nsh_core::prelude::*;
 
+use crate::app_state::{MigrationResult, ProfilesBusy, Ui};
+use crate::components::{button, danger_button, panel, pix, scaled, spinner};
 use crate::palette::*;
-use crate::ui::{
-    MigrationResult, ProfilesBusy, Ui, button, danger_button, panel, pix, scaled, spinner,
-};
 
 pub(super) fn panel_view(ui: &Ui) -> View {
     let z = ui.zoom;
@@ -76,7 +75,7 @@ fn migration_row(ui: &Ui, row: &MigrationRow) -> View {
         .gap(scaled(&z, 4.0))
         .py(scaled(&z, 6.0))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
+        .border_b_color(theme_color(BORDER_DIM))
         .child(pix(
             move || {
                 t!(

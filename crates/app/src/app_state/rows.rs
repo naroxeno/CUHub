@@ -1,6 +1,5 @@
 //! Row models and the pure functions that build them from hub data.
 
-use super::widgets::NEXUS_PAGE_SIZE;
 use cuhub_core::github::{CheckFailure, ReleaseInfo};
 use cuhub_core::hub::Hub;
 use cuhub_core::metadata::MetadataMod;
@@ -394,6 +393,8 @@ pub(super) fn page_slice<T: Clone>(rows: &[T], page: usize) -> Vec<T> {
     let end = (start + NEXUS_PAGE_SIZE).min(rows.len());
     rows[start..end].to_vec()
 }
+
+pub const NEXUS_PAGE_SIZE: usize = 50;
 
 pub fn nexus_page_count(total: usize) -> usize {
     total.div_ceil(NEXUS_PAGE_SIZE).max(1)

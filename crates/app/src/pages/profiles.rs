@@ -2,10 +2,10 @@
 
 mod migration;
 
+use crate::app_state::{ProfileRow, Ui};
+use crate::components::{button, danger_button, panel, pix, rise_in, scaled, text_input};
 use crate::palette::*;
 use crate::shell::nav;
-use crate::ui::{ProfileRow, Ui, button, danger_button, panel, pix, rise_in, scaled};
-use nsh_base::input;
 use nsh_core::prelude::*;
 
 pub fn profiles(ui: &Ui) -> impl IntoElement {
@@ -92,9 +92,9 @@ fn empty_profile(ui: &Ui) -> View {
         .flex_col()
         .px(scaled(&z, 8.0))
         .py(scaled(&z, 8.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border(scaled(&z, 1.0))
-        .border_color(rgb(BORDER_DIM))
+        .border_color(theme_color(BORDER_DIM))
         .child(pix(move || t!("profiles.empty"), 11.0, TEXT_MUTED, &z))
 }
 
@@ -128,7 +128,7 @@ fn profile_row(ui: &Ui, row: &ProfileRow) -> View {
         .gap(scaled(&z, 6.0))
         .py(scaled(&z, 6.0))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
+        .border_b_color(theme_color(BORDER_DIM))
         .child(
             view()
                 .flex_row()
@@ -279,17 +279,10 @@ fn rename_block(ui: &Ui, name: &str) -> View {
             &z,
         ))
         .child(
-            input()
+            text_input(&z)
                 .value(draft)
                 .on_change(move |text: &str| draft.set(text.to_owned()))
-                .placeholder(move || t!("profiles.name_placeholder"))
-                .font_family(crate::ui::PIXEL_FONT.family)
-                .text_size(scaled(&z, 12.0))
-                .h(scaled(&z, 24.0))
-                .px(scaled(&z, 6.0))
-                .bg(rgb(SURFACE_RAISED))
-                .border(scaled(&z, 1.0))
-                .border_color(rgb(BORDER)),
+                .placeholder(move || t!("profiles.name_placeholder")),
         )
         .child(
             view()
@@ -322,18 +315,10 @@ fn create_block(ui: &Ui) -> View {
         .flex_col()
         .gap(scaled(&z, 8.0))
         .child(
-            input()
+            text_input(&z)
                 .value(name)
                 .on_change(move |text: &str| name_input.set(text.to_owned()))
-                .placeholder(move || t!("profiles.name_placeholder"))
-                .font_family(crate::ui::PIXEL_FONT.family)
-                .text_size(scaled(&z, 12.0))
-                .text_color(rgb(TEXT))
-                .h(scaled(&z, 24.0))
-                .px(scaled(&z, 6.0))
-                .bg(rgb(SURFACE_RAISED))
-                .border(scaled(&z, 1.0))
-                .border_color(rgb(BORDER)),
+                .placeholder(move || t!("profiles.name_placeholder")),
         )
         .child(
             view()

@@ -1,11 +1,10 @@
 //! Catalogue filters, sorting and controls.
 
+use crate::app_state::{NEXUS_PAGE_SIZE, NexusModRow, Ui, nexus_page_count};
+use crate::components::{button, pix, scaled, spinner, text_input};
 use crate::palette::*;
-use crate::ui::{
-    NEXUS_PAGE_SIZE, NexusModRow, PIXEL_FONT, Ui, button, nexus_page_count, pix, scaled, spinner,
-};
 use cuhub_core::mods::ModStatus;
-use nsh_base::{input, menu, menu_item};
+use nsh_base::{menu, menu_item};
 use nsh_core::prelude::*;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -132,9 +131,9 @@ pub(super) fn toolbar(ui: &Ui, browse: Browse) -> View {
         .flex_col()
         .gap(scaled(&z, 8.0))
         .p(scaled(&z, 8.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
+        .border_b_color(theme_color(BORDER_DIM))
         .child(
             view()
                 .flex_row()
@@ -160,20 +159,15 @@ pub(super) fn toolbar(ui: &Ui, browse: Browse) -> View {
                 .flex_wrap()
                 .gap(scaled(&z, 6.0))
                 .child(
-                    input()
+                    text_input(&z)
                         .value(browse.query)
                         .placeholder(move || t!("nexus.search"))
                         .label(move || t!("nexus.search"))
-                        .font_family(PIXEL_FONT.family)
-                        .text_size(scaled(&z, 12.0))
                         .h(scaled(&z, 27.0))
                         .min_w(scaled(&z, 140.0))
                         .flex_1()
-                        .px(scaled(&z, 6.0))
-                        .bg(rgb(SURFACE))
-                        .border(scaled(&z, 1.0))
-                        .border_color(rgb(BORDER_DIM))
-                        .text_color(rgb(TEXT))
+                        .bg(theme_color(SURFACE))
+                        .border_color(theme_color(BORDER_DIM))
                         .on_change(move |text: &str| {
                             browse.query.set(text.to_owned());
                             browse.go_to(0);
@@ -283,9 +277,9 @@ fn choices<T: Copy + PartialEq + 'static>(
     let mut dropdown = menu()
         .offset(scaled(&z, 3.0))
         .popup_style(move |s| {
-            s.bg(rgb(SURFACE_RAISED))
+            s.bg(theme_color(SURFACE_RAISED))
                 .border(scaled(&z, 1.0))
-                .border_color(rgb(BORDER_DIM))
+                .border_color(theme_color(BORDER_DIM))
         })
         .trigger(
             button(
@@ -300,7 +294,7 @@ fn choices<T: Copy + PartialEq + 'static>(
                 false,
                 || {},
             )
-            .text_color(rgb(TEXT)),
+            .text_color(theme_color(TEXT)),
         );
     for &(option, key) in options {
         dropdown = dropdown.child(
@@ -308,8 +302,8 @@ fn choices<T: Copy + PartialEq + 'static>(
                 .checked(move || Some(value.get() == option))
                 .px(scaled(&z, 8.0))
                 .py(scaled(&z, 5.0))
-                .hover(|s| s.bg(rgb(BORDER_DIM)))
-                .focus(|s| s.bg(rgb(BORDER_DIM)))
+                .hover(|s| s.bg(theme_color(BORDER_DIM)))
+                .focus(|s| s.bg(theme_color(BORDER_DIM)))
                 .on_select(move || {
                     value.set(option);
                     browse.go_to(0);

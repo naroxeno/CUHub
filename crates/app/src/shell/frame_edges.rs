@@ -3,7 +3,8 @@
 use nsh_core::desktop::ResizeEdge;
 use nsh_core::prelude::*;
 
-use crate::ui::{Ui, scaled};
+use crate::app_state::Ui;
+use crate::components::scaled;
 
 const EDGE_BASE: f32 = 6.0;
 const CORNER_BASE: f32 = 10.0;

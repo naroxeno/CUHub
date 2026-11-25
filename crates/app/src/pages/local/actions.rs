@@ -1,5 +1,6 @@
+use crate::app_state::{LocalModRow, Ui};
+use crate::components::{button, pix, scaled, spinner};
 use crate::palette::*;
-use crate::ui::{LocalModRow, Ui, button, pix, scaled, spinner};
 use nsh_base::{menu, menu_item};
 use nsh_core::prelude::*;
 use nsh_core::{LayoutAnimation, LayoutTransition};
@@ -181,14 +182,14 @@ fn actions_menu(z: &Signal<u8>, label: &'static str) -> nsh_base::MenuElement {
         .align(Align::End)
         .offset(scaled(&z, 4.0))
         .popup_style(move |s| {
-            s.bg(rgb(SURFACE_RAISED))
+            s.bg(theme_color(SURFACE_RAISED))
                 .border(scaled(&z, 1.0))
-                .border_color(rgb(BORDER))
+                .border_color(theme_color(BORDER))
         })
         .trigger(
             button(&z, move || t!(label), false, || {})
-                .text_color(rgb(TEXT))
-                .border_color(rgb(BORDER)),
+                .text_color(theme_color(TEXT))
+                .border_color(theme_color(BORDER)),
         )
 }
 
@@ -196,17 +197,41 @@ fn menu_item_style(z: &Signal<u8>) -> nsh_base::MenuItemElement {
     menu_item()
         .px(scaled(z, 8.0))
         .py(scaled(z, 5.0))
-        .hover(|s| s.bg(rgb(ACCENT_PRESS)))
-        .focus(|s| s.bg(rgb(ACCENT_PRESS)))
+        .hover(|s| s.bg(theme_color(ACCENT_PRESS)))
+        .focus(|s| s.bg(theme_color(ACCENT_PRESS)))
 }
 
 fn action(
     z: &Signal<u8>,
     label: &'static str,
-    color: u32,
+    color: ColorRole,
     select: impl Fn() + 'static,
 ) -> impl IntoElement {
     menu_item_style(z)
         .on_select(select)
         .child(pix(move || t!(label), 11.0, color, z))
+}
+
+pub(super) fn batch_checkbox(z: &Signal<u8>, ui: &Ui, key: String, enabled: bool) -> View {
+    let z = *z;
+    let press = ui.clone();
+    let press_key = key.clone();
+    let watch = ui.clone();
+    let mut cell = view()
+        .w(scaled(&z, 12.0))
+        .h(scaled(&z, 12.0))
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .border(scaled(&z, 1.0))
+        .border_color(theme_color(BORDER));
+    if enabled {
+        cell = cell.cursor(Cursor::Pointer).on_press(move || {
+            press.toggle_batch_selection(press_key.clone());
+        });
+    }
+    cell.child(when(
+        move || watch.batch_selection.get().contains(&key),
+        move || pix("✓", 9.0, ACCENT, &z),
+    ))
 }

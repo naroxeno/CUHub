@@ -1,8 +1,9 @@
 //! The floating task button, its badge and the right-side task drawer.
 
 use super::task_cards::card_list;
+use crate::app_state::{Ui, pending_count};
+use crate::components::{button, pix, scaled, states};
 use crate::palette::*;
-use crate::ui::{Ui, button, pending_count, pix, scaled, states};
 use nsh_base::{SheetEvent, sheet};
 use nsh_core::prelude::*;
 
@@ -30,12 +31,12 @@ fn task_button(ui: &Ui) -> View {
             .gap(scaled(&z, 6.0))
             .px(scaled(&z, 10.0))
             .py(scaled(&z, 6.0))
-            .bg(rgb(SURFACE_RAISED))
+            .bg(theme_color(SURFACE_RAISED))
             .border(scaled(&z, 1.0))
-            .border_color(rgb(BORDER))
+            .border_color(theme_color(BORDER))
             .cursor(Cursor::Pointer),
     )
-    .hover(|style| style.bg(rgb(ACCENT_PRESS)))
+    .hover(|style| style.bg(theme_color(ACCENT_PRESS)))
     .on_press(move || press.task_open.set(true))
     .child(pix(move || t!("task.button"), 11.0, TEXT, &label_z))
     .child(badge(&badge_z, &badge_ui))
@@ -55,7 +56,7 @@ fn badge(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
                 .justify_center()
                 .w(scaled(&z, 16.0))
                 .h(scaled(&z, 16.0))
-                .bg(rgb(DANGER))
+                .bg(theme_color(DANGER))
                 .animation(
                     KeyframeAnimation::new(Keyframes::Pulse)
                         .duration(900.0)
@@ -93,9 +94,9 @@ pub fn task_drawer(ui: &Ui) -> impl IntoElement {
                 .flex_col()
                 .w_full()
                 .h_full()
-                .bg(rgb(SURFACE))
+                .bg(theme_color(SURFACE))
                 .border_l(scaled(&z_body, 1.0))
-                .border_l_color(rgb(BORDER))
+                .border_l_color(theme_color(BORDER))
                 .child(drawer_header(&z_body, &header_ui))
                 .child(
                     scroll()
@@ -118,9 +119,9 @@ fn drawer_header(z: &Signal<u8>, ui: &Ui) -> View {
         .gap(scaled(&z, 8.0))
         .px(scaled(&z, 12.0))
         .py(scaled(&z, 10.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER))
+        .border_b_color(theme_color(BORDER))
         .child(pix(move || t!("task.title"), 12.0, TEXT, &z))
         .child(button(
             &z,

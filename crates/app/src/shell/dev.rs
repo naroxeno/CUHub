@@ -3,8 +3,9 @@
 use nsh_core::prelude::*;
 
 use super::nav;
+use crate::app_state::Ui;
+use crate::components::{button, fade_in, panel, pix, rise_in, scaled};
 use crate::palette::*;
-use crate::ui::{Ui, button, fade_in, panel, pix, rise_in, scaled};
 
 pub fn dev_overlay(ui: &Ui) -> impl IntoElement {
     let show = ui.clone();

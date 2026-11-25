@@ -4,9 +4,11 @@ use nsh_base::tooltip;
 use nsh_core::prelude::*;
 use nsh_core::{LayoutAnimation, LayoutTransition};
 
+use super::icon_masks;
 use super::nav::{self, NavEntry, NavKind};
+use crate::app_state::Ui;
+use crate::components::{PRESS_SHIFT, STATE_MS, pix, pix_c, pixel_icon, scaled};
 use crate::palette::*;
-use crate::ui::{PRESS_SHIFT, STATE_MS, Ui, pix, pix_c, scaled};
 
 const WIDE_RAIL: f32 = 176.0;
 const NARROW_RAIL: f32 = 44.0;
@@ -68,17 +70,17 @@ fn search_box(ui: Ui, narrow: bool) -> impl IntoElement {
         .mx(scaled(&z, 5.0))
         .my(scaled(&z, 6.0))
         .gap(scaled(&z, 6.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border(scaled(&z, 1.0))
-        .border_color(rgb(BORDER))
+        .border_color(theme_color(BORDER))
         .transition()
         .duration(STATE_MS)
-        .hover(|s| s.border_color(rgb(ACCENT)))
-        .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
+        .hover(|s| s.border_color(theme_color(ACCENT)))
+        .active(|s| s.bg(theme_color(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
         .cursor(Cursor::Pointer)
         .overflow_hidden()
         .on_press(move || press.notice.set(t!("notice.search_soon")))
-        .child(pix("?", 10.0, TEXT_DIM, &z))
+        .child(pixel_icon(icon_masks::SEARCH, theme_color(TEXT_MUTED), &z))
         .child(when(
             move || !narrow,
             move || pix(move || t!("nav.search"), 11.0, TEXT_MUTED, &z),
@@ -117,9 +119,9 @@ fn wide_rail(ui: Ui) -> impl IntoElement {
         .w_full()
         .flex_1()
         .min_h(px(0.0))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border_r(scaled(&z, 1.0))
-        .border_r_color(rgb(BORDER))
+        .border_r_color(theme_color(BORDER))
         .child(scroll().flex_1().min_h(px(0.0)).scrollbar(true).child(list))
         .child(footer(ui, false))
 }
@@ -143,9 +145,9 @@ fn narrow_rail(ui: Ui) -> impl IntoElement {
         .w_full()
         .flex_1()
         .min_h(px(0.0))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border_r(scaled(&z, 1.0))
-        .border_r_color(rgb(BORDER))
+        .border_r_color(theme_color(BORDER))
         .child(scroll().flex_1().min_h(px(0.0)).scrollbar(true).child(list))
         .child(footer(ui, true))
 }
@@ -159,15 +161,23 @@ fn fold_toggle(ui: Ui, narrow: bool) -> impl IntoElement {
         .justify_center()
         .h(scaled(&z, 24.0))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .active(|s| s.bg(rgb(BORDER_DIM)))
+        .border_b_color(theme_color(BORDER_DIM))
+        .hover(|s| s.bg(theme_color(SURFACE_RAISED)))
+        .active(|s| s.bg(theme_color(BORDER_DIM)))
         .on_press(move || {
             animate_layout(fold_animation());
             let folded = press.nav_collapsed.get();
             press.nav_collapsed.set(!folded);
         })
-        .child(pix(if narrow { ">>" } else { "<<" }, 10.0, TEXT_DIM, &z))
+        .child(pixel_icon(
+            if narrow {
+                icon_masks::RIGHT
+            } else {
+                icon_masks::LEFT
+            },
+            theme_color(TEXT_MUTED),
+            &z,
+        ))
 }
 
 fn group_header(ui: Ui, group: &'static str) -> impl IntoElement {
@@ -187,12 +197,12 @@ fn group_header(ui: Ui, group: &'static str) -> impl IntoElement {
         .justify_between()
         .h(scaled(&z, 28.0))
         .px(scaled(&z, 10.0))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .focus_visible(|s| s.bg(rgb(BORDER_DIM)))
-        .active(|s| s.bg(rgb(BORDER_DIM)))
+        .border_b_color(theme_color(BORDER_DIM))
+        .hover(|s| s.bg(theme_color(SURFACE_RAISED)))
+        .focus_visible(|s| s.bg(theme_color(BORDER_DIM)))
+        .active(|s| s.bg(theme_color(BORDER_DIM)))
         .cursor(Cursor::Pointer)
         .accessibility_state(move || AccessibilityState {
             expanded: Some(expanded.nav_closed_group.get() != group),
@@ -214,20 +224,20 @@ fn group_header(ui: Ui, group: &'static str) -> impl IntoElement {
                         active_child.nav_closed_group.get() == group
                             && nav::in_group(active_child.page.get(), group)
                     },
-                    move || view().w(scaled(&z, 4.0)).h(scaled(&z, 4.0)).bg(rgb(ACCENT)),
-                ))
-                .child(pix(
                     move || {
-                        if open.nav_closed_group.get() == group {
-                            "▸"
-                        } else {
-                            "▾"
-                        }
+                        view()
+                            .w(scaled(&z, 4.0))
+                            .h(scaled(&z, 4.0))
+                            .bg(theme_color(ACCENT))
                     },
-                    10.0,
-                    TEXT_MUTED,
-                    &z,
-                )),
+                ))
+                .child(
+                    when(
+                        move || open.nav_closed_group.get() == group,
+                        move || pixel_icon(icon_masks::RIGHT, theme_color(TEXT_MUTED), &z),
+                    )
+                    .otherwise(move || pixel_icon(icon_masks::DOWN, theme_color(TEXT_MUTED), &z)),
+                ),
         )
 }
 
@@ -249,42 +259,42 @@ fn nav_row(ui: Ui, entry: &'static NavEntry, child: bool) -> View {
         .min_w(px(0.0))
         .items_center()
         .h(scaled(&z, if child { 24.0 } else { 28.0 }))
-        .bg(move || {
-            if selected() {
-                rgb(SURFACE_RAISED)
-            } else {
-                rgb(SURFACE)
-            }
-        })
+        .bg(theme_color_with(move || {
+            if selected() { ACCENT_SURFACE } else { SURFACE }
+        }))
         .border_l(scaled(&z, 2.0))
-        .border_l_color(move || {
-            if selected() {
-                rgb(ACCENT)
-            } else {
-                rgb(SURFACE)
-            }
-        })
+        .border_l_color(theme_color_with(
+            move || {
+                if selected() { ACCENT } else { SURFACE }
+            },
+        ))
         .px(scaled(&z, 9.0))
+        .gap(scaled(&z, 6.0))
         .transition()
         .duration(STATE_MS)
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .focus_visible(|s| s.bg(rgb(BORDER_DIM)))
-        .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
+        .hover(|s| s.bg(theme_color(SURFACE_RAISED)))
+        .focus_visible(|s| s.bg(theme_color(BORDER_DIM)))
+        .active(|s| s.bg(theme_color(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
         .cursor(Cursor::Pointer)
         .accessibility_state(move || AccessibilityState {
             selected: selected(),
             ..AccessibilityState::default()
         })
         .on_press(move || run_entry(&ui, entry))
+        .child(pixel_icon(
+            entry.icon,
+            theme_color_with(move || if selected() { ACCENT } else { TEXT_MUTED }),
+            &z,
+        ))
         .child(
             pix_c(
                 move || t!(key),
                 12.0,
-                move || match (selected(), child) {
-                    (true, false) => rgb(ACCENT),
-                    (true, true) => rgb(TEXT),
-                    (false, _) => rgb(TEXT_MUTED),
-                },
+                theme_color_with(move || match (selected(), child) {
+                    (true, false) => ACCENT,
+                    (true, true) => TEXT,
+                    (false, _) => TEXT_MUTED,
+                }),
                 &z,
             )
             .min_w(px(0.0))
@@ -302,7 +312,7 @@ fn nav_row(ui: Ui, entry: &'static NavEntry, child: bool) -> View {
         view()
             .flex_row()
             .border_b(scaled(&z, 1.0))
-            .border_b_color(rgb(BORDER_DIM))
+            .border_b_color(theme_color(BORDER_DIM))
             .child(row)
     }
 }
@@ -312,12 +322,12 @@ fn branch_guide(z: &Signal<u8>) -> View {
         .flex_row()
         .items_center()
         .border_l(scaled(z, 1.0))
-        .border_l_color(rgb(BORDER_DIM))
+        .border_l_color(theme_color(BORDER_DIM))
         .child(
             view()
                 .w(scaled(z, 5.0))
                 .h(scaled(z, 1.0))
-                .bg(rgb(BORDER_DIM)),
+                .bg(theme_color(BORDER_DIM)),
         )
 }
 
@@ -335,27 +345,27 @@ fn icon_row(ui: Ui, entry: &'static NavEntry) -> impl IntoElement {
         .items_center()
         .justify_center()
         .h(scaled(&z, 28.0))
-        .bg(move || {
+        .bg(theme_color_with(move || {
             if is_page && bg.page.get() == entry.id {
-                rgb(SURFACE_RAISED)
+                ACCENT_SURFACE
             } else {
-                rgb(SURFACE)
+                SURFACE
             }
-        })
+        }))
         .border_l(scaled(&z, 2.0))
-        .border_l_color(move || {
+        .border_l_color(theme_color_with(move || {
             if is_page && edge.page.get() == entry.id {
-                rgb(ACCENT)
+                ACCENT
             } else {
-                rgb(SURFACE)
+                SURFACE
             }
-        })
+        }))
         .transition()
         .duration(STATE_MS)
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
+        .hover(|s| s.bg(theme_color(SURFACE_RAISED)))
+        .active(|s| s.bg(theme_color(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
         .cursor(Cursor::Pointer)
-        .focus_visible(|s| s.bg(rgb(BORDER_DIM)))
+        .focus_visible(|s| s.bg(theme_color(BORDER_DIM)))
         .label(move || t!(key))
         .accessibility_state(move || AccessibilityState {
             selected: is_page && page.get() == entry.id,
@@ -363,16 +373,15 @@ fn icon_row(ui: Ui, entry: &'static NavEntry) -> impl IntoElement {
         })
         .tooltip(sidebar_hint(&z, key))
         .on_press(move || run_entry(&press, entry))
-        .child(pix_c(
-            move || entry.icon.to_owned(),
-            10.0,
-            move || {
+        .child(pixel_icon(
+            entry.icon,
+            theme_color_with(move || {
                 if is_page && text.page.get() == entry.id {
-                    rgb(ACCENT)
+                    ACCENT
                 } else {
-                    rgb(TEXT_MUTED)
+                    TEXT_MUTED
                 }
-            },
+            }),
             &z,
         ))
 }
@@ -382,9 +391,9 @@ fn sidebar_hint(z: &Signal<u8>, key: &'static str) -> impl IntoTooltip {
         view()
             .px(scaled(z, 7.0))
             .py(scaled(z, 4.0))
-            .bg(rgb(SURFACE_RAISED))
+            .bg(theme_color(SURFACE_RAISED))
             .border(scaled(z, 1.0))
-            .border_color(rgb(BORDER_DIM))
+            .border_color(theme_color(BORDER_DIM))
             .child(pix(move || t!(key), 11.0, TEXT, z)),
     )
 }
@@ -399,7 +408,7 @@ fn group_boundary(
         view()
             .h(scaled(&z, 1.0))
             .w_full()
-            .bg(rgb(BORDER_DIM))
+            .bg(theme_color(BORDER_DIM))
             .into_element()
     } else {
         view().h(px(0.0)).into_element()
@@ -415,15 +424,17 @@ fn footer(ui: Ui, narrow: bool) -> impl IntoElement {
         .justify_center()
         .h(scaled(&z, 28.0))
         .border_t(scaled(&z, 1.0))
-        .border_t_color(rgb(BORDER))
-        .bg(rgb(SURFACE))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .active(|s| s.bg(rgb(BORDER_DIM)))
+        .border_t_color(theme_color(BORDER_DIM))
+        .bg(theme_color(ACCENT_SURFACE))
+        .hover(|s| s.bg(theme_color(ACCENT_PRESS)))
+        .focus_visible(|s| s.bg(theme_color(ACCENT_PRESS)))
+        .active(|s| s.bg(theme_color(BORDER_DIM)))
+        .cursor(Cursor::Pointer)
         .gap(scaled(&z, 6.0))
         .on_press(move || run_entry(&launch, &nav::LAUNCH_ENTRY))
-        .child(pix(nav::LAUNCH_ENTRY.icon, 10.0, ACCENT, &z));
+        .child(pixel_icon(nav::LAUNCH_ENTRY.icon, theme_color(ACCENT), &z));
     if !narrow {
-        row = row.child(pix(move || t!("topbar.launch"), 12.0, TEXT, &z));
+        row = row.child(pix(move || t!("topbar.launch"), 12.0, ACCENT, &z));
     }
     let mut footer = view().flex_col().child(row);
     if !narrow {
@@ -440,7 +451,7 @@ fn version_row(ui: Ui) -> impl IntoElement {
         .items_center()
         .justify_center()
         .border_t(scaled(&z, 1.0))
-        .border_t_color(rgb(BORDER_DIM))
+        .border_t_color(theme_color(BORDER_DIM))
         .on_press(move || tap_version(&tap))
         .child(pix(
             format!("v{}", env!("CARGO_PKG_VERSION")),

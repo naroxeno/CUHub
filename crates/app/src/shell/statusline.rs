@@ -3,8 +3,9 @@
 use nsh_core::prelude::*;
 
 use super::nav;
+use crate::app_state::{Ui, bridge_color, bridge_text};
+use crate::components::{PIXEL_FONT, scaled};
 use crate::palette::*;
-use crate::ui::{PIXEL_FONT, Ui, bridge_color, bridge_text, scaled};
 
 pub fn statusline(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
@@ -22,9 +23,9 @@ pub fn statusline(ui: &Ui) -> impl IntoElement {
         .items_center()
         .h(scaled(&z, 24.0))
         .px(scaled(&z, 8.0))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border_t(scaled(&z, 1.0))
-        .border_t_color(rgb(BORDER))
+        .border_t_color(theme_color(BORDER))
         .child(
             view().flex_1().min_w(px(0.0)).child(
                 text(move || {
@@ -41,7 +42,7 @@ pub fn statusline(ui: &Ui) -> impl IntoElement {
                 })
                 .text_size(scaled(&z, 10.0))
                 .font_family(PIXEL_FONT.family)
-                .text_color(rgb(TEXT_MUTED))
+                .text_color(theme_color(TEXT_MUTED))
                 .bind_motion(&toast),
             ),
         )
@@ -49,6 +50,6 @@ pub fn statusline(ui: &Ui) -> impl IntoElement {
             text(move || bridge_text(bridge.get()))
                 .text_size(scaled(&z, 10.0))
                 .font_family(PIXEL_FONT.family)
-                .text_color(rgb(bridge_color(&bridge.get()))),
+                .text_color(theme_color_with(move || bridge_color(&bridge.get()))),
         )
 }

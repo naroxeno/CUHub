@@ -10,6 +10,7 @@ cuhub-core = { path = "../core" }
 nsh-core = "0.5.1"
 nsh-base = "0.5.1"
 env_logger = "0.11"
+toml = "1.2.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nsh-platform-linux = { version = "0.5.1", default-features = false, features = ["shader", "editor", "emoji-picker", "highlight", "math", "plot", "rich-editor", "term"] }

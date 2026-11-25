@@ -4,8 +4,9 @@ mod browse;
 mod card;
 mod markup;
 
+use crate::app_state::{Ui, nexus_page_count};
+use crate::components::{button, pix, rise_in, scaled};
 use crate::palette::*;
-use crate::ui::{Ui, button, nexus_page_count, pix, rise_in, scaled};
 use browse::{Browse, toolbar};
 use card::{catalogue_card, detail_sheet};
 use nsh_core::prelude::*;
@@ -126,9 +127,9 @@ fn pager(z: &Signal<u8>, browse: Browse) -> View {
         .gap(scaled(&z, 6.0))
         .p(scaled(&z, 6.0))
         .pr(scaled(&z, 102.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border_t(scaled(&z, 1.0))
-        .border_t_color(rgb(BORDER_DIM));
+        .border_t_color(theme_color(BORDER_DIM));
     bar = bar.child(pager_button(&z, browse, false)).child(pix(
         move || {
             let total = results.get().len();

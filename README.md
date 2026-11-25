@@ -1,44 +1,49 @@
-# CUHub
+<p align="center"><img src="crates/app/assets/branding/cuprum-package.png" width="128" height="128" alt="Cuprum pixel-art copper ore icon"></p>
 
-An unofficial desktop mod manager and launcher for [Casualties: Unknown](https://store.steampowered.com/app/4576490/). Built in Rust with [nsh](https://nsh.dev) for Windows and Linux.
+<h1 align="center">Cuprum</h1>
 
-[简体中文](README.zh-CN.md)
+<p align="center">
+  An unofficial mod manager and launcher for <a href="https://store.steampowered.com/app/4576490/">Casualties: Unknown</a>.
+</p>
 
-## What you can do
+<p align="center">
+  <strong>Alpha</strong> · Windows / Linux · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-- **Manage mods.** Scan your BepInEx installation, enable or disable mods, and prepare updates. Install ZIP, 7z, RAR, or standalone DLL files with a deployment preview and dependency checks.
-- **Browse GitHub and Nexus together.** Search both catalogues, filter by source or installation status, and choose a source for each install. Nexus supports browser downloads and authorized downloads through the official API.
-- **Switch profiles.** Keep mod versions in a local Store and apply a profile to change the active set. CUHub checks for unmanaged files in the way before applying a profile. A deployment interrupted by a disk error can leave partial changes.
-- **Set up BepInEx and launch through Steam.** Install or repair BepInEx 5 LTS or experimental BepInEx 6 Mono using verified downloads.
-- **Play together experimentally.** Create an EasyTier room and share its C1 code. Guests can discover the host's port automatically and copy a local forwarding address into Casualties Together. The optional CUHub Bridge can also request in-game hosting and joining.
+## Features
 
-## Getting started
+| Feature | What you can do |
+| --- | --- |
+| **Mod management** | Import ZIP, 7z, RAR, or DLL files. Preview installs and updates, check dependencies, and enable or disable mods. |
+| **Mod discovery** | Search GitHub and Nexus Mods in one place. Use your browser or the authorized Nexus API to download Nexus mods. |
+| **Profiles** | Keep multiple mod versions locally and switch between loadouts. |
+| **BepInEx & Steam** | Install or repair BepInEx 5 LTS or experimental 6 Mono, then launch through Steam. |
+| **Multiplayer · Experimental** | Host or join EasyTier rooms with a room code. |
 
-1. Select your game installation in **Settings**. Install BepInEx there if needed.
-2. Browse **Remote Mods**, or import your own archive. Review the source, version, and target in the task center before applying.
-3. For multiplayer, install Casualties Together and its dependencies, then open **Multiplayer**. The host uses port **7790** by default. Guests can leave the host-port field blank. After a host endpoint change, rejoin in the game using the latest address shown in CUHub.
+## Quick start
 
-CUHub is in alpha. Multiplayer forwarding has been exercised locally with EasyTier 2.6.4. Full two-machine play and the optional Bridge still need real-game testing.
+1. In **Settings**, select your game folder and install BepInEx if needed.
+2. Browse **Remote Mods** or import a local file. Review the install in the **Task Center** before applying.
+
+For multiplayer, install **Casualties Together** and its dependencies, then open **Multiplayer**. The host defaults to port **7790**. Guests can leave the host port blank and paste the address Cuprum shows into the game. If the address changes, rejoin with the new one. Two-machine play and the optional Bridge are still pending in-game testing.
 
 ## Build from source
 
-Install stable Rust, [nsh](https://nsh.dev) 0.5.1, and `just`. On Linux, install Clang for builds and GTK 4.14+ and GStreamer for the desktop app.
+Install stable Rust, [nsh](https://nsh.dev) 0.5.1, and `just`. On Linux, use Clang to build and GTK 4.14+ and GStreamer to run the app.
 
 ```sh
 git clone https://github.com/naroxeno/CUHub.git
 cd CUHub
-just check
-just test
 just dev
 just package
 ```
 
-`just package` builds for the current platform. See the [justfile](justfile) for platform-specific packaging. The optional bridge is a separate archive built with `just package-bridge`. Its build requires the .NET SDK and the game's managed assemblies. Place `CuhubBridge.zip` next to the app executable, then use **Local Mods → CUHub Bridge → Install**. See the [Bridge guide](mods/cuhub-bridge/README.md).
+Run `just check` and `just test` for validation. See the [justfile](justfile) for platform-specific builds. Package the optional Bridge separately with `just package-bridge`. Build and install steps are in the [Bridge guide](mods/cuhub-bridge/README.md).
 
-## Project information
+## Project
 
-- [Feature list](docs/FEATURES.md) · [Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md)
-- [Test plan](docs/TEST-PLAN.md) · [Handover notes](docs/HANDOVER.md)
-- [AGPL-3.0-or-later](LICENSE) · [Third-party notices](docs/third-party/)
+[Features](docs/FEATURES.md) · [Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md) · [Test plan](docs/TEST-PLAN.md)
 
-CUHub is an independent community project. API keys stay on your machine, and CUHub collects no telemetry.
+[AGPL-3.0-or-later](LICENSE) · [Third-party notices](docs/third-party/)
+
+API keys stay on your machine. Cuprum collects no telemetry.

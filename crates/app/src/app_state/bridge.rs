@@ -9,7 +9,7 @@ use cuhub_core::hub::BridgeSnapshot;
 use nsh_core::prelude::*;
 
 use super::state::Ui;
-use crate::palette::{ACCENT, DANGER, TEXT_MUTED};
+use crate::palette::{ACCENT, DANGER, TEXT_MUTED, ColorRole};
 
 const POLL_MILLIS: u64 = 2_000;
 
@@ -89,7 +89,7 @@ pub(crate) fn bridge_text(snapshot: BridgeSnapshot) -> String {
     t!("statusline.bridge_waiting")
 }
 
-pub(crate) fn bridge_color(snapshot: &BridgeSnapshot) -> u32 {
+pub(crate) fn bridge_color(snapshot: &BridgeSnapshot) -> ColorRole {
     if snapshot.status.session.is_some() {
         return ACCENT;
     }

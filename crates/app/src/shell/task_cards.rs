@@ -1,10 +1,9 @@
 //! The Win10-style cards inside the task drawer.
 
+use crate::app_state::batch::BatchMode;
+use crate::app_state::{TaskAction, TaskCard, TaskKind, TaskProgress, Ui, bytes_label};
+use crate::components::{pix, scaled, spinner, states};
 use crate::palette::*;
-use crate::ui::batch::BatchMode;
-use crate::ui::{
-    TaskAction, TaskCard, TaskKind, TaskProgress, Ui, bytes_label, pix, scaled, spinner, states,
-};
 use nsh_core::animation::{MotionSpec, stagger_delay};
 use nsh_core::prelude::*;
 
@@ -24,14 +23,14 @@ pub(super) fn card_list(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
         .gap(scaled(&z, 8.0))
         .p(scaled(&z, 12.0))
         .child(each(
-            move || crate::ui::cards(&list_ui),
+            move || crate::app_state::cards(&list_ui),
             |card: &TaskCard| card.key.clone(),
             move |card: ReadSignal<TaskCard>, index: ReadSignal<usize>| {
                 card_view(&z, &row_ui, &card.get(), index.get())
             },
         ))
         .child(when(
-            move || crate::ui::pending_count(&empty_ui) == 0,
+            move || crate::app_state::pending_count(&empty_ui) == 0,
             move || pix(move || t!("task.empty"), 10.0, TEXT_MUTED, &empty_z),
         ))
 }
@@ -55,11 +54,11 @@ fn card_view(z: &Signal<u8>, ui: &Ui, card: &TaskCard, index: usize) -> View {
             .w_full()
             .gap(scaled(&z, 5.0))
             .p(scaled(&z, 10.0))
-            .bg(rgb(SURFACE))
+            .bg(theme_color(SURFACE))
             .border(scaled(&z, 1.0))
-            .border_color(rgb(BORDER))
+            .border_color(theme_color(BORDER))
             .border_l(scaled(&z, 3.0))
-            .border_l_color(rgb(accent))
+            .border_l_color(theme_color(accent))
             .bind_motion(&motion),
     )
     .child(
@@ -101,7 +100,7 @@ fn card_view(z: &Signal<u8>, ui: &Ui, card: &TaskCard, index: usize) -> View {
         for item in &card.buttons {
             let press = ui.clone();
             let action = item.action;
-            row = row.child(crate::ui::button(
+            row = row.child(crate::components::button(
                 &z,
                 item.label.clone(),
                 item.enabled,
@@ -116,7 +115,10 @@ fn card_view(z: &Signal<u8>, ui: &Ui, card: &TaskCard, index: usize) -> View {
 fn progress_bar(z: &Signal<u8>, progress: TaskProgress) -> View {
     let z = *z;
     let fraction = progress.fraction();
-    let mut fill = view().h_full().w(relative(fraction)).bg(rgb(ACCENT));
+    let mut fill = view()
+        .h_full()
+        .w(relative(fraction))
+        .bg(theme_color(ACCENT));
     if progress.total.is_none() {
         fill = fill.animation(
             KeyframeAnimation::new(Keyframes::Pulse)
@@ -143,9 +145,9 @@ fn progress_bar(z: &Signal<u8>, progress: TaskProgress) -> View {
             view()
                 .h(scaled(&z, BAR_HEIGHT))
                 .w_full()
-                .bg(rgb(BORDER_DIM))
+                .bg(theme_color(BORDER_DIM))
                 .border(scaled(&z, 1.0))
-                .border_color(rgb(BORDER))
+                .border_color(theme_color(BORDER))
                 .child(fill),
         )
         .child(pix(label, 9.0, TEXT_MUTED, &z))

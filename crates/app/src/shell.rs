@@ -2,6 +2,7 @@
 
 mod dev;
 mod frame_edges;
+mod icon_masks;
 pub mod nav;
 mod sidebar;
 mod statusline;
@@ -18,15 +19,16 @@ pub use title_bar::title_bar;
 
 use nsh_core::prelude::*;
 
+use crate::app_state::Ui;
+use crate::components::scaled;
 use crate::palette::*;
-use crate::ui::{Ui, scaled};
 
 pub fn content(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let selected = ui.page;
     let dashboard = ui.clone();
     let other = ui.clone();
-    view().flex_col().flex_1().bg(rgb(BG)).child(
+    view().flex_col().flex_1().bg(theme_color(BG)).child(
         when(
             move || selected.get() == nav::NEXUS,
             move || crate::pages::nexus(&dashboard).into_element(),

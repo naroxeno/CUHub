@@ -1,8 +1,9 @@
 //! Catalogue tile, compact list row and shared mod details.
 
 use super::{Browse, markup::description_html};
+use crate::app_state::{NexusModRow, Ui};
+use crate::components::{button, pix, pix_c, scaled};
 use crate::palette::*;
-use crate::ui::{NexusModRow, Ui, button, pix, pix_c, scaled};
 use cuhub_core::mods::ModStatus;
 use nsh_base::{SheetEvent, context_menu, menu_item, sheet, text_view};
 use nsh_core::element::ImageSrc;
@@ -30,15 +31,17 @@ pub(super) fn catalogue_card(
             ..AccessibilityState::default()
         })
         .cursor(Cursor::Pointer)
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
-        .focus_visible(|s| s.bg(rgb(BORDER_DIM)))
+        .hover(|s| s.bg(theme_color(SURFACE_RAISED)))
+        .focus_visible(|s| s.bg(theme_color(BORDER_DIM)))
         .on_press(move || toggle_details(browse, row.get().id, list));
     view()
         .flex_col()
         .min_w(px(0.0))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border(scaled(&z, 1.0))
-        .border_color(move || rgb(state_color(row.get().status, BORDER_DIM)))
+        .border_color(theme_color_with(move || {
+            state_color(row.get().status, BORDER_DIM)
+        }))
         .child(card_menu(ui, browse, row, list).trigger(trigger))
         .child(when(move || list && selected(), {
             let ui = ui.clone();
@@ -74,9 +77,9 @@ fn card_menu(
     let notice = ui.notice;
     context_menu()
         .popup_style(move |s| {
-            s.bg(rgb(SURFACE_RAISED))
+            s.bg(theme_color(SURFACE_RAISED))
                 .border(scaled(&z, 1.0))
-                .border_color(rgb(BORDER_DIM))
+                .border_color(theme_color(BORDER_DIM))
         })
         .child(context_action(&z, "common.details", move || {
             toggle_details(browse, row.get().id, list)
@@ -93,8 +96,8 @@ fn card_menu(
                 })
                 .px(scaled(&z, 8.0))
                 .py(scaled(&z, 5.0))
-                .hover(|s| s.bg(rgb(BORDER_DIM)))
-                .focus(|s| s.bg(rgb(BORDER_DIM)))
+                .hover(|s| s.bg(theme_color(BORDER_DIM)))
+                .focus(|s| s.bg(theme_color(BORDER_DIM)))
                 .child(pix(move || t!("remote.prepare_nexus"), 11.0, TEXT, &z)),
         )
         .child(when(
@@ -136,8 +139,8 @@ fn context_action(
         .on_select(action)
         .px(scaled(z, 8.0))
         .py(scaled(z, 5.0))
-        .hover(|s| s.bg(rgb(BORDER_DIM)))
-        .focus(|s| s.bg(rgb(BORDER_DIM)))
+        .hover(|s| s.bg(theme_color(BORDER_DIM)))
+        .focus(|s| s.bg(theme_color(BORDER_DIM)))
         .child(pix(move || t!(key), 11.0, TEXT, z))
 }
 
@@ -262,7 +265,7 @@ fn cover(
         .w_full()
         .h(scaled(&z, height))
         .overflow_hidden()
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .child(
             when(
                 move || {
@@ -300,7 +303,7 @@ fn badges(z: &Signal<u8>, row: impl Fn() -> NexusModRow + Copy + 'static) -> Vie
                 pix_c(
                     move || t!(row().state_key()),
                     10.0,
-                    move || rgb(state_color(row().status, TEXT_MUTED)),
+                    theme_color_with(move || state_color(row().status, TEXT_MUTED)),
                     &z,
                 )
             },
@@ -311,7 +314,7 @@ fn badges(z: &Signal<u8>, row: impl Fn() -> NexusModRow + Copy + 'static) -> Vie
         ))
 }
 
-fn state_color(status: Option<ModStatus>, absent: u32) -> u32 {
+fn state_color(status: Option<ModStatus>, absent: ColorRole) -> ColorRole {
     match status {
         Some(ModStatus::Disabled) => DANGER,
         Some(ModStatus::OutOfDate) => WARN,
@@ -345,9 +348,9 @@ pub(super) fn detail_sheet(ui: &Ui, browse: Browse) -> impl IntoElement {
                 .h_full()
                 .p(scaled(&z, 10.0))
                 .gap(scaled(&z, 8.0))
-                .bg(rgb(SURFACE))
+                .bg(theme_color(SURFACE))
                 .border_l(scaled(&z, 1.0))
-                .border_l_color(rgb(BORDER))
+                .border_l_color(theme_color(BORDER))
                 .child(view().flex_row().justify_end().child(button(
                     &z,
                     move || t!("common.close"),
@@ -371,7 +374,7 @@ fn detail_body(ui: &Ui, row: ReadSignal<NexusModRow>, inline: bool) -> View {
         .min_w(px(0.0))
         .gap(scaled(&z, 8.0))
         .p(scaled(&z, 8.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .child(cover(
             &z,
             move || row.get().cover,
@@ -422,7 +425,7 @@ fn detail_body(ui: &Ui, row: ReadSignal<NexusModRow>, inline: bool) -> View {
                 }
             },
             11.0,
-            move || rgb(state_color(row.get().status, TEXT_MUTED)),
+            theme_color_with(move || state_color(row.get().status, TEXT_MUTED)),
             &z,
         ))
         .child(detail_actions(ui, row))
@@ -449,10 +452,10 @@ fn detail_body(ui: &Ui, row: ReadSignal<NexusModRow>, inline: bool) -> View {
                     })
                 })
                 .selectable(true)
-                .font_family(crate::ui::PIXEL_FONT.family)
+                .font_family(crate::components::PIXEL_FONT.family)
                 .text_size(scaled(&z, 12.0))
                 .line_height(scaled(&z, 17.0))
-                .text_color(rgb(TEXT))
+                .text_color(theme_color(TEXT))
                 .gap(scaled(&z, 6.0)),
         )
 }

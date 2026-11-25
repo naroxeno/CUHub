@@ -1,9 +1,7 @@
 //! Batch update queue: row selection, dependency preflight and the sequential apply worker.
 
-use crate::palette::*;
-use crate::ui::install::{DependencyPrompt, PendingInstall, RemoteAttempt, prepare_update};
-use crate::ui::state::Ui;
-use crate::ui::{pix, scaled};
+use crate::app_state::install::{DependencyPrompt, PendingInstall, RemoteAttempt, prepare_update};
+use crate::app_state::state::Ui;
 use cuhub_core::hub::{Hub, HubError};
 use cuhub_core::mods::{DependencyIssue, InstalledMod};
 use cuhub_core::sources::{Repo, SourceEntry, SourceKind};
@@ -101,30 +99,6 @@ pub fn all_updatable_selected(ui: &Ui) -> bool {
 
 pub fn prune(selection: &BTreeSet<String>, valid: &BTreeSet<String>) -> BTreeSet<String> {
     selection.intersection(valid).cloned().collect()
-}
-
-pub fn batch_checkbox(z: &Signal<u8>, ui: &Ui, key: String, enabled: bool) -> View {
-    let z = *z;
-    let press = ui.clone();
-    let press_key = key.clone();
-    let watch = ui.clone();
-    let mut cell = view()
-        .w(scaled(&z, 12.0))
-        .h(scaled(&z, 12.0))
-        .flex_shrink_0()
-        .items_center()
-        .justify_center()
-        .border(scaled(&z, 1.0))
-        .border_color(rgb(BORDER));
-    if enabled {
-        cell = cell.cursor(Cursor::Pointer).on_press(move || {
-            press.toggle_batch_selection(press_key.clone());
-        });
-    }
-    cell.child(when(
-        move || watch.batch_selection.get().contains(&key),
-        move || pix("✓", 9.0, ACCENT, &z),
-    ))
 }
 
 fn entry_for(hub: &Hub, repo: &Repo) -> Option<SourceEntry> {

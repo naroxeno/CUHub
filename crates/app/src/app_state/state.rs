@@ -13,6 +13,7 @@ use super::rows::build_nexus_rows;
 use super::rows::page_slice;
 use super::tasks::DownloadTrack;
 use crate::i18n;
+use crate::palette::{Palette, Theme, apply_theme};
 use crate::setup::Setup;
 use crate::shell::nav;
 use cuhub_core::hub::{BepInExInstall, BridgeInstallStatus, BridgeSnapshot, Hub};
@@ -45,6 +46,7 @@ pub struct Ui {
     pub notice: Signal<String>,
     pub hub: Arc<Mutex<Hub>>,
     pub settings: Signal<Settings>,
+    pub(crate) custom_theme: Option<Palette>,
     pub mods: Signal<Vec<InstalledMod>>,
     pub(super) nexus_covers: super::nexus::NexusCovers,
     pub nexus_rows: Signal<Vec<NexusModRow>>,
@@ -114,6 +116,15 @@ impl Ui {
         }
         let settings = hub.settings().clone();
         i18n::set_language(&settings.language);
+        let (custom_theme, theme_warning) = match hub
+            .custom_theme()
+            .map_err(|error| error.to_string())
+            .and_then(|raw| raw.as_deref().map(Palette::custom).transpose())
+        {
+            Ok(palette) => (palette, None),
+            Err(error) => (None, Some(t!("notice.theme_invalid", error = error))),
+        };
+        apply_theme(Theme::selected(&settings.theme, custom_theme).palette(custom_theme));
         let zoom = settings.ui_scale;
         let mods = hub.scan_mods().unwrap_or_default();
         let checks = BTreeMap::new();
@@ -162,13 +173,16 @@ impl Ui {
         let bridge_install = hub.bridge_install_status().ok();
         let owner = Owner::current();
         let setup = Setup::new(&settings, setup_due);
-        let notice = if settings.game_path.trim().is_empty() {
+        let notice = if let Some(warning) = theme_warning {
+            warning
+        } else if settings.game_path.trim().is_empty() {
             t!("notice.no_game_folder")
         } else {
             t!("notice.mods_found", count = mods.len())
         };
         Self {
             page: signal(nav::HOME),
+            custom_theme,
             zoom: signal(zoom),
             dev: signal(false),
             taps: signal(0u32),
@@ -493,6 +507,27 @@ impl Ui {
         } else {
             t!("notice.no_token_saved")
         });
+    }
+
+    pub(crate) fn set_theme(&self, theme: Theme) {
+        let saved = {
+            let mut hub = self.hub();
+            let mut settings = hub.settings().clone();
+            if settings.theme == theme.id() {
+                return;
+            }
+            settings.theme = theme.id().to_owned();
+            hub.save_settings(&settings).map(|()| settings)
+        };
+        match saved {
+            Ok(settings) => {
+                apply_theme(theme.palette(self.custom_theme));
+                self.settings.set(settings);
+            }
+            Err(error) => self
+                .notice
+                .set(t!("notice.save_settings_failed", error = error.to_string())),
+        }
     }
 
     pub fn set_ui_scale(&self, level: u8) {

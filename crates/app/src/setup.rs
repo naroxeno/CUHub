@@ -1,12 +1,12 @@
 //! First-run setup wizard: six steps over hub settings, mounted over the shell.
 
+use crate::app_state::Ui;
+use crate::components::{button, fade_in, panel, pix, pix_c, rise_in, scaled, text_input};
 use crate::i18n;
 use crate::palette::{
-    ACCENT, BG, BORDER, DANGER, SURFACE_RAISED, TEXT, TEXT_DIM, TEXT_MUTED, WARN,
+    ACCENT, BG, BORDER, DANGER, TEXT, TEXT_DIM, TEXT_MUTED, WARN, theme_color, theme_color_with,
 };
-use crate::ui::{Ui, button, fade_in, panel, pix, pix_c, rise_in, scaled};
 use cuhub_core::settings::Settings;
-use nsh_base::input;
 use nsh_core::file_dialog::OpenDialog;
 use nsh_core::prelude::*;
 
@@ -99,7 +99,7 @@ pub fn wizard(ui: &Ui) -> impl IntoElement {
                 .inset(px(0.0))
                 .w_full()
                 .h_full()
-                .bg(rgb(BG))
+                .bg(theme_color(BG))
                 .items_center()
                 .justify_center()
                 .bind_motion(&veil)
@@ -214,20 +214,20 @@ fn bepinex(ui: &Ui) -> View {
                 t!("wizard.bepinex.not_installed")
             },
             12.0,
-            move || {
+            theme_color_with(move || {
                 let Some(status) = tone_ui.bepinex.get() else {
-                    return rgb(TEXT_DIM);
+                    return TEXT_DIM;
                 };
                 if status.il2cpp {
-                    rgb(DANGER)
+                    DANGER
                 } else if status.complete {
-                    rgb(ACCENT)
+                    ACCENT
                 } else if status.installed {
-                    rgb(WARN)
+                    WARN
                 } else {
-                    rgb(TEXT_MUTED)
+                    TEXT_MUTED
                 }
-            },
+            }),
             &z,
         ))
         .child(pix(
@@ -387,7 +387,7 @@ fn summary_row(
         .h(scaled(&z, 24.0))
         .px(scaled(&z, 6.0))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER))
+        .border_b_color(theme_color(BORDER))
         .gap(scaled(&z, 8.0))
         .child(pix(label, 11.0, TEXT_MUTED, &z))
         .child(pix(value, 11.0, TEXT, &z))
@@ -399,18 +399,11 @@ fn folder_input(
     placeholder: impl IntoReactive<String>,
 ) -> impl IntoElement {
     let z = *z;
-    input()
+    text_input(&z)
         .value(value)
         .placeholder(placeholder)
-        .font_family(crate::ui::PIXEL_FONT.family)
-        .text_size(scaled(&z, 12.0))
         .h(scaled(&z, 26.0))
         .w_full()
-        .px(scaled(&z, 6.0))
-        .bg(rgb(SURFACE_RAISED))
-        .border(scaled(&z, 1.0))
-        .border_color(rgb(BORDER))
-        .text_color(rgb(TEXT))
         .on_change(move |text: &str| value.set(text.to_owned()))
 }
 

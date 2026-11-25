@@ -1,11 +1,12 @@
 //! Local mods page: rows, bulk actions and empty state.
 
 use super::bepinex::{bepinex_missing, bepinex_progress, start_bepinex};
+use crate::app_state::{LocalModRow, Ui};
+use crate::components::{button, panel, pix, rise_in, scaled};
 use crate::i18n;
 use crate::palette::*;
 use crate::shell::nav;
-use crate::ui::batch::batch_checkbox;
-use crate::ui::{LocalModRow, Ui, button, panel, pix, rise_in, scaled};
+use actions::batch_checkbox;
 use cuhub_core::mods::ModStatus;
 use nsh_core::prelude::*;
 
@@ -58,9 +59,9 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                         .gap(scaled(&z, 8.0))
                         .px(scaled(&z, 8.0))
                         .py(scaled(&z, 4.0))
-                        .bg(rgb(SURFACE_RAISED))
+                        .bg(theme_color(SURFACE_RAISED))
                         .border_b(scaled(&z, 1.0))
-                        .border_b_color(rgb(BORDER_DIM))
+                        .border_b_color(theme_color(BORDER_DIM))
                         .child(pix(
                             move || t!("local.count", count = visible_rows.get().len()),
                             11.0,
@@ -117,7 +118,7 @@ fn batch_select_button(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
     let clear = ui.clone();
     let select = ui.clone();
     when(
-        move || crate::ui::batch::updatable_count(&available) == 0,
+        move || crate::app_state::batch::updatable_count(&available) == 0,
         move || pix(move || t!("local.no_updates"), 10.0, TEXT_MUTED, &z),
     )
     .otherwise(move || {
@@ -125,7 +126,7 @@ fn batch_select_button(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
         let select = select.clone();
         let watch = watch.clone();
         when(
-            move || crate::ui::batch::all_updatable_selected(&watch),
+            move || crate::app_state::batch::all_updatable_selected(&watch),
             move || {
                 let clear = clear.clone();
                 button(
@@ -148,7 +149,7 @@ fn batch_select_button(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
                     move || {
                         t!(
                             "local.batch_select_all",
-                            count = crate::ui::batch::updatable_count(&label)
+                            count = crate::app_state::batch::updatable_count(&label)
                         )
                     },
                     true,
@@ -226,25 +227,35 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     };
     identity = identity.child(mod_marker(z, marker));
     let name_color = if item.disabled { TEXT_MUTED } else { TEXT };
+    let version = visible_version(row);
     identity = identity.child(
-        pix(item.name.clone(), 12.0, name_color, z)
+        view()
+            .flex_col()
             .min_w(px(0.0))
             .flex_1()
-            .truncate(),
+            .child(pix(item.name.clone(), 12.0, name_color, z).truncate())
+            .child(
+                pix(
+                    move || version.clone().unwrap_or_else(|| "—".into()),
+                    10.0,
+                    TEXT_MUTED,
+                    z,
+                )
+                .truncate(),
+            ),
     );
     if row.loaded {
         identity = identity.child(pix(move || t!("local.loaded"), 10.0, ACCENT, z).flex_shrink_0());
     }
-    let version = visible_version(row);
     let detail_row = row.clone();
 
     view()
         .flex_col()
         .border_b(scaled(z, 1.0))
-        .border_b_color(rgb(BORDER_DIM))
-        .px(scaled(z, 6.0))
-        .py(scaled(z, 5.0))
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)))
+        .border_b_color(theme_color(BORDER_DIM))
+        .px(scaled(z, 8.0))
+        .py(scaled(z, 7.0))
+        .hover(|s| s.bg(theme_color(SURFACE_RAISED)))
         .child(
             view()
                 .flex_row()
@@ -252,12 +263,6 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                 .items_center()
                 .gap(scaled(z, 8.0))
                 .child(identity)
-                .child(pix(
-                    move || version.clone().unwrap_or_else(|| "—".into()),
-                    11.0,
-                    TEXT_MUTED,
-                    z,
-                ))
                 .child(
                     view()
                         .flex_row()
@@ -279,22 +284,22 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         ))
 }
 
-fn mod_marker(z: &Signal<u8>, color: u32) -> View {
+fn mod_marker(z: &Signal<u8>, color: ColorRole) -> View {
     view()
         .w(scaled(z, 14.0))
         .h(scaled(z, 14.0))
         .flex_shrink_0()
         .items_center()
         .justify_center()
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border(scaled(z, 1.0))
-        .border_color(rgb(BORDER_DIM))
+        .border_color(theme_color(BORDER_DIM))
         .child(
             view()
                 .w(scaled(z, 6.0))
                 .h(scaled(z, 6.0))
                 .border(scaled(z, 2.0))
-                .border_color(rgb(color)),
+                .border_color(theme_color(color)),
         )
 }
 
@@ -320,7 +325,7 @@ fn visible_version(row: &LocalModRow) -> Option<String> {
     Some(installed.clone())
 }
 
-fn update_status(row: &LocalModRow) -> (&'static str, u32) {
+fn update_status(row: &LocalModRow) -> (&'static str, ColorRole) {
     use cuhub_core::sources::SourceKind;
 
     if row.item.disabled {
@@ -388,9 +393,9 @@ fn row_details(z: &Signal<u8>, row: &LocalModRow) -> View {
         .px(scaled(z, 8.0))
         .py(scaled(z, 5.0))
         .gap(scaled(z, 3.0))
-        .bg(rgb(SURFACE_RAISED))
+        .bg(theme_color(SURFACE_RAISED))
         .border_l(scaled(z, 2.0))
-        .border_l_color(rgb(ACCENT))
+        .border_l_color(theme_color(ACCENT))
         .child(pix(row.item.name.clone(), 11.0, TEXT, z))
         .child(pix(
             move || author.clone().unwrap_or_else(|| t!("nexus.unknown_author")),
@@ -417,7 +422,7 @@ fn row_details(z: &Signal<u8>, row: &LocalModRow) -> View {
     details
 }
 
-pub(super) fn status_color(status: ModStatus) -> u32 {
+pub(super) fn status_color(status: ModStatus) -> ColorRole {
     match status {
         ModStatus::Disabled => DANGER,
         ModStatus::OutOfDate => WARN,

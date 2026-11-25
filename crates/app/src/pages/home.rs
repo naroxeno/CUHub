@@ -1,9 +1,10 @@
 //! Hub home: four reorderable summary tiles and the cached announcement.
 
 use super::settings::game_folder_path;
+use crate::app_state::Ui;
+use crate::components::{fade_in, pix, pix_c, rise_in, scaled};
 use crate::palette::*;
 use crate::shell::nav;
-use crate::ui::{Ui, fade_in, pix, pix_c, rise_in, scaled};
 use cuhub_core::install::Status as BepInExStatus;
 use nsh_core::EllipsizeMode;
 use nsh_core::prelude::*;
@@ -97,22 +98,25 @@ fn tile(ui: &Ui, drag: HomeDrag, index: ReadSignal<usize>, parts: CardParts) -> 
         .min_w(px(0.0))
         .min_h(scaled(&z, 96.0))
         .p(scaled(&z, 12.0))
-        .bg(move || {
+        .bg(theme_color_with(move || {
             if dragging.get() == Some(index.get()) {
-                rgb(SURFACE_RAISED)
+                SURFACE_RAISED
             } else {
-                rgb(SURFACE)
+                SURFACE
             }
-        })
+        }))
         .border(scaled(&z, 1.0))
-        .border_color(move || {
+        .border_color(theme_color_with(move || {
             if dragging.get() == Some(index.get()) {
-                rgb(ACCENT)
+                ACCENT
             } else {
-                rgb(BORDER_DIM)
+                BORDER_DIM
             }
+        }))
+        .hover(|s| {
+            s.bg(theme_color(SURFACE_RAISED))
+                .border_color(theme_color(ACCENT))
         })
-        .hover(|s| s.bg(rgb(SURFACE_RAISED)).border_color(rgb(ACCENT)))
         .z_index(move || {
             if dragging.get() == Some(index.get()) {
                 10
@@ -220,9 +224,9 @@ fn announcement_card(ui: &Ui, announcement: Option<String>) -> View {
         .col_span_full()
         .gap(scaled(&z, 8.0))
         .p(scaled(&z, 12.0))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border(scaled(&z, 1.0))
-        .border_color(rgb(BORDER_DIM))
+        .border_color(theme_color(BORDER_DIM))
         .bind_motion(&fade_in())
         .child(pix(move || t!("home.announcement.tag"), 10.0, TEXT_DIM, &z))
         .child(pix(message, 12.0, color, &z))
@@ -287,7 +291,7 @@ fn card_parts(ui: &Ui, id: &str) -> CardParts {
                 value: pix_c(
                     move || ready_text(status.get()),
                     16.0,
-                    move || rgb(ready_color(status.get())),
+                    theme_color_with(move || ready_color(status.get())),
                     &z,
                 )
                 .into_element(),
@@ -305,7 +309,7 @@ fn ready_text(status: Option<BepInExStatus>) -> String {
     }
 }
 
-fn ready_color(status: Option<BepInExStatus>) -> u32 {
+fn ready_color(status: Option<BepInExStatus>) -> ColorRole {
     match status {
         Some(status) if status.complete => ACCENT,
         Some(_) => WARN,

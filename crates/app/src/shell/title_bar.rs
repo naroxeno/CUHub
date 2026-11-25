@@ -3,13 +3,15 @@
 use nsh_core::desktop::WindowControl;
 use nsh_core::prelude::*;
 
+use super::icon_masks;
+use crate::app_state::Ui;
+use crate::components::{PRESS_SHIFT, STATE_MS, pix, pixel_icon, scaled};
 use crate::palette::*;
-use crate::ui::{PRESS_SHIFT, STATE_MS, Ui, pix, scaled};
 
 const BAR_BASE: f32 = 40.0;
 const BUTTON_W: f32 = 34.0;
 const BUTTON_H: f32 = 26.0;
-const GLYPH_BASE: f32 = 12.0;
+const APP_ICON: ImageAsset = asset!("branding/cuprum.png");
 
 pub fn title_bar(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
@@ -20,11 +22,16 @@ pub fn title_bar(ui: &Ui) -> impl IntoElement {
         .pl(scaled(&z, 10.0))
         .pr(scaled(&z, 10.0))
         .gap(scaled(&z, 8.0))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border_b(scaled(&z, 1.0))
-        .border_b_color(rgb(BORDER))
+        .border_b_color(theme_color(BORDER_DIM))
         .window_drag(true)
-        .child(marker(&z))
+        .child(
+            image(APP_ICON)
+                .w(scaled(&z, 16.0))
+                .h(scaled(&z, 16.0))
+                .flex_shrink_0(),
+        )
         .child(pix(move || t!("app.name"), 14.0, TEXT, &z))
         .child(pix(
             format!("v{}", env!("CARGO_PKG_VERSION")),
@@ -34,61 +41,50 @@ pub fn title_bar(ui: &Ui) -> impl IntoElement {
         ))
         .child(
             view()
-                .w(scaled(&z, 1.0))
-                .h(scaled(&z, 14.0))
-                .bg(rgb(BORDER_DIM)),
+                .w(scaled(&z, 16.0))
+                .h(scaled(&z, 2.0))
+                .bg(theme_color(WARN)),
         )
-        .child(
-            view()
-                .flex_row()
-                .items_center()
-                .flex_1()
-                .gap(scaled(&z, 8.0))
-                .mx(scaled(&z, 4.0))
-                .child(view().flex_1().h(scaled(&z, 1.0)).bg(rgb(BORDER_DIM)))
-                .child(view().w(scaled(&z, 4.0)).h(scaled(&z, 4.0)).bg(rgb(ACCENT)))
-                .child(pix("///", 10.0, TEXT_DIM, &z)),
-        )
-        .child(window_button(&z, WindowControl::Minimize, "—", false))
-        .child(window_button(&z, WindowControl::Maximize, "□", false))
-        .child(window_button(&z, WindowControl::Close, "×", true))
+        .child(view().flex_1())
+        .child(window_button(
+            &z,
+            WindowControl::Minimize,
+            icon_masks::MINIMIZE,
+            false,
+        ))
+        .child(window_button(
+            &z,
+            WindowControl::Maximize,
+            icon_masks::MAXIMIZE,
+            false,
+        ))
+        .child(window_button(
+            &z,
+            WindowControl::Close,
+            icon_masks::CLOSE,
+            true,
+        ))
 }
 
-fn marker(z: &Signal<u8>) -> View {
-    view()
-        .flex_row()
-        .items_center()
-        .justify_center()
-        .w(scaled(z, 8.0))
-        .h(scaled(z, 8.0))
-        .bg(rgb(ACCENT))
-        .child(view().w(scaled(z, 3.0)).h(scaled(z, 3.0)).bg(rgb(SURFACE)))
-}
-
-fn window_button(
-    z: &Signal<u8>,
-    control: WindowControl,
-    glyph: &'static str,
-    danger: bool,
-) -> View {
+fn window_button(z: &Signal<u8>, control: WindowControl, icon: [u8; 8], danger: bool) -> View {
     view()
         .flex_row()
         .items_center()
         .justify_center()
         .w(scaled(z, BUTTON_W))
         .h(scaled(z, BUTTON_H))
-        .bg(rgb(SURFACE))
+        .bg(theme_color(SURFACE))
         .border(scaled(z, 1.0))
-        .border_color(rgb(BORDER_DIM))
+        .border_color(theme_color(BORDER_DIM))
         .hover(move |s| {
-            s.bg(rgb(SURFACE_RAISED))
-                .border_color(rgb(if danger { DANGER } else { ACCENT }))
+            s.bg(theme_color(SURFACE_RAISED))
+                .border_color(theme_color(if danger { DANGER } else { ACCENT }))
         })
-        .active(|s| s.bg(rgb(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
+        .active(|s| s.bg(theme_color(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
         .transition()
         .duration(STATE_MS)
         .cursor(Cursor::Pointer)
         .window_control(control)
         .window_drag(false)
-        .child(pix(glyph, GLYPH_BASE, TEXT_MUTED, z))
+        .child(pixel_icon(icon, theme_color(TEXT_MUTED), z))
 }

@@ -1,6 +1,7 @@
 {
   "name": "Cuhub",
   "id": "com.naroxeno.cuhub",
+  "icon": "crates/app/assets/branding/cuprum-package.png",
   "version": "0.1.0",
   "build": 1,
   "rust": "crates/app",
