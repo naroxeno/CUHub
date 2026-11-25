@@ -22,6 +22,8 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let empty_z = z;
     let refresh = ui.clone();
     let select_ui = ui.clone();
+    let import_ui = ui.clone();
+    let import_watch = ui.clone();
     let refresh_watch = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
@@ -74,6 +76,20 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
                                 .flex_wrap()
                                 .items_center()
                                 .gap(scaled(&z, 8.0))
+                                .child(
+                                    when(
+                                        move || import_watch.can_import_local(),
+                                        move || {
+                                            let import_ui = import_ui.clone();
+                                            button(&z, move || t!("local.import"), true, move || {
+                                                import_ui.pick_local_mod();
+                                            })
+                                        },
+                                    )
+                                    .otherwise(move || {
+                                        button(&z, move || t!("local.import"), false, || {})
+                                    }),
+                                )
                                 .child(bulk_menu(&z, ui))
                                 .child(batch_select_button(&z, &select_ui))
                                 .child(

@@ -40,7 +40,7 @@ pub(super) fn accept_pending(ui: &Ui, pending: PendingInstall) -> bool {
 #[derive(Clone, PartialEq, Eq)]
 pub struct PendingInstall {
     pub mod_name: String,
-    pub source: SourceKind,
+    pub source: Option<SourceKind>,
     pub plan: UpgradePlan,
     pub package: PackagePlan,
     pub staging: PathBuf,
@@ -88,7 +88,7 @@ pub(super) fn prepare_remote_pending(
             let game_running = hub.game_running()?;
             Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
                 mod_name: name,
-                source: SourceKind::Github,
+                source: Some(SourceKind::Github),
                 plan,
                 package,
                 staging,
@@ -153,7 +153,7 @@ pub(super) fn prepare_update(
     let game_running = hub.game_running()?;
     Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
         mod_name: item.name.clone(),
-        source,
+        source: Some(source),
         plan,
         package,
         staging,
@@ -235,6 +235,8 @@ impl Ui {
         self.apply_cancel.set(false);
         self.apply_status.set(if pending.game_running {
             t!("notice.waiting_for_game")
+        } else if pending.source.is_none() {
+            t!("local.import_applying")
         } else {
             t!("notice.applying")
         });
@@ -287,12 +289,21 @@ impl Ui {
                         ui.pending_install.set(None);
                         ui.apply_status.set(String::new());
                         ui.refresh_mods();
-                        ui.notice.set(t!(
-                            "notice.updated",
-                            name = name,
-                            count = count,
-                            backup = backup
-                        ));
+                        if pending.source.is_none() {
+                            ui.profiles_refresh();
+                            ui.notice.set(t!(
+                                "local.import_installed",
+                                name = name,
+                                profile = report.profile
+                            ));
+                        } else {
+                            ui.notice.set(t!(
+                                "notice.updated",
+                                name = name,
+                                count = count,
+                                backup = backup
+                            ));
+                        }
                         break;
                     }
                     Ok(Err(HubError::GameRunning)) => {
@@ -301,7 +312,11 @@ impl Ui {
                             ..pending.clone()
                         }));
                         ui.apply_status.set(String::new());
-                        ui.notice.set(t!("notice.game_still_running"));
+                        ui.notice.set(if pending.source.is_none() {
+                            t!("local.import_game_running")
+                        } else {
+                            t!("notice.game_still_running")
+                        });
                         break;
                     }
                     Ok(Err(error)) => {
@@ -336,7 +351,11 @@ impl Ui {
         }
         self.pending_install.set(None);
         self.apply_status.set(String::new());
-        self.notice.set(t!("notice.discarded"));
+        self.notice.set(if pending.source.is_none() {
+            t!("local.import_discarded")
+        } else {
+            t!("notice.discarded")
+        });
     }
 
     pub fn install_dependencies(&self) {

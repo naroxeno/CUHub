@@ -135,20 +135,22 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **E3 (P0)** 版本证据展示：“Assembly x | BepInEx y | Modified t”，没有证据时 “No version evidence found”。
 - **E4 (P0)** 更新判定（与元数据比对）：0.0.0.0 视为占位符不算过期；只要任一新于元数据即 “up to date”；文件修改时间 ≥ 元数据 `LatestFileModifiedUtc` 也算 up to date；全部新于全部期望值才算 out of date。被禁用的模组不报更新。
 - **E5 (P0)** 状态文案（逐字复刻）：Disabled — re-enable… / placeholder 提示 / Up to date: X 1.2 matches Y 1.2 / installed newer than live metadata / modified date matches / No comparable update data was found. / Out of date: 1.0 is below 1.3。
-- **E6 (P0)** 禁用/启用：散装条目把该模组所有 DLL 在 `.dll` 与 `.dll.disabled` 间改名，目标已存在则报错 “Cannot rename 'X' because 'Y' already exists.”；活动档案条目改为把档案条目的 `enabled` 置 false/true 并重新应用档案，不改文件。档案条目详情标注「档案内」。
+- **E6 (P0)** 禁用/启用：散装条目把该模组所有 DLL 在 `.dll` 与 `.dll.disabled` 间改名，目标已存在则报错 “Cannot rename 'X' because 'Y' already exists.”；活动档案条目只部署或解部署目标，更新 `enabled` 及相关依赖状态。档案条目详情标注「档案内」。
 - **E7 (P0)** 禁用态视觉：显示「已禁用」，降低名称强调，动作按钮显示 Enable。
 - **E8 (P0)** 批量：Disable all / Enable all（递归匹配两种扩展名；活动档案条目同步改 `enabled` 并应用）；Delete all（删空 Plugins，破坏性确认，tooltip 写明不动受保护资源与设置；同时清空活动档案条目，Store 副本保留）。
 - **E9 (P0)** 单项删除：散装条目按来源路径删除（目录或文件）；活动档案条目从档案移除并重新应用（解链，Store 副本保留）。
 - **E10 (P0)** 三列布局：每列可从 8 种视图任选 —— Enabled Mods / Disabled Mods / Sharecode Requested Mods / Missing Dependencies / Update Available / Incompatibility / Known Bugs / Needs Attention；默认 启用 / 禁用 / 分享码请求。
 - **E11 (P1)** 第三列（分享码）可手动隐藏/显示（开关持久化）；隐藏时网格第三列宽度归零。
 - **E12 (P1)** 本地搜索框：匹配名称、GUID、依赖标签。
-- **E13 (P1)** Install mod 按钮（选本地压缩包）+ Refresh（重扫并重新比对元数据）。
+- **E13 (P1)** 「导入模组」单选本地 ZIP、7z、RAR 或 DLL，任务中心显示版本、目标与警告。确认后入库并部署到活动档案，必要时沿用 `Default` 回退。已安装或目标冲突时拒绝，取消只清理临时副本。Refresh 重扫并重新比对元数据。
 - **E14 (P1)** 行内动作按上下文出现：Toggle（Enable/Disable）、DependencyActionLabel（Download / Open Download）、Ignore（依赖）、Out of date（打开 Nexus Files 页或来源页）、ShareCodeActionLabel（Open Download / Search Nexus）、Ignore（分享码）、Delete；来源为 GitHub 时“Out of date”打开 release 页。
 - **E15 (P1)** 未匹配元数据的模组：名称用文件名去扩展，版本取第一个未禁用 DLL，“Not listed in the community catalogue, so update status is not checked.”。
 - **E16 (P2)** 版本证据缺失、GUID 缺失的模组仍要能显示与操作，不能因缺数据整页失败。
 - **E17 (P1)** 匹配算法：DLL 名与元数据 `DllNames` 先去掉 `.dll`/`.dll.disabled` 后缀，再忽略大小写求交；优先“归一化名 == DLL 茎名”，其次 `DllNames` 只有一项的，最后按 `DllNames` 数量升序（避免同名不同模组串台，例如自带 CUCoreLib.dll 的模组）。活动档案条目带 `github:` source 时，先用清单显示名匹配元数据，并要求该元数据仍包含条目的 `match.dll`，避免整包被更小的候选抢走。
 
 实现状态（2026-11-19）：core 已落地 E1 扫描、E2 的主要字段、E3 版本证据、E4 更新判定、E5 状态文案、E6 禁用/启用（含活动档案条目）、E8 的批量禁用/启用与 Delete all（含活动档案条目）、E9 单项删除、E15 未收录模组、E17 匹配；E6、E7、E8、E9 的界面已接，档案条目在详情显示「档案内」，可启停/删除；分享码请求、已知 bug 数据、E10–E14 的界面仍未做。
+
+本地模组页已有 Refresh 和 E13 的手选文件入口。确认安装后刷新本地模组、远程目录安装状态与档案列表；下载收件箱（D）未接入这条流程。
 
 ### F. 压缩包安装（安装计划）
 

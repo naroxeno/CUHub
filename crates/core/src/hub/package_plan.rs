@@ -338,6 +338,9 @@ impl Hub {
         self.ensure_game_closed()?;
         let game = self.game_folder().ok_or(HubError::NoGameFolder)?;
         let plugins = self.plugins_dir()?;
+        if plan.source == super::local_import::SOURCE {
+            self.check_local_import(plan, &plugins, true)?;
+        }
         let backup = self.backup_root();
         let report = packages::apply(
             plan,

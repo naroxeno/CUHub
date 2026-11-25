@@ -7,6 +7,7 @@ mod bridge_install;
 mod delete;
 mod github;
 mod install;
+mod local_import;
 mod mods;
 mod multiplayer;
 mod multiplayer_bridge;

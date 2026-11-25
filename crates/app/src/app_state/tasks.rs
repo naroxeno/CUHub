@@ -266,11 +266,16 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
         .count();
     let created = pending.plan.files.len().saturating_sub(replaced);
     let files = file_summary(replaced, created);
+    let source = if pending.source.is_none() {
+        t!("local.import_source")
+    } else {
+        pending.package.source.clone()
+    };
     let mut lines = vec![
         (
             t!(
                 "pending.from",
-                source = pending.package.source.as_str(),
+                source = source,
                 target = pending.package.target.display().to_string()
             ),
             TEXT_MUTED,
@@ -311,7 +316,11 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
         buttons: vec![
             TaskButton {
                 action: TaskAction::Apply,
-                label: t!("common.apply"),
+                label: if pending.source.is_none() {
+                    t!("local.import_apply")
+                } else {
+                    t!("common.apply")
+                },
                 enabled: !running && pending.plan.can_apply(),
             },
             TaskButton {

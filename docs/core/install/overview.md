@@ -72,6 +72,8 @@
 
 ## 接线
 
+本地模组页的手选文件入口调用 `Hub::prepare_local_import`。它按同样的规则准备 ZIP、7z、RAR 或裸 DLL，并通过任务中心预览和确认。文件名去扩展后按现有规则规范化为模组 ID，版本沿用载荷检测与回退规则。原文件由用户保管，准备失败或取消时只清理 staging。
+
 普通模组的统一链路：GitHub 自动下载走 `download_github_asset`，Nexus 自动安装走 `download_nexus_latest_cached`，归档都落到 `<AppData>/Cache/Downloads/<stamp>-<pid>` 并保留上游原名；Nexus 页面的手动下载仍落用户的 `download_path`，不参与缓存。`Hub::prepare_package_update` / `prepare_remote_install` 解包或复制到 `<AppData>/Staging/<nanos>-<pid>`，调用 `packages::plan_package` 生成 `PackagePlan`；UI 的 pending 面板展示文件数、目标与警告，用户点 Apply 后 `Hub::apply_package` 入库、写活动档案、按档案部署。取消或计划失败时删 staging。`finish_package` 在生成最终 `files` 前按插件 GUID 去重：包内 DLL 若与已安装的另一个模组同 GUID、且目标不是该模组自身目录，就跳过并在计划警告里说明，避免 CT 这类整包自带的 CUCoreLib 与独立安装重复。
 
 旧的 `plan_download` + `apply_install` 链路只用于 BepInEx 与回退：`plan_download` 解包后生成 `UpgradePlan`，`apply_install` 在游戏未运行时备份并逐文件替换。两者不再处理普通模组的远程安装/更新。

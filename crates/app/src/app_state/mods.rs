@@ -61,7 +61,13 @@ impl Ui {
             self.notice.set(t!("notice.mod_gone"));
             return;
         };
+        if row.managed && self.profiles.is_busy() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         let item = row.item.clone();
+        let managed = row.managed;
+        let target = item.source_path.clone();
         let name = item.name.clone();
         self.toggle_busy.set(Some(key));
         self.notice.set(if enabled {
@@ -74,13 +80,30 @@ impl Ui {
         self.spawn_worker(async move {
             let result = blocking(move || {
                 let mut hub = hub.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                hub.set_mod_enabled(&item, enabled)
+                if managed {
+                    hub.set_managed_mod_enabled(&item, enabled)
+                } else {
+                    hub.set_mod_enabled(&item, enabled).map(|count| (count, None))
+                }
             })
             .await;
-            ui.toggle_busy.set(None);
             match result {
-                Ok(Ok(count)) => {
-                    ui.refresh_mods();
+                Ok(Ok((count, updated))) => {
+                    if managed {
+                        let mut mods = ui.mods.get();
+                        mods.retain(|item| item.source_path != target);
+                        mods.extend(updated);
+                        let metadata = {
+                            let hub = ui.hub();
+                            hub.annotate_installed_mods(&mut mods);
+                            hub.metadata().to_vec()
+                        };
+                        ui.mods.set(mods);
+                        ui.rebuild_nexus(&metadata);
+                        ui.rebuild_local_rows();
+                    } else {
+                        ui.refresh_mods();
+                    }
                     ui.notice.set(if enabled {
                         t!("notice.enabled", name = name, count = count)
                     } else {
@@ -96,6 +119,7 @@ impl Ui {
                     .notice
                     .set(t!("notice.toggle_worker_stopped", error = error)),
             }
+            ui.toggle_busy.set(None);
         });
     }
 
@@ -153,7 +177,8 @@ impl Ui {
     }
 
     pub fn install_preparing(&self) -> bool {
-        self.update_busy.get().is_some()
+        self.local_import_busy.get()
+            || self.update_busy.get().is_some()
             || self.remote_busy.get().is_some()
             || self.apply_running.get()
             || self.batch_progress.get().is_some()

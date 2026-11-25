@@ -376,7 +376,7 @@ impl Ui {
             self.profiles.set_error("notice.pending_first");
             return;
         }
-        if self.install_preparing() {
+        if self.install_preparing() || self.toggle_busy.get().is_some() {
             self.profiles.set_error("notice.busy");
             return;
         }

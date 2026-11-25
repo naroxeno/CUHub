@@ -14,6 +14,7 @@
 - `Profiles/active.txt` 是「当前激活」的唯一权威，`Profile::active` 只是镜像；保存激活档案与切换激活时，会把所有档案文件的 `active` 标记重写成一致状态，保证全库最多一个 `true`。
 - 部署单元看 Store 的 manifest：恰好一个单段 `.dll` → 文件单元（`Plugins/<文件名>`），否则目录单元（`Plugins/<mod_id>`）。source 在 apply 时从 Store 重算，`ApplyOp` 只带目标。
 - `plan_apply` 只处理 `Links.json` 里位于 Plugins 下一层的条目；BepInEx/config 等部署不受 profile 切换影响。
+- 托管模组单项启停只生成该条目的部署或移除操作。仍检查目标路径、归属、启用条目的目标冲突和同 ID 冲突。其余模组的部署内容由档案切换校验。界面只重读目标模组的 DLL，并从已加载的条目重算依赖和兼容提示。
 - 目标路径统一由 `deployment_target` 计算（单 DLL 用文件名，否则 `Plugins/<mod_id>`）；`plan_apply`、Hub 的托管判定与禁用条目补全共用它，避免规则漂移。
 - `checkpoint` 供 Hub 迁移收尾调用：以当前激活档案为底，同 mod id 的条目被迁移结果替换，再补齐 `Links.json` 里尚未覆盖的条目，生成 active 档案；名称由 Hub 给（`adopt_%Y%m%d-%H%M%S`，重名加 `-序号`）。
 - `rename` 先按新名保存再删旧文件：激活档案改名时 `active.txt` 已由 `save` 指向新名，删旧文件不会清空激活；目标重名返回 `AlreadyExists`，旧档案原样保留。

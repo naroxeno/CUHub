@@ -133,7 +133,8 @@ pub(super) fn build_local_rows(
         .map(|manifest| manifest.entries.as_slice())
         .unwrap_or(&[]);
     mods.iter()
-        .map(|item| {
+        .zip(hub.managed_mod_status(mods))
+        .map(|(item, managed)| {
             let key = source_key(item);
             let check = checks.get(&key);
             let pinned = hub.source_choice(&key);
@@ -143,18 +144,19 @@ pub(super) fn build_local_rows(
                 check,
                 pinned,
             });
-            let managed = hub.is_managed_path(&item.source_path);
             let loaded = item
                 .guid
                 .as_deref()
                 .is_some_and(|guid| loaded_guids.contains(guid));
             LocalModRow {
                 key: format!(
-                    "{key}|{}|{}|{}|{}|{managed}|{loaded}",
+                    "{key}|{}|{}|{}|{}|{managed}|{loaded}|{:?}|{:?}",
                     check_tag(check),
                     pin_tag(pinned),
                     item.row_key(),
-                    source.text
+                    source.text,
+                    item.missing_dependencies,
+                    item.incompatible_with,
                 ),
                 source_key: key,
                 item: item.clone(),

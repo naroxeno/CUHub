@@ -46,6 +46,7 @@ use crate::bridge::server::{BridgeError, BridgeServer};
 
 mod bridge_host;
 mod migration;
+mod local_import;
 mod package_plan;
 mod profile_deployment;
 pub use bridge_host::{BridgeInstallReport, BridgeInstallStatus, BridgeSnapshot, HubEvent};
@@ -1256,14 +1257,27 @@ impl Hub {
                 .any(|target| target.as_path() == path)
     }
 
+    pub fn managed_mod_status(&self, mods: &[InstalledMod]) -> Vec<bool> {
+        let targets: std::collections::BTreeSet<_> = self.profile_targets().into_iter().collect();
+        mods.iter()
+            .map(|item| {
+                self.links.get(&item.source_path).is_some() || targets.contains(&item.source_path)
+            })
+            .collect()
+    }
+
+    pub fn annotate_installed_mods(&self, mods: &mut [InstalledMod]) {
+        mods::annotate(mods, &self.catalogs, &self.settings.ignored_dependency_names);
+    }
+
     pub fn set_mod_enabled(
         &mut self,
         item: &InstalledMod,
         enabled: bool,
     ) -> Result<usize, HubError> {
         self.check_link_index()?;
-        if self.profile_entry_index(&item.source_path).is_some() {
-            return self.set_profile_entry_enabled(item, enabled);
+        if let Some((_, profile, index)) = self.profile_entry_index(&item.source_path) {
+            return self.set_profile_entry_enabled(item, enabled, (profile, index));
         }
         if self.links.get(&item.source_path).is_some() {
             return Err(HubError::ManagedByProfile);
@@ -1370,22 +1384,21 @@ impl Hub {
         &mut self,
         item: &InstalledMod,
         enabled: bool,
+        (mut profile, index): (profiles::Profile, usize),
     ) -> Result<usize, HubError> {
         self.ensure_game_closed()?;
-        let Some((name, mut profile, index)) = self.profile_entry_index(&item.source_path) else {
-            return Err(HubError::ManagedByProfile);
-        };
         if profile.entries[index].enabled == enabled {
             return Ok(0);
         }
         profile.entries[index].enabled = enabled;
-        self.apply_profile_change(&profile, Some(&item.source_path))?;
+        self.apply_profile_toggle(&profile, index, &item.source_path)?;
         self.logs.activity(
             "Profiles",
             &format!(
-                "{} {} in profile {name}.",
+                "{} {} in profile {}.",
                 if enabled { "Enabled" } else { "Disabled" },
-                item.name
+                item.name,
+                profile.name
             ),
         );
         Ok(1)
@@ -1425,35 +1438,12 @@ impl Hub {
             {
                 continue;
             }
-            let source = self.source_entry_for(entry);
-            let preferred = source
-                .map(|source| source.matcher.dll.as_slice())
-                .unwrap_or(&[]);
-            let built = mods::build_mod_with_preferred(
+            added.extend(self.build_disabled_profile_mod(
+                entry,
                 &payload,
-                &self.metadata,
-                preferred,
-                source.map(|source| source.name.as_str()),
-            );
-            let Some(mut item) = built else {
-                continue;
-            };
-            if let Some(source) = source {
-                item.name = source.name.clone();
-            }
-            let deployment = profiles::deployment(&manifest.files);
-            item.source_path = target.clone();
-            item.dll_paths = match deployment {
-                profiles::Deployment::File(_) => vec![target.clone()],
-                profiles::Deployment::Directory => item
-                    .dll_paths
-                    .iter()
-                    .map(|dll| target.join(dll.strip_prefix(&payload).unwrap_or(dll)))
-                    .collect(),
-            };
-            item.disabled = true;
-            item.status = mods::ModStatus::Disabled;
-            added.push(item);
+                &target,
+                profiles::deployment(&manifest.files),
+            ));
         }
         added
     }
@@ -1475,16 +1465,9 @@ impl Hub {
             let Some(index) = mods.iter().position(|item| item.source_path == target) else {
                 continue;
             };
-            let built = mods::build_mod_with_preferred(
-                &target,
-                &self.metadata,
-                &source.matcher.dll,
-                Some(source.name.as_str()),
-            );
-            let Some(mut item) = built else {
+            let Some(item) = self.build_sourced_profile_mod(entry, &target) else {
                 continue;
             };
-            item.name = source.name.clone();
             mods[index] = item;
         }
     }

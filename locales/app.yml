@@ -503,6 +503,54 @@ local.pin_nexus:
   en: "Pin: Nexus"
   zh-CN: "来源：Nexus"
   ja: "固定: Nexus"
+local.import:
+  en: "Import mod"
+  zh-CN: "导入模组"
+  ja: "MOD を取り込む"
+local.import_filter:
+  en: "Mod archives and DLLs"
+  zh-CN: "模组压缩包和 DLL"
+  ja: "MOD アーカイブと DLL"
+local.import_title:
+  en: "Choose a local mod"
+  zh-CN: "选择本地模组文件"
+  ja: "ローカル MOD ファイルを選択"
+local.import_source:
+  en: "Local file"
+  zh-CN: "本地文件"
+  ja: "ローカルファイル"
+local.import_apply:
+  en: "Install"
+  zh-CN: "安装"
+  ja: "インストール"
+local.import_preparing:
+  en: "Preparing the mod preview…"
+  zh-CN: "正在准备模组安装预览…"
+  ja: "MOD のプレビューを準備中…"
+local.import_ready:
+  en: "Review the mod in the task center before installing."
+  zh-CN: "请在任务中心查看模组安装预览。"
+  ja: "インストール前にタスクセンターで内容を確認してください。"
+local.import_applying:
+  en: "Installing the mod…"
+  zh-CN: "正在安装模组…"
+  ja: "MOD をインストール中…"
+local.import_installed:
+  en: "Installed %{name} in profile %{profile}."
+  zh-CN: "已将 %{name} 安装到档案 %{profile}。"
+  ja: "%{name} をプロファイル %{profile} にインストールしました。"
+local.import_discarded:
+  en: "Mod import cancelled."
+  zh-CN: "已取消模组导入。"
+  ja: "MOD の取り込みをキャンセルしました。"
+local.import_game_running:
+  en: "Close Casualties Unknown and select Install again."
+  zh-CN: "请关闭 Casualties Unknown，然后再次点击安装。"
+  ja: "Casualties Unknown を終了してから、もう一度インストールしてください。"
+local.import_failed:
+  en: "Could not prepare the mod: %{error}"
+  zh-CN: "无法准备模组安装：%{error}"
+  ja: "MOD のインストールを準備できませんでした: %{error}"
 local.bridge_title:
   en: "CUHub Bridge"
   zh-CN: "CUHub Bridge"

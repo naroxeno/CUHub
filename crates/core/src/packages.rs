@@ -462,7 +462,10 @@ fn copy_payload(plan: &PackagePlan, root: &Path) -> Result<(), PackageError> {
     Ok(())
 }
 
-fn active_or_default(profiles: &ProfileStore, links: &LinkIndex) -> Result<Profile, PackageError> {
+pub(crate) fn active_or_default(
+    profiles: &ProfileStore,
+    links: &LinkIndex,
+) -> Result<Profile, PackageError> {
     if let Some(name) = profiles.active() {
         return profiles
             .load(&name)

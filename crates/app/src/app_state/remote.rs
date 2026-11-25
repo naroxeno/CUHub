@@ -370,7 +370,7 @@ impl Ui {
                 }
                 Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
                     mod_name: name,
-                    source: SourceKind::Nexus,
+                    source: Some(SourceKind::Nexus),
                     plan: package.preview(),
                     staging: package.staging.clone(),
                     package,
