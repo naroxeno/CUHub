@@ -6,8 +6,8 @@ use crate::app_state::Ui;
 use crate::components::{button, panel, pix, rise_in, scaled};
 use crate::palette::*;
 
-const REPOSITORY: &str = "https://github.com/naroxeno/CUHub";
-const ISSUES: &str = "https://github.com/naroxeno/CUHub/issues";
+const REPOSITORY: &str = "https://github.com/naroxeno/Cuprum";
+const ISSUES: &str = "https://github.com/naroxeno/Cuprum/issues";
 const LICENSE: &str = "https://www.gnu.org/licenses/agpl-3.0.html";
 
 pub fn about(ui: &Ui) -> impl IntoElement {

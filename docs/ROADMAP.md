@@ -1,4 +1,4 @@
-# CUHub 技术路线图与可行性评估
+# Cuprum 技术路线图与可行性评估
 
 审查稿 · 2026-11-21
 
@@ -20,7 +20,7 @@
 | 事务、回滚和诊断 | 旧链路有替换回滚。新链路先入 Store，再移走需备份的旧路径并逐项应用 Links，最后保存档案。应用失败会保留已完成步骤。索引保存失败也可能已有文件变化。批量更新顺序执行，允许单项失败后继续 | 高但优先。用现有计划与账本做预检、确认及失败定位，评估每个游戏根目录的写入互斥和可恢复记录。区分入库成功与部署提交，执行前验证计划仍适用，按崩溃点测试前滚或恢复原部署。用于恢复的备份要明确所有权和路径，回滚失败应保留证据和可操作报告 |
 | Profile、整合包与 Lockfile | Profile 指定 Store 版本，通过 Links 部署启用项。Store 按 `modId/version` 存载荷及逐文件 SHA-256，`CUH1` 是轻量清单。`CUPK1` 与 v2 的 `pack.json` 属于文档中的候选 | 高。先从已部署且重新校验的档案导出只含引用的锁定清单，等恢复验证通过再做可执行导入。锁定精确版本、制品身份和哈希，注明游戏构建、BepInEx、平台或角色条件。缺包、源失效、未授权下载、版本相同但哈希不同均应可诊断。允许用户补交原包，完整重现只在所有必需条目和配置都验证通过时宣告成功 |
 | 模组配置 | `configOverrides` 已持久化，档案应用尚未执行。其余游戏文件存在独立保护与备份逻辑 | 中等。先在停游戏时预览和编辑受支持的 BepInEx 配置，保留未知键、编码和注释，支持备份及明确恢复。优先作者提供的类型、范围、是否需重启及同步许可。默认排除密码、本机路径等，分享端只允许明确声明可分发的覆盖项。[BepInEx ConfigFile](https://docs.bepinex.dev/articles/dev_guide/plugin_tutorial/4_configuration.html) |
-| 联机环境一致性 | CUHub 有磁盘扫描与 Bridge 握手的已加载 GUID 快照，尚无两端的锁定环境比较。Together 本地快照有游戏文件哈希门槛及模组 GUID 集合检查 | 高可做差异提示，中等可做自动联动。区分期望清单、磁盘部署与当前进程实际加载三份证据。先手动交换锁定清单并比较，列出缺失、不同版本/内容、角色允许差异及未知。后续传递最小化摘要，用户确认后走既有安装流程。Together 严格名单开启时测试仅一端加载 Bridge 会否改变入房结果 |
+| 联机环境一致性 | Cuprum 有磁盘扫描与 Bridge 握手的已加载 GUID 快照，尚无两端的锁定环境比较。Together 本地快照有游戏文件哈希门槛及模组 GUID 集合检查 | 高可做差异提示，中等可做自动联动。区分期望清单、磁盘部署与当前进程实际加载三份证据。先手动交换锁定清单并比较，列出缺失、不同版本/内容、角色允许差异及未知。后续传递最小化摘要，用户确认后走既有安装流程。Together 严格名单开启时测试仅一端加载 Bridge 会否改变入房结果 |
 
 实现依据见 [packages](core/packages/overview.md)、[profiles](core/profiles/overview.md)、[Store](core/store/overview.md)、[依赖检查](../crates/core/src/mods/dependencies.rs)、[Together 入房判定及 GUID 来源](../ref/casualties-together/ScavPrototypeMP/ScavMultiplayer.cs)。内容库的链接策略包含硬链接、目录链接与拷贝，安装记录中的摘要只能证明导入时的内容。锁定与恢复验收应覆盖已部署载荷被修改、索引漂移、跨卷备份及 Windows 大小写碰撞。对 mod ID、仓库 ID、BepInEx GUID 和同包多个插件之间的对应关系保留来源与冲突证据。
 
@@ -36,8 +36,8 @@
 
 ## 2. Network Manager
 
-- **已实现，仍实验性。** EasyTier 固定 2.6.4，已有校验下载、探测、子进程管理、回环管理接口、C1 房间码、房主发现、UDP 转发和对端列表。现有 peer parser 保留 hostname、IPv4、NAT 与本机标志。W4 将游戏端口经 `mp.state` 回读，自动/手填/CUHub 默认 7790 按顺序取值，端口占用显式报错，确认变化后尝试重建并可回到旧端口。客人收到提示后手动重进。Together 文档的直连默认是 **7790**，应在诊断里明确端口的来源。[EasyTier 模块](core/easytier/overview.md) · [端口策略](core/multiplayer/overview.md) · [Together 启动说明](../ref/casualties-together/FOR-NERDS.txt)
-- **房间与诊断可增量交付。** 在现有房间状态里记录发现、转发建立、游戏连接、换房和退出阶段。保留当前房间及最近记录即可。对固定版本 CLI 用真实 JSON 样本验证 RTT、丢包、直连/中继、流量字段的含义、时间窗及单位；缺失显示未知。把 EasyTier 对端 RTT 与游戏 RTT/TPS 分开，诊断能定位到工具、发现、转发、游戏四层。先验证手动 IP:端口回退和自管节点，再考虑公开房间发现。[CUHub 状态解析](../crates/core/src/easytier/status.rs) · [EasyTier 2.6.4](https://github.com/EasyTier/EasyTier/tree/v2.6.4)
+- **已实现，仍实验性。** EasyTier 固定 2.6.4，已有校验下载、探测、子进程管理、回环管理接口、C1 房间码、房主发现、UDP 转发和对端列表。现有 peer parser 保留 hostname、IPv4、NAT 与本机标志。W4 将游戏端口经 `mp.state` 回读，自动/手填/Cuprum 默认 7790 按顺序取值，端口占用显式报错，确认变化后尝试重建并可回到旧端口。客人收到提示后手动重进。Together 文档的直连默认是 **7790**，应在诊断里明确端口的来源。[EasyTier 模块](core/easytier/overview.md) · [端口策略](core/multiplayer/overview.md) · [Together 启动说明](../ref/casualties-together/FOR-NERDS.txt)
+- **房间与诊断可增量交付。** 在现有房间状态里记录发现、转发建立、游戏连接、换房和退出阶段。保留当前房间及最近记录即可。对固定版本 CLI 用真实 JSON 样本验证 RTT、丢包、直连/中继、流量字段的含义、时间窗及单位；缺失显示未知。把 EasyTier 对端 RTT 与游戏 RTT/TPS 分开，诊断能定位到工具、发现、转发、游戏四层。先验证手动 IP:端口回退和自管节点，再考虑公开房间发现。[Cuprum 状态解析](../crates/core/src/easytier/status.rs) · [EasyTier 2.6.4](https://github.com/EasyTier/EasyTier/tree/v2.6.4)
 - **与 Together 的集成优先用上游接口。** CUCoreLib 的 QuickTest Host/Client 对应普通 Host/Client。Together 自有 Steam Lobby、IP 模式，以及按 GUID 集合执行的入房校验。CUCoreLib 有游戏内消息和内容快照 API，可研究候选摘要通道，先核实能在连接前还是只能连接后交换。保留只读差异提示和手动导入路径，避免复制 Lobby、存档或世界状态同步。[CUCoreLib 桥](../ref/CUCoreLib/Networking/MultiplayerBridge.cs) · [CUCoreLib API](../ref/CUCoreLib/Networking/MultiplayerApi.cs) · [Together Steam Lobby](../ref/casualties-together/ScavPrototypeMP/Net/SteamworksNet.cs)
 - **服务端集成可行。** 由 Network 管理隧道、节点及转发，Server 管理游戏实例。先手动配置私有节点，验证权限、故障与停服清理，凭据和房间秘密留在本地。常驻服务和公网运营另行评估。
 
@@ -49,7 +49,7 @@
 | --- | --- | --- |
 | 只读发现与启动诊断 | 复用 `steam` 库扫描、AppID 反查和 `launch` 的 URI/命令回退。记录游戏 build、实际进程、架构和 BepInEx 是否加载。覆盖 Windows 原生、Linux 原生 Steam 与 Flatpak Steam、自定义库和多 GPU | 高。当前启动返回 AppID 表示交给 Steam，需要独立证据确认游戏已启动。正式版 4576490 与 Demo 4576510 分开记账。本地上游文档中的 Demo 测试流程不能替代正式版验收。[启动实现](../crates/core/src/launch.rs) · [正式版](https://store.steampowered.com/app/4576490/) · [Demo](https://store.steampowered.com/app/4576510/) |
 | 硬件能力 | 读 CPU、GPU、驱动、实际 Vulkan 设备/API/扩展，报告宿主探针与 Steam 容器或游戏内探针的差异。Windows 原生以 DX11 为基线，Linux 按已选 DXVK 版本要求判断 | 高。可选用 Khronos Vulkan-Tools 的 `vulkaninfo`，Windows DXGI 等能力探测按 OS 收口。区分未安装探针、驱动不可用、软件渲染及设备未实际选中。以诊断报告作为首个交付。[Vulkan-Tools](https://github.com/KhronosGroup/Vulkan-Tools) · [DXVK](https://github.com/doitsujin/dxvk) |
-| Proton 与 DXVK 选择 | Steam 管官方 Proton。只读列举已装工具，先用 Steam 手工选择与 ProtonUp-Qt 等外部工具安装 GE-Proton。DWProton 可进入对照组，验证来源、校验材料和支持矩阵。DXVK 优先跟随所选 Proton 构建，独立版本及变体仅在隔离的可恢复环境对照 | 中等。现有 Steam 启动委托无环境选择语义。用官方 Launch Options 做显式控制，验证参数转发、前缀迁移、BepInEx 和 Steam Lobby，回退到既有设置。WineD3D 可作诊断对照。维护和分发由上游承担，CUHub 负责选型、诊断和可撤销配置。[Proton](https://github.com/ValveSoftware/Proton) · [GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom) · [DWProton](https://dawn.wine/dawn-winery/dwproton.git) · [ProtonUp-Qt](https://github.com/DavidoTek/ProtonUp-Qt) |
+| Proton 与 DXVK 选择 | Steam 管官方 Proton。只读列举已装工具，先用 Steam 手工选择与 ProtonUp-Qt 等外部工具安装 GE-Proton。DWProton 可进入对照组，验证来源、校验材料和支持矩阵。DXVK 优先跟随所选 Proton 构建，独立版本及变体仅在隔离的可恢复环境对照 | 中等。现有 Steam 启动委托无环境选择语义。用官方 Launch Options 做显式控制，验证参数转发、前缀迁移、BepInEx 和 Steam Lobby，回退到既有设置。WineD3D 可作诊断对照。维护和分发由上游承担，Cuprum 负责选型、诊断和可撤销配置。[Proton](https://github.com/ValveSoftware/Proton) · [GE-Proton](https://github.com/GloriousEggroll/proton-ge-custom) · [DWProton](https://dawn.wine/dawn-winery/dwproton.git) · [ProtonUp-Qt](https://github.com/DavidoTek/ProtonUp-Qt) |
 | Benchmark 与推荐 | Linux 复用 MangoHud 日志，Windows 复用 PresentMon。先能导出本地样本，再做基线及运行参数 A/B。规则用有限字段表达游戏 build、OS/GPU/驱动、运行时约束、可选设置、证据和恢复动作 | 采集高，自动推荐中等且依赖样本。仅在规则与实测指纹匹配时展示理由、样本条件及回退。多条规则候选时明确优先级并预览，未知硬件使用默认配置。保持社区提交实测数据自愿，由用户导出。[MangoHud](https://github.com/flightlessmango/MangoHud) · [PresentMon](https://github.com/GameTechDev/PresentMon) |
 
 ## 4. Server Manager
@@ -64,7 +64,7 @@
 | Unity 无图形设备模式 | 研究。有已发行 Player 的 batch/no-graphics 实验，也有从 Unity 项目构建 Dedicated Server target 的途径。前者依赖游戏版本、Steam/BepInEx 注入、首场景、Shader/纹理、音频等初始化及切层是否可用。后者依赖原项目和构建授权，适合游戏作者合作。[Player 桌面无头](https://docs.unity.com/en-us/engine/6000.3/manual/platform-specific/dedicated-server/desktop-headless-mode) · [Dedicated Server 构建](https://docs.unity.com/en-us/engine/6000.0/manual/platform-specific/dedicated-server/build) |
 | 独立 .NET | 高风险研究。Together 的 `netstandard2.1` 项目仍引用游戏 Assembly-CSharp 和 Unity 模块，实际路径依赖 MonoBehaviour、协程、场景、游戏世界和物理。可先盘点纯传输、序列化与规则代码能否单独测试。独立运行世界需要再现引擎与玩法语义、验证跨版本一致性并取得必要授权。当前只建议做依赖图和合作可行性判断。[Together 项目引用](../ref/casualties-together/ScavPrototypeMP/CasualtiesTogether.csproj) |
 
-Together 本地源码已有 `Optimizinator` 中的专项探针、`Extras/SendBudget.cs` 及 FPS/TPS 读数。先验证能否复用，避免重复打补丁。游戏和存档生命周期依赖上游，CUHub 只消费已公开的启动、状态及诊断能力。[优化与探针目录](../ref/casualties-together/ScavPrototypeMP/Optimizinator) · [发送预算](../ref/casualties-together/ScavPrototypeMP/Extras/SendBudget.cs)
+Together 本地源码已有 `Optimizinator` 中的专项探针、`Extras/SendBudget.cs` 及 FPS/TPS 读数。先验证能否复用，避免重复打补丁。游戏和存档生命周期依赖上游，Cuprum 只消费已公开的启动、状态及诊断能力。[优化与探针目录](../ref/casualties-together/ScavPrototypeMP/Optimizinator) · [发送预算](../ref/casualties-together/ScavPrototypeMP/Extras/SendBudget.cs)
 
 ### 多人性能实验
 
@@ -72,9 +72,9 @@ Together 本地源码已有 `Optimizinator` 中的专项探针、`Extras/SendBud
 - 同时采集服端和客户端 P50/P95/P99 帧时间、进程/核心 CPU、GPU busy、内存/GC、固定更新与同步耗时、消息数/流量/重传、RTT/丢包及直连或中继状态。缺少计数器时注明。统一场景标记和时间基准，记录采样开销。
 - 先比较普通 Host 和 Dedicated，再在同一模式逐项改变直连/中继、画质和渲染设置。GPU 指标改善但服务器 tick 和客户端延迟不变时，收益仅记为渲染资源节省。主线程、GC、世界模拟、同步预算、网络和客户端渲染都保留为假设，要求数据支持才归因。
 
-## 5. CUHub Bridge
+## 5. Cuprum Bridge
 
-现有 C# 插件已经能建立回环 IPC，在 Unity `Update` 泵处理命令。Rust 宿主有帧、握手、单会话、心跳和命令权限。已接游戏侧 `mp.state/host/join`，握手携带一份加载 GUID 快照。持续 `mods.loaded`、`game.state`、性能流、Dedicated 生命周期以及完整权限确认仍属待实现。共享常量 token 是防误连机制，自动 Dedicated 管理尤其要验证实例归属，现有固定回环端口与单会话约束适合首版只观察一个实例。[桥模块](core/bridge/overview.md) · [C# 主循环](../mods/cuhub-bridge/CuhubBridge.Plugin/BridgePlugin.cs) · [W4 后端](../mods/cuhub-bridge/CuhubBridge.Plugin/MpBackend.cs)
+现有 C# 插件已经能建立回环 IPC，在 Unity `Update` 泵处理命令。Rust 宿主有帧、握手、单会话、心跳和命令权限。已接游戏侧 `mp.state/host/join`，握手携带一份加载 GUID 快照。持续 `mods.loaded`、`game.state`、性能流、Dedicated 生命周期以及完整权限确认仍属待实现。共享常量 token 是防误连机制，自动 Dedicated 管理尤其要验证实例归属，现有固定回环端口与单会话约束适合首版只观察一个实例。[桥模块](core/bridge/overview.md) · [C# 主循环](../mods/cuprum-bridge/CuprumBridge.Plugin/BridgePlugin.cs) · [W4 后端](../mods/cuprum-bridge/CuprumBridge.Plugin/MpBackend.cs)
 
 - **先读状态。** 通过版本化能力与有限长快照返回游戏阶段、实际加载模组身份、角色及监听端口，提供来源、时间戳、新鲜度和缺失原因。对不同 Together/CUCoreLib 版本做低成本探针，优先公开 API，必要反射按版本约束。端口读数与游戏入房仍需真机校验。
 - **再加本地性能采集。** 固定上限的缓冲与采样窗口，主线程只读 Unity 对象和计数器，聚合、编码、写盘放到已有后台边界。先探测正式 Player 可用的 `ProfilerRecorder` 计数器；单独记录渲染、主线程、GC、模拟和网络数据的可用性。Bridge 关闭、采样关闭及开启三组测自身开销。[ProfilerRecorder](https://docs.unity.com/en-us/engine/6000.6/script-reference/unity/profiling/profilerrecorder)
@@ -82,7 +82,7 @@ Together 本地源码已有 `Optimizinator` 中的专项探针、`Extras/SendBud
 
 ## 6. 开放模组规范 RFC
 
-建议先发布推荐性 RFC 草案，联同已有模组作者试填。规范使用游戏社区可独立实施的示例、版本化 Schema 和一致性样本。CUHub 的 Profile、Store 和 Links 作为本地实现。旧 ZIP、7z、RAR、裸 DLL 仍可导入，缺失信息可由作者声明、BepInEx 元数据和人工映射逐步补足，保留各字段来源。
+建议先发布推荐性 RFC 草案，联同已有模组作者试填。规范使用游戏社区可独立实施的示例、版本化 Schema 和一致性样本。Cuprum 的 Profile、Store 和 Links 作为本地实现。旧 ZIP、7z、RAR、裸 DLL 仍可导入，缺失信息可由作者声明、BepInEx 元数据和人工映射逐步补足，保留各字段来源。
 
 | 参考 | 借鉴点 | CU 需要决定的语义 |
 | --- | --- | --- |
@@ -128,7 +128,7 @@ RFC 首版应另外定义客户端/服务端 required、optional、unsupported �
 | R-MOD-2 | 部署在各写入阶段中断后能否恢复 | 临时目录注入备份/解链/部署/索引/档案失败，另测强退、重试、并发、跨卷、链接与拷贝。每次记录部署、索引、活动档案及残留，验收可重跑且不损失用户数据 |
 | R-MOD-3 | Lockfile 与配置能否跨两台机器重现 | 干净环境分别装同一清单，测来源消失、同版本异载荷、手工补包、配置差异和角色差异，给出完整、部分、不可验证的不同结果 |
 | R-NET-1 | W4 与 EasyTier 的实际兼容矩阵 | 双机执行 R1–R11 和同/异 NAT、直连/中继、Windows/Linux；保存脱敏的 CLI 样本、游戏状态与时间线。验证端口漂移和反射缺省时的手动退路 |
-| R-NET-2 | Together 的入房校验与 Bridge 能否共存 | 固定部署 DLL，分别验证 IP/Steam、名单开关、仅一端加载 Bridge、客户端可选模组，以及何时能交换摘要。记录上游行为与 CUHub 预检结果 |
+| R-NET-2 | Together 的入房校验与 Bridge 能否共存 | 固定部署 DLL，分别验证 IP/Steam、名单开关、仅一端加载 Bridge、客户端可选模组，以及何时能交换摘要。记录上游行为与 Cuprum 预检结果 |
 | R-RT-1 | 正式版兼容工具、启动选项与实际进程归属 | 对比 Windows、Linux 原生/Flatpak Steam、自定义库和多 GPU，记录选用运行时、BepInEx 加载、前缀变化、Steam Lobby 和恢复路径 |
 | R-BR-1 | 零售 Player 可观测哪些信号 | 确认实际 Unity 版本和可用计数器，交付采样的功能、耗时和 GC 数据。比对外部采集，断线与不支持信号应有独立状态 |
 | R-SRV-1 | Dedicated 服务生命周期与各系统权威 | 用固定 Together 快照及对应 DLL，追踪启动、进世界、切层、重连、退出，并画出客户端与服务端对移动、物品、区块和保存的读写边界。用已知上游规则验证是否能稳定启动并观察 Ready |

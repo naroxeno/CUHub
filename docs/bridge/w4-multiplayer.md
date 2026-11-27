@@ -5,12 +5,12 @@
 ## 0. 与“桥归模组安装机制”的关系
 
 - 这是发布前的硬前置，和本方案分开做：桥最终要作为普通目录型模组装进 Store、写 Links 与 profile，卸载/更新/修复都走模组链路。
-- 当前固定 `Plugins/CuhubBridge`、不写 Store/Links/profile，以及 adopt 的 `AdoptSkip::BuiltIn` 都只是临时兜底，不是最终设计。
+- 当前固定 `Plugins/CuprumBridge`、不写 Store/Links/profile，以及 adopt 的 `AdoptSkip::BuiltIn` 都只是临时兜底，不是最终设计。
 - 本方案不依赖桥装在哪；先做控制，不等于认可现在的固定安装。发布前必须另开任务完成托管重构，并把 adopt 特判删掉。
 
 ## 1. 结论
 
-- 控制权限默认关闭。Multiplayer 顶部桥卡片增加一个“允许联机控制”开关，只授权 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`，不碰其它命令。
+- 控制权限默认关闭。Multiplayer 顶部桥卡片增加一个“允许联机控制”开关，只授权 `dev.cuprum.bridge` 的 `mp.host` / `mp.join`，不碰其它命令。
 - 授权后：房主在桥会话就绪时自动开房一次；客人在隧道连上房主后自动加入，最多 3 次退避重试。两边都保留手动按钮兜底。
 - 房主地址用 `10.144.144.1:<port>`；客人用 `TunnelState::Connected { virtual_ip, port }` 里的房主地址。端口取房间当前端口。
 - `mp.leave` / `mp.kick` 暂不接：C# 侧声明了但未实现；离开仍走现有 EasyTier 的“离开房间”。玩家列表也没有 CUCoreLib 公开 API，W3 保持只读 flag。
@@ -22,7 +22,7 @@
 - `crates/app/src/ui/multiplayer.rs:24` 的 `MultiplayerUi` 只有 EasyTier 的 host/join/leave；没有桥命令的 busy、错误和确认态。
 - `crates/core/src/hub/bridge_host.rs:70` 的 `bridge_snapshot` 每 2 秒轮询 `mp.state`；`crates/app/src/ui/bridge.rs:14` 的 `watch_bridge` 只消费快照，没有命令通道。
 - `crates/core/src/bridge/server.rs:142` 的 `ServerShared.permissions` 是启动时快照；当前没有修改入口。`command.rs:157` 对 control 默认 `Denied`。
-- C# 侧 `MpBackend.Start`（`mods/cuhub-bridge/CuhubBridge.Plugin/MpBackend.cs:45`）已能 host/join：address 必填，失败返回 `unavailable` 和原因；`CommandRouter.cs:55` 已校验 address 非空、无空白、≤128。
+- C# 侧 `MpBackend.Start`（`mods/cuprum-bridge/CuprumBridge.Plugin/MpBackend.cs:45`）已能 host/join：address 必填，失败返回 `unavailable` 和原因；`CommandRouter.cs:55` 已校验 address 非空、无空白、≤128。
 - 现有文档 `docs/bridge/plan.md:85` 写的是“房主点按钮、客人自动 join”；本方案把房主也改成自动，但保留按钮。
 
 ## 3. 权限：一个开关，活更新
@@ -30,7 +30,7 @@
 ### 3.1 数据
 
 - 继续用 `Settings.json` 的 `bridge.permissions`（`crates/core/src/bridge/command.rs:106`）。
-- key：`dev.cuhub.bridge`（常量在 `crates/core/src/bridge.rs:3`）；命令只写 `mp.host`、`mp.join`。开=Granted，关=Denied。
+- key：`dev.cuprum.bridge`（常量在 `crates/core/src/bridge.rs:3`）；命令只写 `mp.host`、`mp.join`。开=Granted，关=Denied。
 - 不要默认给 `mp.leave` / `mp.kick` 授权；等 C# 实现后再加。
 
 ### 3.2 接口
@@ -45,7 +45,7 @@
 ### 3.3 UI
 
 - 开关放在 Multiplayer 的 `bridge_card`，不放全局设置页；W8 的完整命令矩阵以后再做，避免这次扩大范围。
-- 打开时显示一句确认文案：只允许 CUHub 在游戏内开房/加入，不影响其它桥命令。关闭立即生效。
+- 打开时显示一句确认文案：只允许 Cuprum 在游戏内开房/加入，不影响其它桥命令。关闭立即生效。
 - 未授权时，游戏内开房/加入按钮禁用，提示先打开开关；自动状态机也不启动。
 
 ## 4. 状态机
@@ -111,7 +111,7 @@
   - R7 游戏内建房 7790 / 24444 的端口检测与来源标签。
   - R8 游戏内直接开房不重复下发；R9 换房 / 重进清理。
   - R10 房主退出后客人侧；R11 房主换端口后客人侧（提示「房主已换房，请用房间码重进」）。
-- 回归：`cargo fmt --all -- --check`、`cargo test -p cuhub-core`、`cargo test -p cuhub --all-targets`、`just build-bridge`，不新增警告；批次 F 自动部分见 `docs/TEST-PLAN.md` §8.1。
+- 回归：`cargo fmt --all -- --check`、`cargo test -p cuprum-core`、`cargo test -p cuprum --all-targets`、`just build-bridge`，不新增警告；批次 F 自动部分见 `docs/TEST-PLAN.md` §8.1。
 
 ## 8. 文档与文案
 
@@ -145,14 +145,14 @@
 
 ## 12. 进度（2026-11-20）
 
-- 步骤 1 完成：`ServerShared.permissions` 改为 `RwLock<Permissions>`，`invoke_with` 每条命令现取现判；新增 `BridgeServer::set_permissions`；`BridgeSnapshot` 增加 `control`；新增 `Hub::bridge_control_enabled` 与 `Hub::set_bridge_control(bool)`（只改 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`，写回 `Settings.json`，桥在运行时立即生效）。
-- 测试：`hub/bridge_host.rs` 两条纯函数单测；`tests/bridge_server.rs` 新增「默认拒绝 → 运行中授权 → 同一会话允许」；`cargo test -p cuhub-core` 342 单测 + 14 集成全绿；`docs/core/bridge/overview.md` 已同步。
+- 步骤 1 完成：`ServerShared.permissions` 改为 `RwLock<Permissions>`，`invoke_with` 每条命令现取现判；新增 `BridgeServer::set_permissions`；`BridgeSnapshot` 增加 `control`；新增 `Hub::bridge_control_enabled` 与 `Hub::set_bridge_control(bool)`（只改 `dev.cuprum.bridge` 的 `mp.host` / `mp.join`，写回 `Settings.json`，桥在运行时立即生效）。
+- 测试：`hub/bridge_host.rs` 两条纯函数单测；`tests/bridge_server.rs` 新增「默认拒绝 → 运行中授权 → 同一会话允许」；`cargo test -p cuprum-core` 342 单测 + 14 集成全绿；`docs/core/bridge/overview.md` 已同步。
 - 步骤 2–3 完成（未提交）：
   - app 新增 `crates/app/src/ui/mp_control.rs`：`GamePhase`（NoSession / Unavailable / NoControl / WaitingTunnel / Ready / Hosting / Joined）、`game_phase`、`game_status_key`、`game_address`、`game_error_text`、`stops_auto` 与 `watch_mp_control`（2 秒轮询；`status.session.pid` 变更重置门控；客人隧道 `Connected` 端点变更重置 attempts；房主只自动一次；客人最多 3 次、退避 0/3/8 秒；`denied` 与 `invalid_params` 立即停；确认对话框打开或其它任务忙碌时不自动）。
   - 桥卡片新增「游戏内控制」开关（`mp_toggle_bridge_control`）；房间卡新增「游戏内房间」区块：状态文案、地址与复制、手动开房/加入（两段式确认）、重试、错误行、`MpBusy::Game`。
   - core 新增 `Hub::game_host` / `Hub::game_join`，包一层 `mp.host` / `mp.join`，参数是 app 拼好的 `address`。
   - 文案：`multiplayer.bridge_control*`、`multiplayer.game_*`、`multiplayer.busy_game`，en / zh-CN / ja。
-- 测试：`mp_control.rs` 新增 10 条纯函数单测（会话/可用性/权限门控、房主与客人状态、地址拼装与端口边界、状态键）；`cargo test -p cuhub --all-targets` 15 条全过；`cargo fmt --all` 干净；`cargo check -p cuhub --all-targets` 无警告。
+- 测试：`mp_control.rs` 新增 10 条纯函数单测（会话/可用性/权限门控、房主与客人状态、地址拼装与端口边界、状态键）；`cargo test -p cuprum --all-targets` 15 条全过；`cargo fmt --all` 干净；`cargo check -p cuprum --all-targets` 无警告。
 - 剩余：真机回归（§7）；桥托管重构（§0）作为发布前置。文档已同步：`docs/FEATURES.md`、`docs/bridge/plan.md`、`docs/bridge/protocol.md`、`docs/core/bridge/overview.md`、`docs/app/overview.md`。
 - §10 决议（2026-11-20，Naro）：开关在桥卡片；房主与客人都自动；客人 3 次、0/3/8 秒；桥托管重构作为发布前置单独排期；QuickTest 保持实验性，真机确认前不当稳定能力。
 
@@ -161,4 +161,4 @@
 - core：`MpState.port` 只保留 `running && server` 的上报值；新增 `Hub::game_room_port()`、`multiplayer::port`（`choose_host_port`：上报 > 手填 > 默认 25565，`PortSource`、`PortWatch` 350ms×2 / 6s 窗口、`PortUpdate`）。`Hub::start_host` / `join_room` 改走该选择；新增 `restart_host_port` 与阻塞式 `reconcile_room_port`；`start_game_host()` 要求房主隧道，下发 `mp.host` 后回读端口，与隧道端口不一致返回 `HubError::GamePort`。
 - app：开房/加入前显示端口来源与「重新检测」，手填与上报不一致时可一键采纳；`game_phase` 把 `mp.server` 视为 `Hosting`；`watch_mp_control` 增加会话进入/换房/退出交接、客人侧房主离开或换端口提示、房主 reconcile 三态与检测缓存；新增 `MpBusy::Port` 与三语文案。
 - 房主换端口后客人旧隧道目标失效：采用低成本方案，提示「房主已换房，请用房间码重进」，不自动重新发现。
-- 验证：`cargo test -p cuhub --all-targets` 25 条全过（其中 mp_control 15 条）；`cargo check -p cuhub --all-targets` 无警告。
+- 验证：`cargo test -p cuprum --all-targets` 25 条全过（其中 mp_control 15 条）；`cargo check -p cuprum --all-targets` 无警告。

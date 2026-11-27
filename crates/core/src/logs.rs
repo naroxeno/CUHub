@@ -63,7 +63,7 @@ impl Logs {
             Local::now().format("%Y-%m-%d_%H-%M-%S")
         ));
         let mut report = String::new();
-        report.push_str("CUHub crash report\n");
+        report.push_str("Cuprum crash report\n");
         report.push_str(&format!("Created: {}\n", Local::now().to_rfc3339()));
         report.push_str(&format!("Version: {}\n", env!("CARGO_PKG_VERSION")));
         report.push_str(&format!(

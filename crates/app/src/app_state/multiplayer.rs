@@ -1,8 +1,8 @@
 //! Multiplayer state: drafts, the tunnel poller and the room workers.
 
-use cuhub_core::easytier::{self, EasyTierMember};
-use cuhub_core::hub::{Hub, HubError};
-use cuhub_core::multiplayer::{PortUpdate, RoomRole, TunnelState, choose_host_port};
+use cuprum_core::easytier::{self, EasyTierMember};
+use cuprum_core::hub::{Hub, HubError};
+use cuprum_core::multiplayer::{PortUpdate, RoomRole, TunnelState, choose_host_port};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -43,6 +43,8 @@ pub struct MultiplayerUi {
     pub polling: Signal<bool>,
     pub game_error: Signal<String>,
     pub game_confirm: Signal<Option<bool>>,
+    pub manual_game_control: Signal<bool>,
+    pub guest_rejoin: Signal<bool>,
     pub detected: Signal<Option<u16>>,
     pub port_error: Signal<String>,
     pub gate_epoch: Signal<u64>,
@@ -120,6 +122,8 @@ impl MultiplayerUi {
             polling: signal(false),
             game_error: signal(String::new()),
             game_confirm: signal(None),
+            manual_game_control: signal(false),
+            guest_rejoin: signal(false),
             detected: signal(None),
             port_error: signal(String::new()),
             gate_epoch: signal(0u64),
@@ -276,6 +280,8 @@ impl Ui {
     fn mp_reset_game_session(&self) {
         self.mp.game_error.set(String::new());
         self.mp.game_confirm.set(None);
+        self.mp.manual_game_control.set(false);
+        self.mp.guest_rejoin.set(false);
         self.mp.port_error.set(String::new());
         self.mp.detected.set(None);
         self.mp.gate_epoch.set(self.mp.gate_epoch.get() + 1);

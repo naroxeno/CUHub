@@ -39,6 +39,6 @@
 
 ## 常量与格式出处
 
-- appdata 根：`platform::app_data_root`，与上游 `HubPaths.AppDataRoot` 对应，目录名为 `CUHub`。
+- appdata 根：`platform::app_data_root`，与上游 `HubPaths.AppDataRoot` 对应，目录名为 `Cuprum`。
 - 元数据 URL、缓存文件和 6 小时生命周期来自 `metadata`；GitHub 清单 URL、缓存文件与 6 小时生命周期来自 `sources::cache`。
 - 依赖与冲突目录来自 `catalogs`；远程条目的依赖来自 `sources::SourceEntry.depends`，DLL 声明来自 `mods::dependencies::read_dependencies`。

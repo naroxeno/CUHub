@@ -1,6 +1,6 @@
 //! EasyTier setup, room forms and port fields.
 
-use cuhub_core::multiplayer::DEFAULT_GAME_PORT;
+use cuprum_core::multiplayer::DEFAULT_GAME_PORT;
 use nsh_core::prelude::*;
 
 use crate::app_state::{Ui, host_port, join_port, port_mismatch, port_source_key};
@@ -126,6 +126,10 @@ fn join_card(ui: &Ui) -> View {
             move || t!("multiplayer.code"),
             code_input(&z, mp.code),
         ))
+        .child(when(
+            move || mp.error.get() == "multiplayer.error_code",
+            move || pix(move || t!("multiplayer.error_code"), 11.0, DANGER, &z),
+        ))
         .child(room_action(ui, "multiplayer.join", move || {
             action.mp_join()
         }))
@@ -219,6 +223,7 @@ fn port_field(ui: &Ui) -> View {
     let bridge = ui.bridge;
     let redetect_ui = ui.clone();
     let adopt_ui = ui.clone();
+    let issues = ui.clone();
     view()
         .flex_col()
         .gap(scaled(&z, 6.0))
@@ -270,7 +275,7 @@ fn port_field(ui: &Ui) -> View {
         ))
         .child(when(
             move || !mp.port_error.get().is_empty(),
-            move || pix(move || mp.port_error.get(), 10.0, DANGER, &z),
+            move || super::issue_button(&issues, "multiplayer-game"),
         ))
         .child(pix(
             move || t!("multiplayer.port_hint", port = DEFAULT_GAME_PORT),

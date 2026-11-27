@@ -6,7 +6,7 @@ core 里唯一允许发起 HTTP 的模块。app 不联网，也不调用 nsh 的
 
 ## 输入输出
 
-- Network::new()：默认 User-Agent 为 Cuhub/<core 版本>；with_user_agent 允许调用方覆盖。
+- Network::new()：默认 User-Agent 为 Cuprum/<core 版本>；with_user_agent 允许调用方覆盖。
 - get(url, etag, last_modified, max_bytes) -> Fetch：
   - 返回 Fetched { body, etag, last_modified }，或 304 时返回 NotModified。
   - 有 ETag / Last-Modified 时自动带 If-None-Match / If-Modified-Since。

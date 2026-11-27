@@ -37,17 +37,17 @@
 ### 联机（M1）
 
 - `crates/core/src/easytier/`：release（2.6.4 下载/校验/解压）、detect、ports、argument、process（父死子跟、RPC 回环）、status（CLI JSON）、tunnel（房主/客人、客人发现后带 `--port-forward` 重启一次）。
-- 房间码自定 C1：16 字符、32 字符表、XOR 校验，显示 `C1-XXXX-XXXX-XXXX-XXXX`；不与陶瓦 Scaffolding 互通。房主 hostname 约定 `cuhub-host-<port>`，客人从 peer list 找房主。
+- 房间码自定 C1：16 字符、32 字符表、XOR 校验，显示 `C1-XXXX-XXXX-XXXX-XXXX`；不与陶瓦 Scaffolding 互通。房主 hostname 约定 `cuprum-host-<port>`，客人从 peer list 找房主。
 - Multiplayer 页已接：开房/加入、状态卡、房间码复制、对端表、EasyTier 未就绪提示与自定义目录、1500ms 轮询。公共节点默认 4 条；实测 `public.easytier.top`、`public2.easytier.cn`、`etnode.zkitefly.eu.org/node1` 时常握手失败，`/node2` 可用。
-- 提权：Windows 要求以管理员重开 Cuhub（`IsUserAnAdmin`，不做 runas 单拉）；Linux/macOS 不预检查 Cuhub 自身能力，由 easytier-core 文件的 `cap_net_admin+ep` 在 exec 时生效。
+- 提权：Windows 要求以管理员重开 Cuprum（`IsUserAnAdmin`，不做 runas 单拉）；Linux/macOS 不预检查 Cuprum 自身能力，由 easytier-core 文件的 `cap_net_admin+ep` 在 exec 时生效。
 - 未做：双机同/异 NAT 实测、Windows 实机、延迟/中继列、手动 IP:端口退路、Windows 无边框窗口验证。
 - 2026-11-21 端口与交接：桥经 `mp.state` 上报主机实际监听端口（仅 running && server），core 按「上报 > 手填 > 默认 25565」选端口并做占用检查；房主端口变化经 350ms×2 采样与 6 秒窗口确认后重建隧道，客人侧提示「房主已换房，请用房间码重进」，不自动重新发现。app 增加端口来源三态与重新检测、游戏内直接开房的 Hosting 相位、四类交接（进入 / 换房 / 退出 / 房主离开）。自动基线：377 单测 + 14 集成、app 25 条。真机未做。
 
 ### 桥（Bridge，实验性，不发布）
 
 - Rust 宿主：`crates/core/src/bridge/{proto,mp,command,session,handshake,server}.rs` 加 `hub/bridge_host.rs`；固定监听 `127.0.0.1:41297`、两端共享 token、单会话、命令表、三档权限、最近握手失败、审计；`crates/core/tests/bridge_server.rs` 14 个回环集成测试；测试用 `start_at(0)` 绑临时回环端口、不占 41297，可与真实游戏并行；`close_session` 先取会话槽位并发 `SessionEnded` 再 shutdown，关闭/心跳竞态已消除（`crates/core/src/bridge/server.rs`）。
-- C# 游戏侧：`mods/cuhub-bridge/` 的 `CuhubBridge.Core` + `CuhubBridge.Plugin`，`dotnet build -c Release` 通过、无警告；插件 0.1.1，直连 `127.0.0.1:41297`，实现 hello、10 秒心跳、`mp.state`（含主机监听端口）、`mp.host` / `mp.join`（反射 CUCoreLib），其余命令回 `unavailable`。尚未真机加载。
-- W2/W3 已接线：状态栏三态 + 最近握手失败、Local Mods“运行中已加载”、Multiplayer 顶部只读 `mp.state` 卡与端口来源；`game.state` / `mods.loaded`、权限确认、`mp.leave` / `mp.kick` / `save.*` / `skin.*` 未做。桥没有打进 Cuhub 安装包，需 `just package-bridge` 生成 zip。
+- C# 游戏侧：`mods/cuprum-bridge/` 的 `CuprumBridge.Core` + `CuprumBridge.Plugin`，`dotnet build -c Release` 通过、无警告；插件 0.1.1，直连 `127.0.0.1:41297`，实现 hello、10 秒心跳、`mp.state`（含主机监听端口）、`mp.host` / `mp.join`（反射 CUCoreLib），其余命令回 `unavailable`。尚未真机加载。
+- W2/W3 已接线：状态栏三态 + 最近握手失败、Local Mods“运行中已加载”、Multiplayer 顶部只读 `mp.state` 卡与端口来源；`game.state` / `mods.loaded`、权限确认、`mp.leave` / `mp.kick` / `save.*` / `skin.*` 未做。桥没有打进 Cuprum 安装包，需 `just package-bridge` 生成 zip。
 - 详细边界见 [bridge 模块说明](core/bridge/overview.md)、[协议](bridge/protocol.md)、[实施方案](bridge/plan.md)、[C# 研究](bridge/csharp-plugin.md)。
 
 ## 3. 当前结构
@@ -67,11 +67,11 @@
 
 ## 5. 建议下一步
 
-1. 按 [TEST-PLAN.md](TEST-PLAN.md) 跑批次 A，再分环境跑 B–H；当前只有 core 单测、桥回环与 app 纯函数测试，UI、真实游戏、双机、Windows 与打包都没有可复现记录。GitHub 源本地清单仍为 2 条；托管仓库 `naroxeno/CUHub-Store` 的远程拉取已接（6h 缓存、启动刷新、本地兜底，Remote Mods 页可手动刷新），清单已上传 26 条并验证 raw 可读（2026-11-19）。
+1. 按 [TEST-PLAN.md](TEST-PLAN.md) 跑批次 A，再分环境跑 B–H；当前只有 core 单测、桥回环与 app 纯函数测试，UI、真实游戏、双机、Windows 与打包都没有可复现记录。GitHub 源本地清单仍为 2 条；托管仓库 `naroxeno/Cuprum-Store` 的远程拉取已接（6h 缓存、启动刷新、本地兜底，Remote Mods 页可手动刷新），清单已上传 26 条并验证 raw 可读（2026-11-19）。
 2. 桥与联机的真机回归：两机按 `docs/bridge/w4-tickets/README.md` 的 R1–R11 执行（端口自动检测、房主/客人顺序、换房/重进、房主退出后客人侧），偏差与裁定见 `docs/bridge/w4-tickets/decisions.md`；跑前按工单备份 appdata 并用临时游戏副本。心跳集成测试的时序 flake 由 t15（只改测试）稳定。
 3. 联机双机实测（同 NAT / 异 NAT），重点看房主发现、`--port-forward` 重启、退出清理；Windows 无边框标题栏也要实机看。
 4. 内容库后续：M4 整合包、`configOverrides`、Store 删除入口、undo adopt；先补用户可见入口再动数据格式。
-5. 收尾基线警告：`cargo clippy -p cuhub-core --all-targets -- -D warnings` 仍有既有 `hub.rs` 的 `collapsible_if` 与 `settings.rs` 的 `field_reassign_with_default`；与桥无关，修时单独提交。
+5. 收尾基线警告：`cargo clippy -p cuprum-core --all-targets -- -D warnings` 仍有既有 `hub.rs` 的 `collapsible_if` 与 `settings.rs` 的 `field_reassign_with_default`；与桥无关，修时单独提交。
 
 ## 6. 验证命令
 
@@ -79,13 +79,13 @@
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 cargo fmt --all -- --check
 nsh check
-cargo test -p cuhub-core                  # 377 单测 + 14 桥集成
-cargo test -p cuhub --all-targets         # 25 条（mp_control 15 条）
-cargo clippy -p cuhub --no-deps -- -D warnings   # 只允许既有 2 条 lint（batch.rs:46 / install.rs:244）
+cargo test -p cuprum-core                  # 377 单测 + 14 桥集成
+cargo test -p cuprum --all-targets         # 25 条（mp_control 15 条）
+cargo clippy -p cuprum --no-deps -- -D warnings   # 只允许既有 2 条 lint（batch.rs:46 / install.rs:244）
 
 just build-bridge                 # dotnet build，需 dotnet SDK 与游戏 Managed DLL
-just package-bridge               # dist/bridge/CuhubBridge.zip（插件 0.1.1）
-dotnet build mods/cuhub-bridge/CuhubBridge.Plugin/CuhubBridge.Plugin.csproj -c Release   # 0 警告 0 错误
+just package-bridge               # dist/bridge/CuprumBridge.zip（插件 0.1.1）
+dotnet build mods/cuprum-bridge/CuprumBridge.Plugin/CuprumBridge.Plugin.csproj -c Release   # 0 警告 0 错误
 jj status                         # 不允许出现构建产物、下载物、临时目录、测试残留
 ```
 

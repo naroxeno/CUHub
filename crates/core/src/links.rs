@@ -75,13 +75,13 @@ impl std::fmt::Display for LinkError {
                 write!(formatter, "{} is outside the game folder", path.display())
             }
             Self::NotManaged(path) => {
-                write!(formatter, "{} is not deployed by Cuhub", path.display())
+                write!(formatter, "{} is not deployed by Cuprum", path.display())
             }
             Self::MissingStore(path) => {
                 write!(formatter, "{} is missing from the store", path.display())
             }
             Self::ChangedTarget(path) => {
-                write!(formatter, "{} has changed outside Cuhub", path.display())
+                write!(formatter, "{} has changed outside Cuprum", path.display())
             }
             Self::Recovery { source, recovery } => {
                 write!(formatter, "{source}; recovery failed: {recovery}")
@@ -409,7 +409,7 @@ fn replacement_directory(target: &Path) -> Result<PathBuf, LinkError> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     loop {
         let id = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = target.with_file_name(format!(".cuhub-replace-{}-{id}", std::process::id()));
+        let path = target.with_file_name(format!(".cuprum-replace-{}-{id}", std::process::id()));
         match fs::create_dir(&path) {
             Ok(()) => return Ok(path),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}

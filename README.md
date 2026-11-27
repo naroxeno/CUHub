@@ -27,18 +27,26 @@
 
 For multiplayer, install **Casualties Together** and its dependencies, then open **Multiplayer**. The host defaults to port **7790**. Guests can leave the host port blank and paste the address Cuprum shows into the game. If the address changes, rejoin with the new one. Two-machine play and the optional Bridge are still pending in-game testing.
 
+### Upgrading an older test build
+
+Before launching the new build, close the old app and the game. With Python 3, run `python3 scripts/migrate-app-data.py "<old data folder>"` (`py -3` on Windows). Pass the folder containing `Settings.json`. The script moves the folder to a sibling named `Cuprum` and leaves a directory link so saved mod paths still work. An existing destination must be moved aside manually before retrying.
+
+If you use the Bridge, move the old Bridge folder out of BepInEx's plugins directory before installing the new package. Turn automatic in-game hosting and joining back on if you used it before. Everyone in a multiplayer room should upgrade and use a newly created room.
+
 ## Build from source
 
-Install stable Rust, [nsh](https://nsh.dev) 0.5.1, and `just`. On Linux, use Clang to build and GTK 4.14+ and GStreamer to run the app.
+Install stable Rust, [nsh](https://nsh.dev) 0.7.1, and `just`. On Linux, use Clang to build and GTK 4.14+ to run the app.
 
 ```sh
-git clone https://github.com/naroxeno/CUHub.git
-cd CUHub
+git clone https://github.com/naroxeno/Cuprum.git
+cd Cuprum
 just dev
 just package
 ```
 
-Run `just check` and `just test` for validation. See the [justfile](justfile) for platform-specific builds. Package the optional Bridge separately with `just package-bridge`. Build and install steps are in the [Bridge guide](mods/cuhub-bridge/README.md).
+On Linux, `just package-appimage` writes the AppImage to `dist/appimage/`. Put `appimagetool` on `PATH` or set `NSH_APPIMAGETOOL` to its path. The AppImage uses the target system's GTK 4.14+.
+
+Run `just check` and `just test` for validation. See the [justfile](justfile) for platform-specific builds. Package the optional Bridge separately with `just package-bridge`. Build and install steps are in the [Bridge guide](mods/cuprum-bridge/README.md).
 
 ## Project
 

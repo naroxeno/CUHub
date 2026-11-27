@@ -29,7 +29,7 @@ pub struct Network {
 
 impl Network {
     pub fn new() -> Result<Self, NetworkError> {
-        Self::with_user_agent(concat!("Cuhub/", env!("CARGO_PKG_VERSION")))
+        Self::with_user_agent(concat!("Cuprum/", env!("CARGO_PKG_VERSION")))
     }
 
     pub fn with_user_agent(user_agent: &str) -> Result<Self, NetworkError> {
@@ -433,7 +433,7 @@ fn read_limited(reader: impl Read, max_bytes: u64, url: &Url) -> Result<Vec<u8>,
 fn create_temporary(parent: &Path) -> Result<(PathBuf, File), NetworkError> {
     for _ in 0..16 {
         let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = parent.join(format!(".cuhub-{}-{counter}.part", std::process::id()));
+        let path = parent.join(format!(".cuprum-{}-{counter}.part", std::process::id()));
         match OpenOptions::new().write(true).create_new(true).open(&path) {
             Ok(file) => return Ok((path, file)),
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,

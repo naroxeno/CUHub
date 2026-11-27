@@ -1,7 +1,7 @@
 //! Delete confirmation flow for one mod or every mod.
 
 use super::state::Ui;
-use cuhub_core::mods::{DeleteScope, InstalledMod};
+use cuprum_core::mods::{DeleteScope, InstalledMod};
 use nsh_core::prelude::*;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -120,7 +120,7 @@ impl Ui {
                     DeleteTarget::Mod(item) => hub.delete_scope(item),
                     DeleteTarget::All => hub.delete_all_scope(),
                 }?;
-                Ok::<_, cuhub_core::hub::HubError>((managed, scope))
+                Ok::<_, cuprum_core::hub::HubError>((managed, scope))
             })
             .await;
             ui.delete_busy.set(false);

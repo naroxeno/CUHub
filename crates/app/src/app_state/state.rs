@@ -16,11 +16,11 @@ use crate::i18n;
 use crate::palette::{Palette, Theme, apply_theme};
 use crate::setup::Setup;
 use crate::shell::nav;
-use cuhub_core::hub::{BepInExInstall, BridgeInstallStatus, BridgeSnapshot, Hub};
-use cuhub_core::install::{Flavor, Status as BepInExStatus};
-use cuhub_core::metadata::MetadataMod;
-use cuhub_core::mods::InstalledMod;
-use cuhub_core::settings::Settings;
+use cuprum_core::hub::{BepInExInstall, BridgeInstallStatus, BridgeSnapshot, Hub};
+use cuprum_core::install::{Flavor, Status as BepInExStatus};
+use cuprum_core::metadata::MetadataMod;
+use cuprum_core::mods::InstalledMod;
+use cuprum_core::settings::Settings;
 use nsh_core::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -32,7 +32,7 @@ use std::time::Instant;
 
 use super::batch::BatchProgress;
 
-const STORE_PROBE_FILE: &str = ".cuhub-write-check";
+const STORE_PROBE_FILE: &str = ".cuprum-write-check";
 
 #[derive(Clone)]
 pub struct Ui {
@@ -79,6 +79,8 @@ pub struct Ui {
     pub apply_cancel: Signal<bool>,
     pub apply_status: Signal<String>,
     pub task_open: Signal<bool>,
+    pub task_focus: Signal<Option<&'static str>>,
+    pub task_failures: Signal<BTreeMap<&'static str, &'static str>>,
     pub downloads: Signal<Vec<DownloadTrack>>,
     pub batch_selection: Signal<BTreeSet<String>>,
     pub batch_progress: Signal<Option<BatchProgress>>,
@@ -231,6 +233,8 @@ impl Ui {
             apply_cancel: signal(false),
             apply_status: signal(String::new()),
             task_open: signal(false),
+            task_focus: signal(None),
+            task_failures: signal(BTreeMap::new()),
             downloads: signal(Vec::new()),
             batch_selection: signal(BTreeSet::new()),
             batch_progress: signal(None::<BatchProgress>),
@@ -349,13 +353,17 @@ impl Ui {
         };
         match saved {
             Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
                 self.settings.set(settings);
                 self.refresh_mods();
                 self.refresh_bepinex();
                 self.refresh_bridge_install();
                 Ok(())
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                Err(error)
+            }
         }
     }
 
@@ -388,10 +396,14 @@ impl Ui {
         };
         match saved {
             Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
                 self.settings.set(settings);
                 Ok(())
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                Err(error)
+            }
         }
     }
 
@@ -422,11 +434,15 @@ impl Ui {
         };
         match saved {
             Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
                 self.settings.set(settings);
                 self.store_draft.set(trimmed.to_owned());
                 Ok(())
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                Err(error)
+            }
         }
     }
 
@@ -439,10 +455,15 @@ impl Ui {
                 .map(|()| hub.settings().clone())
         };
         match saved {
-            Ok(settings) => self.settings.set(settings),
-            Err(error) => self
-                .notice
-                .set(t!("notice.save_settings_failed", error = error.to_string())),
+            Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
+                self.settings.set(settings);
+            }
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                self.notice
+                    .set(t!("notice.save_settings_failed", error = error.to_string()));
+            }
         }
     }
 
@@ -457,10 +478,14 @@ impl Ui {
         };
         match saved {
             Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
                 self.settings.set(settings);
                 Ok(())
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                Err(error)
+            }
         }
     }
 
@@ -481,6 +506,7 @@ impl Ui {
         };
         match saved {
             Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
                 self.settings.set(settings);
                 self.reset_credential_checks();
                 self.rebuild_local_rows();
@@ -490,9 +516,11 @@ impl Ui {
                     language = i18n::language_label(code)
                 ));
             }
-            Err(error) => self
-                .notice
-                .set(t!("notice.save_language_failed", error = error)),
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                self.notice
+                    .set(t!("notice.save_language_failed", error = error));
+            }
         }
     }
 
@@ -523,12 +551,15 @@ impl Ui {
         };
         match saved {
             Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
                 apply_theme(theme.palette(self.custom_theme));
                 self.settings.set(settings);
             }
-            Err(error) => self
-                .notice
-                .set(t!("notice.save_settings_failed", error = error.to_string())),
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                self.notice
+                    .set(t!("notice.save_settings_failed", error = error.to_string()));
+            }
         }
     }
 
@@ -548,13 +579,16 @@ impl Ui {
         };
         match result {
             Ok(settings) => {
+                self.clear_task_failure("task.issue_settings");
                 self.zoom.set(settings.ui_scale);
                 self.settings.set(settings);
                 self.notice.set(t!("notice.ui_scale_set", level = level));
             }
-            Err(error) => self
-                .notice
-                .set(t!("notice.save_settings_failed", error = error)),
+            Err(error) => {
+                self.task_failed_with("task.issue_settings", "task.reason_io");
+                self.notice
+                    .set(t!("notice.save_settings_failed", error = error));
+            }
         }
     }
 }
@@ -562,7 +596,7 @@ impl Ui {
 fn prepare_store_dir(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|error| store_dir_error(path, error))?;
     let probe = path.join(STORE_PROBE_FILE);
-    let written = fs::write(&probe, b"cuhub").map_err(|error| store_dir_error(path, error));
+    let written = fs::write(&probe, b"cuprum").map_err(|error| store_dir_error(path, error));
     let _ = fs::remove_file(&probe);
     written
 }

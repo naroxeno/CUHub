@@ -1,5 +1,5 @@
 [package]
-name = "cuhub-core"
+name = "cuprum-core"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -11,12 +11,15 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 dirs = "6"
 dotnetdll = "0.4"
 rars = "0.12"
-sevenz-rust = "0.6"
+sevenz-rust = { version = "0.6", default-features = false }
 zip = "9"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "gzip"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+
+[dev-dependencies]
+sevenz-rust = { version = "0.6", default-features = false, features = ["compress"] }
 
 [target."cfg(windows)".dependencies]
 winreg = "0.56"

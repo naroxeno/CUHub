@@ -20,12 +20,12 @@ EasyTier 子进程与隧道门面。只负责「把内核拉起来、看懂它�
 - 用户指定目录不完整时只记日志后回退下载，不删除用户文件。
 - 隧道全程同一时刻只允许一个；重建前先停旧进程。
 - `Tunnel::restart(port)`：先停旧进程，再用同一房间码/中继按新端口重建。hostname 与端口白名单都随端口变化，所以端口变更只能靠重启。spawn 失败时 `port()` 保持旧值（进程已停），由调用方决定回滚（再重启旧端口）或报错。
-- 日志里房间码只出现网络名前 4 位与省略号；密钥段不落地。
+- 启动日志只记内核路径与 RPC 端口；退出日志保存子进程输出前遮蔽房间网络名与密钥。
 
 ## 常量出处
 
 - 默认中继：`public.easytier.top:11010`、`public2.easytier.cn:54321`、`etnode.zkitefly.eu.org/node1|node2`（来自陶瓦 publics.rs，见 docs/third-party/terracotta.md）。
 - Windows 资产约 32.7 MB，Linux 约 25.5 MB；sha256 在 `release.rs` 内 pin。
-- 房主 `--hostname cuhub-host-<port>`，虚拟 IP 固定 `10.144.144.1`；端口白名单同时含 TCP 与 UDP。
+- 房主 `--hostname cuprum-host-<port>`，虚拟 IP 固定 `10.144.144.1`；端口白名单同时含 TCP 与 UDP。
 
 EasyTier 2.6.4 对端查询使用 `easytier-cli -p 127.0.0.1:<rpc> -o json peer list`。对端解析支持该版本的扁平数组和旧的 route 分组。

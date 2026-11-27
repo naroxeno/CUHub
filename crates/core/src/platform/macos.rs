@@ -9,7 +9,7 @@ pub fn app_data_root() -> PathBuf {
         .or_else(|| dirs::home_dir().map(|home| home.join("Library").join("Application Support")))
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("/"));
-    base.join("CUHub")
+    base.join("Cuprum")
 }
 
 pub fn steam_candidate_roots() -> Vec<PathBuf> {

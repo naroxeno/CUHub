@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
-namespace CuhubBridge.Plugin
+namespace CuprumBridge.Plugin
 {
     sealed class CommandRouter
     {

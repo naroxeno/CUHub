@@ -47,12 +47,12 @@ depends 只声明「装这条之前还需要什么」：name 与 guid 至少一�
 
 本地清单：`manifest_path(app_data)` = `<AppData>/Sources/manifest.json`，`load_manifest_optional` 缺文件返回 None（等于没有 GitHub 源），坏 JSON 报错。本地文件保留为调试入口。
 
-远程清单（2026-11-19 已接）：默认 URL `https://raw.githubusercontent.com/naroxeno/CUHub-Store/main/manifest.json`，缓存 `<AppData>/GithubSourcesCache.json`，TTL 6 小时，条件请求带 ETag / Last-Modified。`Hub::open` 先读缓存，缓存缺失才回退本地清单；拉取失败保留当前缓存与内存清单。Remote Mods 页的「刷新列表」按钮调用 `Ui::refresh_sources_now()`，以 `force=true` 绕过 ETag，结果写状态行 notice。
+远程清单（2026-11-19 已接）：默认 URL `https://raw.githubusercontent.com/naroxeno/Cuprum-Store/main/manifest.json`，缓存 `<AppData>/GithubSourcesCache.json`，TTL 6 小时，条件请求带 ETag / Last-Modified。`Hub::open` 先读缓存，缓存缺失才回退本地清单；拉取失败保留当前缓存与内存清单。Remote Mods 页的「刷新列表」按钮调用 `Ui::refresh_sources_now()`，以 `force=true` 绕过 ETag，结果写状态行 notice。
 
 已定（2026-11-15）：release 结果不缓存，每次 Check 真请求，同一行在飞行中连点只算一次（去重放 UI 的 check 状态）；失败提示一句结论 + 可展开详情；限流要显示「约 X 分钟」得扩 network::Fetch 带响应头，暂不扩，先显示「稍后再试」。
 
 UI 接线（2026-11-15）：Hub 打开时读本地清单与 pin（`Hub::sources` / `source_choice` / `pin_source` / `clear_source_pin` / `check_release`）。Local Mods 每行第三行显示 GitHub 仓库、命中依据、check 结果与生效源；未命中显示 not listed；Check 按钮只对命中条目出现。check 结果只存在 UI 内存（不落盘），同一行在飞行中隐藏 Check 按钮。prerelease 与 name 兜底用黄色文字；失败在行内给 summary，notice 给 summary + detail。命中且有多个来源（或已 pin）时出现 Pin 按钮；按钮文字显示当前状态（auto / GitHub / Nexus），点击按 auto → GitHub → Nexus → auto 循环，写盘失败在 notice 报错。pin 只改生效源判定，不发网络请求。
 
-清单路径已定（2026-11-19）：`naroxeno/CUHub-Store` 的 `main` 分支根 `manifest.json`。`SourceCache` 校验 schemaVersion、URL 与大小上限；`Hub::sources_needs_refresh` 判断过期、`Hub::refresh_sources` 刷新。2026-11-19 已上传 26 条清单，raw 可读（`main` 根 `manifest.json`）。
+清单路径已定（2026-11-19）：来源清单仓库 的 `main` 分支根 `manifest.json`。`SourceCache` 校验 schemaVersion、URL 与大小上限；`Hub::sources_needs_refresh` 判断过期、`Hub::refresh_sources` 刷新。2026-11-19 已上传 26 条清单，raw 可读（`main` 根 `manifest.json`）。
 
 远程模组页以可选正整数 `nexusId` 关联 Nexus 目录。旧清单中的 Casualties Together 与 CUCoreLib 使用上游公开链接的已知 ID（67 和 341），显式字段优先。重复声明或重复目录 ID 时各条目独立显示。该关联不修改来源 pin。

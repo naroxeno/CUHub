@@ -1,6 +1,6 @@
 //! Language codes and the copy keys that do not sit next to a widget.
 
-use cuhub_core::mods::ModStatus;
+use cuprum_core::mods::ModStatus;
 use nsh_core::platform::Locale;
 use nsh_core::prelude::*;
 

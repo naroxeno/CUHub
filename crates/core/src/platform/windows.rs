@@ -12,7 +12,7 @@ pub fn app_data_root() -> PathBuf {
     let base = dirs::data_local_dir()
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("C:\\"));
-    base.join("CUHub")
+    base.join("Cuprum")
 }
 
 pub fn steam_candidate_roots() -> Vec<PathBuf> {

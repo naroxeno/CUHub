@@ -13,7 +13,7 @@ pub fn temp_dir(prefix: &str) -> PathBuf {
         .unwrap_or_default();
     let id = COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
-        "cuhub-core-{prefix}-{}-{nanos}-{id}",
+        "cuprum-core-{prefix}-{}-{nanos}-{id}",
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&dir);

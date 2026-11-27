@@ -213,4 +213,4 @@ A → B → C 是「真会伤数据/内存」，可小步分别提交；D 组是
 - D1–D7 命名与边界（拆 `install`、改四个「来源」、`Hub` 门面、展示层下沉、`Settings` 拆 UI 字段、`HubVersion` 改名、`linux.rs`→`unix.rs`）属架构变更，按 AGENTS §2.2 只留建议。
 - D8 已在 `docs/bridge/protocol.md` 加歧义说明。
 - E1 进程检测、E2 启动线程：行为未改，待议；E3 macOS 缺口已在 FEATURES §6 记录。
-- F 组：`fmt`、`check --workspace --all-targets`、`clippy -p cuhub-core --all-targets -D warnings`、`test -p cuhub-core --lib` 全绿；core 0 处 `#[allow]`、生产路径零 `unwrap`；app 仅 `ui.rs:15,17` 两处 `#[allow(unused_imports)]`，无 `unwrap`/`expect`。
+- F 组：`fmt`、`check --workspace --all-targets`、`clippy -p cuprum-core --all-targets -D warnings`、`test -p cuprum-core --lib` 全绿；core 0 处 `#[allow]`、生产路径零 `unwrap`；app 仅 `ui.rs:15,17` 两处 `#[allow(unused_imports)]`，无 `unwrap`/`expect`。

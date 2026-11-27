@@ -3,11 +3,12 @@
 use super::batch::{BatchPhase, selected_count, updatable_count};
 use super::install::{DependencyPrompt, PendingInstall};
 use super::state::Ui;
+use super::task_issues::{blocker_cards, failure_cards};
 use crate::palette::*;
-use cuhub_core::hub::BepInExInstall;
-use cuhub_core::install::FileAction;
-use cuhub_core::mods::IssueKind;
-use cuhub_core::network::DownloadProgress;
+use cuprum_core::hub::BepInExInstall;
+use cuprum_core::install::FileAction;
+use cuprum_core::mods::IssueKind;
+use cuprum_core::network::DownloadProgress;
 use nsh_core::prelude::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -23,6 +24,15 @@ pub enum TaskKind {
     BepInEx,
     Batch,
     Download,
+    Blocker,
+    Failure,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TaskSection {
+    Attention,
+    Progress,
+    Failed,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -35,6 +45,9 @@ pub enum TaskAction {
     CancelBepInEx,
     UpdateSelected,
     UpdateAll,
+    OpenPage(&'static str),
+    RetryGame,
+    DismissFailure(&'static str),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -80,6 +93,18 @@ pub struct TaskCard {
     pub status: String,
     pub buttons: Vec<TaskButton>,
     pub busy: bool,
+    pub copy_details: Option<String>,
+}
+
+impl TaskCard {
+    pub fn section(&self) -> TaskSection {
+        match self.kind {
+            TaskKind::Failure => TaskSection::Failed,
+            TaskKind::Download => TaskSection::Progress,
+            _ if self.busy => TaskSection::Progress,
+            _ => TaskSection::Attention,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -148,25 +173,16 @@ pub fn bytes_label(bytes: u64) -> String {
     }
 }
 
-pub fn pending_count(ui: &Ui) -> usize {
-    let mut count = ui.downloads.get().len();
-    if ui.dependency_prompt.get().is_some() {
-        count += 1;
-    }
-    if ui.pending_install.get().is_some() {
-        count += 1;
-    }
-    if ui.bepinex_pending.get().is_some() {
-        count += 1;
-    }
-    if ui.batch_progress.get().is_some() {
-        count += 1;
-    }
+pub fn attention_count(ui: &Ui) -> usize {
+    let mut count = blocker_cards(ui).len() + ui.task_failures.get().len();
+    count += usize::from(ui.dependency_prompt.get().is_some() && ui.remote_busy.get().is_none());
+    count += usize::from(ui.pending_install.get().is_some() && !ui.apply_running.get());
+    count += usize::from(ui.bepinex_pending.get().is_some() && !ui.bepinex_busy.get());
     count
 }
 
 pub fn cards(ui: &Ui) -> Vec<TaskCard> {
-    let mut cards = Vec::new();
+    let mut cards = blocker_cards(ui);
     if let Some(prompt) = ui.dependency_prompt.get() {
         cards.push(dependency_card(ui, &prompt));
     }
@@ -181,6 +197,12 @@ pub fn cards(ui: &Ui) -> Vec<TaskCard> {
     }
     for track in ui.downloads.get() {
         cards.push(download_card(&track));
+    }
+    cards.extend(failure_cards(ui));
+    if let Some(focus) = ui.task_focus.get()
+        && let Some(index) = cards.iter().position(|card| card.key == focus)
+    {
+        cards[..=index].rotate_right(1);
     }
     cards
 }
@@ -254,6 +276,11 @@ fn dependency_card(ui: &Ui, prompt: &DependencyPrompt) -> TaskCard {
             },
         ],
         busy,
+        copy_details: Some(format!(
+            "{}\n{}",
+            t!("task.dependency_title"),
+            t!("task.reason_dependencies")
+        )),
     }
 }
 
@@ -301,7 +328,8 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
             .join(", ");
         lines.push((t!("pending.conflicts", list = list), DANGER));
     }
-    if pending.game_running {
+    let game_running = ui.bridge.get().game_running;
+    if game_running {
         lines.push((t!("task.game_running"), WARN));
     }
     let running = ui.apply_running.get();
@@ -321,7 +349,7 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
                 } else {
                     t!("common.apply")
                 },
-                enabled: !running && pending.plan.can_apply(),
+                enabled: !running && !game_running && pending.plan.can_apply(),
             },
             TaskButton {
                 action: TaskAction::Discard,
@@ -330,11 +358,27 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
             },
         ],
         busy: running,
+        copy_details: if game_running {
+            Some(format!(
+                "{}\n{}",
+                t!("task.issue_install"),
+                t!("task.game_running")
+            ))
+        } else if !pending.plan.conflicts.is_empty() {
+            Some(format!(
+                "{}\n{}",
+                t!("task.issue_install"),
+                t!("task.reason_conflict")
+            ))
+        } else {
+            None
+        },
     }
 }
 
 fn bepinex_card(ui: &Ui, install: &BepInExInstall) -> TaskCard {
     let blocked = !install.plan.conflicts.is_empty();
+    let game_running = ui.bridge.get().game_running;
     let replace = install
         .plan
         .files
@@ -351,6 +395,9 @@ fn bepinex_card(ui: &Ui, install: &BepInExInstall) -> TaskCard {
     let mut lines = vec![(files, TEXT_MUTED)];
     if blocked {
         lines.push((t!("bepinex.plan_conflicts"), DANGER));
+    }
+    if game_running {
+        lines.push((t!("task.game_running"), WARN));
     }
     let busy = ui.bepinex_busy.get();
     TaskCard {
@@ -369,7 +416,7 @@ fn bepinex_card(ui: &Ui, install: &BepInExInstall) -> TaskCard {
                 } else {
                     t!("bepinex.install")
                 },
-                enabled: !blocked && !busy,
+                enabled: !blocked && !busy && !game_running,
             },
             TaskButton {
                 action: TaskAction::CancelBepInEx,
@@ -378,6 +425,21 @@ fn bepinex_card(ui: &Ui, install: &BepInExInstall) -> TaskCard {
             },
         ],
         busy,
+        copy_details: if game_running {
+            Some(format!(
+                "{}\n{}",
+                t!("task.bepinex_title"),
+                t!("task.game_running")
+            ))
+        } else {
+            blocked.then(|| {
+                format!(
+                    "{}\n{}",
+                    t!("task.bepinex_title"),
+                    t!("bepinex.plan_conflicts")
+                )
+            })
+        },
     }
 }
 
@@ -430,6 +492,7 @@ fn batch_card(ui: &Ui) -> Option<TaskCard> {
             },
         ],
         busy,
+        copy_details: None,
     })
 }
 
@@ -447,6 +510,7 @@ fn download_card(track: &DownloadTrack) -> TaskCard {
         status: String::new(),
         buttons: Vec::new(),
         busy: false,
+        copy_details: None,
     }
 }
 

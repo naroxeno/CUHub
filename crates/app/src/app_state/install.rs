@@ -2,12 +2,12 @@
 
 use super::state::Ui;
 use super::tasks::DownloadTracker;
-use cuhub_core::hub::{Hub, HubError, RemoteInstall};
-use cuhub_core::install::UpgradePlan;
-use cuhub_core::mods::{DependencyIssue, InstalledMod, IssueKind};
-use cuhub_core::network::DownloadProgress;
-use cuhub_core::packages::PackagePlan;
-use cuhub_core::sources::{Repo, SourceEntry, SourceKind};
+use cuprum_core::hub::{Hub, HubError, RemoteInstall};
+use cuprum_core::install::UpgradePlan;
+use cuprum_core::mods::{DependencyIssue, InstalledMod, IssueKind};
+use cuprum_core::network::DownloadProgress;
+use cuprum_core::packages::PackagePlan;
+use cuprum_core::sources::{Repo, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
 use std::path::PathBuf;
 
@@ -268,8 +268,14 @@ impl Ui {
                     hub.apply_package(&package)
                 })
                 .await;
+                let operation = if pending.source.is_none() {
+                    "task.issue_import"
+                } else {
+                    "task.issue_install"
+                };
                 match result {
                     Ok(Ok(report)) => {
+                        ui.clear_task_failure(operation);
                         let staging = pending.staging.clone();
                         let cleanup_hub = hub.clone();
                         let _ = blocking(move || {
@@ -320,11 +326,13 @@ impl Ui {
                         break;
                     }
                     Ok(Err(error)) => {
+                        ui.task_failed(operation, &error);
                         ui.apply_status.set(String::new());
                         ui.notice.set(error.to_string());
                         break;
                     }
                     Err(error) => {
+                        ui.task_failed_with(operation, "task.reason_failed");
                         ui.apply_status.set(String::new());
                         ui.notice
                             .set(t!("notice.install_worker_stopped", error = error));
@@ -401,6 +409,7 @@ impl Ui {
                 Ok(Ok(Some(RemoteAttempt::Ready(pending)))) => {
                     let name = pending.mod_name.clone();
                     if accept_pending(&ui, *pending) {
+                        ui.clear_task_failure("task.dependency_title");
                         ui.dependency_prompt.set(None);
                         ui.notice.set(t!("remote.ready", name = name));
                     }
@@ -413,11 +422,18 @@ impl Ui {
                     ui.notice.set(t!("dependency.still_blocked"));
                 }
                 Ok(Ok(None)) => {
+                    ui.clear_task_failure("task.dependency_title");
                     ui.dependency_prompt.set(None);
                     ui.notice.set(t!("dependency.installed_retry"));
                 }
-                Ok(Err(error)) => ui.notice.set(t!("dependency.failed", error = error)),
-                Err(error) => ui.notice.set(t!("dependency.failed", error = error)),
+                Ok(Err(error)) => {
+                    ui.task_failed("task.dependency_title", &error);
+                    ui.notice.set(t!("dependency.failed", error = error));
+                }
+                Err(error) => {
+                    ui.task_failed_with("task.dependency_title", "task.reason_failed");
+                    ui.notice.set(t!("dependency.failed", error = error));
+                }
             }
         });
     }

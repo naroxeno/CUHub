@@ -3,7 +3,7 @@
 use crate::app_state::{NEXUS_PAGE_SIZE, NexusModRow, Ui, nexus_page_count};
 use crate::components::{button, pix, scaled, spinner, text_input};
 use crate::palette::*;
-use cuhub_core::mods::ModStatus;
+use cuprum_core::mods::ModStatus;
 use nsh_base::{menu, menu_item};
 use nsh_core::prelude::*;
 

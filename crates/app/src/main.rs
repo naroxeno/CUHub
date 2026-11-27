@@ -1,4 +1,4 @@
-//! Runs the Cuhub app on the desktop backend of the current system.
+//! Runs the Cuprum app on the desktop backend of the current system.
 
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
@@ -13,11 +13,11 @@ use nsh_platform_windows as platform;
 fn main() -> impl std::process::Termination {
     env_logger::init();
     platform::run_app(
-        platform::AppSource::Rust(platform::Root::of::<cuhub::App>()),
+        platform::AppSource::Rust(platform::Root::of::<cuprum::App>()),
         platform::AppOptions {
-            title: "Cuhub".to_owned(),
+            title: "Cuprum".to_owned(),
             #[cfg(any(target_os = "linux", target_os = "windows"))]
-            app_id: "com.naroxeno.cuhub".to_owned(),
+            app_id: "com.naroxeno.cuprum".to_owned(),
             size: (1100, 720),
             ..Default::default()
         },

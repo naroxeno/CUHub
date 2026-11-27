@@ -1,7 +1,7 @@
 //! Remote GitHub source manifest refresh.
 
 use super::state::Ui;
-use cuhub_core::hub::{HubError, SourcesRefresh};
+use cuprum_core::hub::{HubError, SourcesRefresh};
 use nsh_core::prelude::*;
 
 impl Ui {

@@ -1,4 +1,4 @@
-use cuhub_core::install::Flavor;
+use cuprum_core::install::Flavor;
 use nsh_core::prelude::*;
 
 use super::{game_folder_path, path_row, section};

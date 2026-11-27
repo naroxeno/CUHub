@@ -14,7 +14,7 @@ use crate::network::DEFAULT_MAX_BODY_BYTES;
 use super::{ManifestError, SourceManifest};
 
 pub const DEFAULT_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/naroxeno/CUHub-Store/main/manifest.json";
+    "https://raw.githubusercontent.com/naroxeno/Cuprum-Store/main/manifest.json";
 pub const CACHE_FILE: &str = "GithubSourcesCache.json";
 pub const CACHE_LIFETIME_HOURS: i64 = 6;
 

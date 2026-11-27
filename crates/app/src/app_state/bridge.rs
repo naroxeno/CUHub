@@ -3,13 +3,13 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
-use cuhub_core::bridge::handshake::HandshakeError;
-use cuhub_core::bridge::server::BridgeError;
-use cuhub_core::hub::BridgeSnapshot;
+use cuprum_core::bridge::handshake::HandshakeError;
+use cuprum_core::bridge::server::BridgeError;
+use cuprum_core::hub::BridgeSnapshot;
 use nsh_core::prelude::*;
 
 use super::state::Ui;
-use crate::palette::{ACCENT, DANGER, TEXT_MUTED, ColorRole};
+use crate::palette::{ACCENT, ColorRole, DANGER, TEXT_MUTED};
 
 const POLL_MILLIS: u64 = 2_000;
 
@@ -44,6 +44,9 @@ impl Ui {
                         .unwrap_or_default();
                     let session_changed = current != loaded;
                     if snapshot != last {
+                        if last.game_running && !snapshot.game_running {
+                            ui.clear_game_task_blocks();
+                        }
                         ui.bridge.set(snapshot.clone());
                         last = snapshot;
                     }

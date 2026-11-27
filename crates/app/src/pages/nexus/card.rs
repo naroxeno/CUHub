@@ -4,7 +4,7 @@ use super::{Browse, markup::description_html};
 use crate::app_state::{NexusModRow, Ui};
 use crate::components::{button, pix, pix_c, scaled};
 use crate::palette::*;
-use cuhub_core::mods::ModStatus;
+use cuprum_core::mods::ModStatus;
 use nsh_base::{SheetEvent, context_menu, menu_item, sheet, text_view};
 use nsh_core::element::ImageSrc;
 use nsh_core::prelude::*;
@@ -146,7 +146,7 @@ fn context_action(
 
 fn copy_link(url: Option<String>, notice: Signal<String>) {
     if let Some(url) = url {
-        set_clipboard(url);
+        drop(set_clipboard(url));
         notice.set(t!("nexus.link_copied"));
     }
 }
@@ -531,7 +531,7 @@ fn detail_actions(ui: &Ui, row: ReadSignal<NexusModRow>) -> View {
                         true,
                         move || {
                             if let Some(url) = row.get().page_url {
-                                set_clipboard(url);
+                                drop(set_clipboard(url));
                                 notice.set(t!("nexus.link_copied"));
                             }
                         },

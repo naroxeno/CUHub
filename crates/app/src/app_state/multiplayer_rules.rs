@@ -2,8 +2,8 @@
 
 use std::net::Ipv4Addr;
 
-use cuhub_core::hub::BridgeSnapshot;
-use cuhub_core::multiplayer::{
+use cuprum_core::hub::BridgeSnapshot;
+use cuprum_core::multiplayer::{
     HostPort, PortSource, PortUpdate, RoomRole, TunnelState, choose_host_port,
 };
 
@@ -19,7 +19,10 @@ pub enum GamePhase {
     WaitingTunnel,
     Ready,
     Hosting,
+    Connecting,
     Joined,
+    ClientActive,
+    Rejoin,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -119,23 +122,29 @@ pub fn game_phase(snapshot: &BridgeSnapshot, role: RoomRole, tunnel: &TunnelStat
     if !snapshot.control {
         return GamePhase::NoControl;
     }
+    if role == RoomRole::Guest
+        && !matches!(
+            tunnel,
+            TunnelState::Connected {
+                local_port: Some(_),
+                ..
+            }
+        )
+    {
+        return GamePhase::WaitingTunnel;
+    }
     if state.running || state.server {
         return if state.server || state.host {
             GamePhase::Hosting
         } else {
-            GamePhase::Joined
+            match state.connected {
+                Some(true) => GamePhase::Joined,
+                Some(false) => GamePhase::Connecting,
+                None => GamePhase::ClientActive,
+            }
         };
     }
-    match role {
-        RoomRole::Host => GamePhase::Ready,
-        RoomRole::Guest => {
-            if matches!(tunnel, TunnelState::Connected { .. }) {
-                GamePhase::Ready
-            } else {
-                GamePhase::WaitingTunnel
-            }
-        }
-    }
+    GamePhase::Ready
 }
 
 pub fn game_status_key(phase: GamePhase, role: RoomRole) -> &'static str {
@@ -149,7 +158,10 @@ pub fn game_status_key(phase: GamePhase, role: RoomRole) -> &'static str {
             RoomRole::Guest => "multiplayer.game_status_ready_guest",
         },
         GamePhase::Hosting => "multiplayer.game_status_hosting",
+        GamePhase::Connecting => "multiplayer.game_status_connecting",
         GamePhase::Joined => "multiplayer.game_status_joined",
+        GamePhase::ClientActive => "multiplayer.game_status_client_active",
+        GamePhase::Rejoin => "multiplayer.game_status_rejoin",
     }
 }
 
@@ -169,9 +181,6 @@ pub fn game_address(
                 local_port: Some(port),
                 ..
             } => Some(format!("127.0.0.1:{port}")),
-            TunnelState::Connected {
-                virtual_ip, port, ..
-            } => Some(format!("{virtual_ip}:{port}")),
             _ => None,
         },
     }
@@ -180,9 +189,9 @@ pub fn game_address(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cuhub_core::bridge::mp::MpState;
-    use cuhub_core::bridge::server::BridgeStatus;
-    use cuhub_core::bridge::session::BridgeSessionInfo;
+    use cuprum_core::bridge::mp::MpState;
+    use cuprum_core::bridge::server::BridgeStatus;
+    use cuprum_core::bridge::session::BridgeSessionInfo;
 
     fn snapshot(control: bool, mp: Option<MpState>) -> BridgeSnapshot {
         BridgeSnapshot {
@@ -211,6 +220,7 @@ mod tests {
             client: !host,
             server: host,
             host,
+            connected: Some(running),
             port: None,
             krokmp_version: None,
         }
@@ -223,6 +233,7 @@ mod tests {
             client: false,
             server: true,
             host: true,
+            connected: Some(true),
             port: Some(port),
             krokmp_version: None,
         }
@@ -233,7 +244,7 @@ mod tests {
             TunnelState::Connected {
                 virtual_ip: Ipv4Addr::new(10, 144, 144, 2),
                 port: 7777,
-                local_port: None,
+                local_port: Some(25000),
             }
         } else {
             TunnelState::WaitingPeer
@@ -286,6 +297,7 @@ mod tests {
             client: false,
             server: false,
             host: true,
+            connected: Some(false),
             port: None,
             krokmp_version: None,
         };
@@ -304,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn a_game_side_room_is_hosting_without_a_cuhub_command() {
+    fn a_game_side_room_is_hosting_without_a_cuprum_command() {
         assert_eq!(
             game_phase(
                 &snapshot(true, Some(state(true, false, true))),
@@ -344,6 +356,27 @@ mod tests {
     }
 
     #[test]
+    fn guest_distinguishes_transport_start_from_room_connection() {
+        let mut guest = state(true, true, false);
+        for (connected, expected) in [
+            (Some(false), GamePhase::Connecting),
+            (None, GamePhase::ClientActive),
+            (Some(true), GamePhase::Joined),
+        ] {
+            guest.connected = connected;
+            let snapshot = snapshot(true, Some(guest.clone()));
+            assert_eq!(
+                game_phase(&snapshot, RoomRole::Guest, &tunnel(true)),
+                expected
+            );
+            assert_eq!(
+                game_phase(&snapshot, RoomRole::Guest, &tunnel(false)),
+                GamePhase::WaitingTunnel
+            );
+        }
+    }
+
+    #[test]
     fn the_reported_port_beats_the_manual_field() {
         let snapshot = snapshot(true, Some(hosting(24444)));
         assert_eq!(
@@ -372,7 +405,7 @@ mod tests {
         let snapshot = snapshot(true, None);
         assert_eq!(
             game_address(&snapshot, RoomRole::Guest, &tunnel(true), "25565").as_deref(),
-            Some("10.144.144.2:7777")
+            Some("127.0.0.1:25000")
         );
         let forwarded = TunnelState::Connected {
             virtual_ip: Ipv4Addr::new(10, 42, 0, 7),
@@ -385,6 +418,15 @@ mod tests {
         );
         assert_eq!(
             game_address(&snapshot, RoomRole::Guest, &tunnel(false), "25565"),
+            None
+        );
+        let unforwarded = TunnelState::Connected {
+            virtual_ip: Ipv4Addr::new(10, 42, 0, 7),
+            port: 24444,
+            local_port: None,
+        };
+        assert_eq!(
+            game_address(&snapshot, RoomRole::Guest, &unforwarded, ""),
             None
         );
     }

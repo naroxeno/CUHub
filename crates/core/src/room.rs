@@ -15,8 +15,8 @@ const SECRET_LEN: usize = 7;
 const PAYLOAD_LEN: usize = NAME_LEN + SECRET_LEN;
 const CODE_LEN: usize = PAYLOAD_LEN + 1;
 const GROUP: usize = 4;
-const NETWORK_PREFIX: &str = "cuhub-";
-const HOST_PREFIX: &str = "cuhub-host-";
+const NETWORK_PREFIX: &str = "cuprum-";
+const HOST_PREFIX: &str = "cuprum-host-";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RoomCode {
@@ -302,8 +302,8 @@ mod tests {
         let code = RoomCode::parse(SAMPLE).unwrap();
         assert_eq!(code.encode(), SAMPLE);
         assert_eq!(code.encode().len(), 22);
-        assert_eq!(code.network_name(), "cuhub-7K3M9Q2X");
-        assert_eq!(code.network_name().len(), "cuhub-XXXXXXXX".len());
+        assert_eq!(code.network_name(), "cuprum-7K3M9Q2X");
+        assert_eq!(code.network_name().len(), "cuprum-XXXXXXXX".len());
         assert_eq!(code.network_secret(), "4H8PV6R");
         assert_eq!(code.network_secret().len(), 7);
     }
@@ -388,33 +388,33 @@ mod tests {
         let debug = format!("{code:?}");
         assert!(!debug.contains("4H8PV6R"));
         assert!(!debug.contains("9Q2X"));
-        assert!(debug.contains("cuhub-7K3M…"));
+        assert!(debug.contains("cuprum-7K3M…"));
     }
 
     #[test]
     fn host_hostname_uses_the_port() {
-        assert_eq!(host_hostname(25565), "cuhub-host-25565");
-        assert_eq!(host_hostname(1), "cuhub-host-1");
-        assert_eq!(host_hostname(65535), "cuhub-host-65535");
+        assert_eq!(host_hostname(25565), "cuprum-host-25565");
+        assert_eq!(host_hostname(1), "cuprum-host-1");
+        assert_eq!(host_hostname(65535), "cuprum-host-65535");
     }
 
     #[test]
     fn finds_the_host_by_hostname() {
         let peers = [
-            member("cuhub-host-25566", "10.42.0.8", false),
-            member("cuhub-host-25565", "10.42.0.7", false),
+            member("cuprum-host-25566", "10.42.0.8", false),
+            member("cuprum-host-25565", "10.42.0.7", false),
             member("guest-laptop", "10.42.0.9", false),
         ];
         let found = find_host(&peers, 25565).unwrap();
-        assert_eq!(found.hostname, "cuhub-host-25565");
+        assert_eq!(found.hostname, "cuprum-host-25565");
         assert_eq!(found.address, Ipv4Addr::new(10, 42, 0, 7));
     }
 
     #[test]
     fn ignores_peers_on_another_port() {
         let peers = [
-            member("cuhub-host-25566", "10.42.0.7", false),
-            member("cuhub-host-1", "10.42.0.7", false),
+            member("cuprum-host-25566", "10.42.0.7", false),
+            member("cuprum-host-1", "10.42.0.7", false),
         ];
         assert!(find_host(&peers, 25565).is_none());
     }
@@ -422,13 +422,13 @@ mod tests {
     #[test]
     fn ignores_similar_hostnames() {
         let peers = [
-            member("cuhub-host-25565-alt", "10.42.0.7", false),
-            member("cuhub-host-", "10.42.0.7", false),
-            member("cuhub-host-abc", "10.42.0.7", false),
-            member("cuhub-host-025565", "10.42.0.7", false),
-            member("cuhub-host-25565 ", "10.42.0.7", false),
-            member("cuhub-hostx-25565", "10.42.0.7", false),
-            member("xcuhub-host-25565", "10.42.0.7", false),
+            member("cuprum-host-25565-alt", "10.42.0.7", false),
+            member("cuprum-host-", "10.42.0.7", false),
+            member("cuprum-host-abc", "10.42.0.7", false),
+            member("cuprum-host-025565", "10.42.0.7", false),
+            member("cuprum-host-25565 ", "10.42.0.7", false),
+            member("cuprum-hostx-25565", "10.42.0.7", false),
+            member("xcuprum-host-25565", "10.42.0.7", false),
         ];
         assert!(find_host(&peers, 25565).is_none());
     }
@@ -436,9 +436,9 @@ mod tests {
     #[test]
     fn ignores_the_local_member_and_members_without_an_address() {
         let peers = [
-            member("cuhub-host-25565", "10.42.0.7", true),
+            member("cuprum-host-25565", "10.42.0.7", true),
             EasyTierMember {
-                hostname: "cuhub-host-25565".to_owned(),
+                hostname: "cuprum-host-25565".to_owned(),
                 address: None,
                 is_local: false,
                 nat: NatType::Unknown,
@@ -450,8 +450,8 @@ mod tests {
     #[test]
     fn refuses_to_choose_between_multiple_hosts() {
         let peers = [
-            member("cuhub-host-25565", "10.42.0.7", false),
-            member("cuhub-host-25565", "10.42.0.8", false),
+            member("cuprum-host-25565", "10.42.0.7", false),
+            member("cuprum-host-25565", "10.42.0.8", false),
         ];
         assert!(find_host(&peers, 25565).is_none());
     }
@@ -465,9 +465,9 @@ mod tests {
     #[test]
     fn reports_every_matching_host() {
         let peers = [
-            member("cuhub-host-25565", "10.42.0.7", false),
-            member("cuhub-host-25565", "10.42.0.8", false),
-            member("cuhub-host-25565", "10.42.0.7", false),
+            member("cuprum-host-25565", "10.42.0.7", false),
+            member("cuprum-host-25565", "10.42.0.8", false),
+            member("cuprum-host-25565", "10.42.0.7", false),
         ];
         let candidates = find_host_candidates(&peers, 25565);
         assert_eq!(candidates.len(), 2);
@@ -477,8 +477,8 @@ mod tests {
     #[test]
     fn accepts_repeated_rows_for_the_same_host() {
         let peers = [
-            member("cuhub-host-25565", "10.42.0.7", false),
-            member("cuhub-host-25565", "10.42.0.7", false),
+            member("cuprum-host-25565", "10.42.0.7", false),
+            member("cuprum-host-25565", "10.42.0.7", false),
         ];
         assert_eq!(
             find_host(&peers, 25565).unwrap().address,
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn rejects_port_zero() {
-        let peers = [member("cuhub-host-0", "10.42.0.7", false)];
+        let peers = [member("cuprum-host-0", "10.42.0.7", false)];
         assert!(find_host(&peers, 0).is_none());
     }
 }

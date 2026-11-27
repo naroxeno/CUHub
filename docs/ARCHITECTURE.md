@@ -93,7 +93,7 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 | `launch` | 经 `steam://` 启动游戏与 `steam -applaunch` 回退；不直接跑 exe |
 | `bridge` | 回环桥：监听 `127.0.0.1:41297`、握手、帧协议、命令白名单与权限、状态快照；宿主由 app 按游戏进程启停 |
 | `easytier` | 联机内核：版本 pin、下载校验缓存、安装探测、进程控制、房间码、房主发现、隧道 |
-| `room` | C1 房间码编解码、`cuhub-host-<port>` 发现 |
+| `room` | C1 房间码编解码、`cuprum-host-<port>` 发现 |
 | `multiplayer` | `multiplayer.json`：角色、房间码、EasyTier 目录、中继覆盖；0600 原子写 |
 | `logs` / `diagnostics` | 会话日志、崩溃报告、`--diagnostics` 自检 |
 
@@ -114,7 +114,7 @@ HubEvent::Bridge            // 桥：连接/断开、游戏状态、命令结果
 
 ## 9. spike 结论与剩余未决
 
-2026-11-14 用 nsh 0.5.1 跑完 spike（工程在仓库外 `cuhub-spike`，7 页）。细节见 `docs/app/nsh-notes.md`。
+2026-11-14 用 nsh 0.5.1 跑完 spike（工程在仓库外 `cuprum-spike`，7 页）。细节见 `docs/app/nsh-notes.md`。
 
 已定：
 

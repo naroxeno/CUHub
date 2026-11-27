@@ -1,7 +1,7 @@
 //! Active room summary, peers and leave confirmation.
 
-use cuhub_core::easytier::EasyTierMember;
-use cuhub_core::multiplayer::{DEFAULT_GAME_PORT, RoomRole, TunnelState};
+use cuprum_core::easytier::EasyTierMember;
+use cuprum_core::multiplayer::{DEFAULT_GAME_PORT, RoomRole, TunnelState};
 
 use nsh_core::prelude::*;
 
@@ -9,13 +9,12 @@ use super::connection::{state_color, state_label};
 use super::game::game_section;
 use super::lobby::lobby_card;
 use crate::app_state::{MultiplayerUi, Ui};
-use crate::components::{button, danger_button, pix, pix_c, scaled};
+use crate::components::{button, copy_button, danger_button, pix, pix_c, scaled};
 use crate::palette::*;
 
 pub(super) fn room_card(ui: &Ui) -> View {
     let z = ui.zoom;
     let mp = ui.mp;
-    let copy_ui = ui.clone();
     let leave_ui = ui.clone();
     let confirm_ui = ui.clone();
     let cancel_ui = ui.clone();
@@ -34,7 +33,7 @@ pub(super) fn room_card(ui: &Ui) -> View {
         )
         .child(when(
             move || mp.role.get() == RoomRole::Host,
-            move || room_code_row(&z, mp, &copy_ui),
+            move || room_code_row(&z, mp),
         ))
         .child(pix_c(
             move || match (mp.role.get(), mp.state.get()) {
@@ -92,8 +91,7 @@ pub(super) fn room_card(ui: &Ui) -> View {
         ))
 }
 
-fn room_code_row(z: &Signal<u8>, mp: MultiplayerUi, copy_ui: &Ui) -> View {
-    let copy = copy_ui.clone();
+fn room_code_row(z: &Signal<u8>, mp: MultiplayerUi) -> View {
     view()
         .flex_row()
         .items_center()
@@ -101,18 +99,10 @@ fn room_code_row(z: &Signal<u8>, mp: MultiplayerUi, copy_ui: &Ui) -> View {
         .flex_wrap()
         .child(pix(move || t!("multiplayer.code"), 10.0, TEXT_DIM, z))
         .child(pix(move || mp.room.get(), 22.0, REQUEST, z))
-        .child(button(
-            z,
-            move || t!("multiplayer.copy"),
-            true,
-            move || {
-                let code = copy.mp.room.get();
-                if !code.is_empty() {
-                    set_clipboard(code);
-                    copy.notice.set(t!("multiplayer.copied"));
-                }
-            },
-        ))
+        .child(copy_button(z, "multiplayer.copy", move || {
+            let code = mp.room.get();
+            (!code.is_empty()).then_some(code)
+        }))
 }
 
 fn leave_confirm(confirm_ui: &Ui, cancel_ui: &Ui) -> View {

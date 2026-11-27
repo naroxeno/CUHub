@@ -1,4 +1,4 @@
-//! Encrypted local storage for the API credentials used by Cuhub.
+//! Encrypted local storage for the API credentials used by Cuprum.
 
 use std::fs;
 use std::io;

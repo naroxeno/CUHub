@@ -4,11 +4,13 @@
 
 ## 实现状态（2026-11-20，实验性，不发布）
 
-Rust 宿主已落地：`proto.rs`（帧编解码）、`command.rs`（命令表与权限）、`session.rs`（连接读写、心跳、请求等待）、`handshake.rs`（hello 校验、共享 token）、`server.rs`（回环端口监听、`start_at` 可注入端口、单会话、最近握手失败、事件、审计）、`mp.rs`（`mp.state` 回包解析，含主机监听端口 `port`），以及 `hub/bridge_host.rs` 上的生命周期、状态快照、联机控制开关与游戏房间端口查询。`crates/core/tests/bridge_server.rs` 用回环 TCP 假客户端跑 14 个集成测试；`cargo test -p cuhub-core` 全绿。
+Rust 宿主已落地：`proto.rs`（帧编解码）、`command.rs`（命令表与权限）、`session.rs`（连接读写、心跳、请求等待）、`handshake.rs`（hello 校验、共享 token）、`server.rs`（回环端口监听、`start_at` 可注入端口、单会话、最近握手失败、事件、审计）、`mp.rs`（`mp.state` 回包解析，含主机监听端口 `port`），以及 `hub/bridge_host.rs` 上的生命周期、状态快照、联机控制开关与游戏房间端口查询。`crates/core/tests/bridge_server.rs` 用回环 TCP 假客户端跑 14 个集成测试；`cargo test -p cuprum-core` 全绿。
 
-app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_snapshot`；检测到游戏进程才启动桥、退出后停止；状态栏显示未运行 / 未连接 / 已连接（pid）与最近一次握手失败；Local Mods 按 hello 的 guid 快照标“运行中已加载”；Multiplayer 页顶部卡片显示 `mp.state`。W4 接线：桥卡片可开关 `mp.host` / `mp.join` 授权；房间卡显示游戏内房间状态与地址，手动命令走两段式确认；`ui::mp_control` 负责自动状态机（房主一次、客人 3 次退避、`denied` / `invalid_params` 即停）。
+app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_snapshot`；检测到游戏进程才启动桥、退出后停止；状态栏显示未运行 / 未连接 / 已连接（pid）与最近一次握手失败；Local Mods 按 hello 的 guid 快照标“运行中已加载”；Multiplayer 页顶部卡片显示 `mp.state`。W4 接线：桥卡片可开关 `mp.host` / `mp.join` 授权；房间卡显示游戏内房间状态与地址，手动命令走两段式确认；`app_state::multiplayer_bridge` 负责自动状态机（房主一次、客人 3 次退避、`denied` / `invalid_params` 即停）。
 
-游戏侧同时有可编译的 MVP：`CuhubBridge.Core`（协议常量、消息、帧、固定端点与共享 token、TCP 客户端）与 `CuhubBridge.Plugin`（探针、握手、心跳、`mp.*` 反射）。宿主按 C# MVP 的实际报文对齐：hello 是普通 `req`，失败用 `res.ok=false` 回 `bad_token` / `proto_mismatch` / `duplicate_pid` / `busy`，`cmd.invoke` 的 `nonce` 与 `id` 都按字符串收发。`dotnet build -c Release` 通过且无警告，尚未真机加载。
+客机用 `connected` 区别正在连接与已入房。成功启动连接后等游戏返回状态，游戏仍在连接时不会重复发加入命令。玩家手动加入或重试后，本次隧道由玩家接管加入操作。房主离开或更换地址后，如游戏仍保留旧会话，先在游戏内退出再重试。
+
+游戏侧同时有可编译的 MVP：`CuprumBridge.Core`（协议常量、消息、帧、固定端点与共享 token、TCP 客户端）与 `CuprumBridge.Plugin`（探针、握手、心跳、`mp.*` 反射）。宿主按 C# MVP 的实际报文对齐：hello 是普通 `req`，失败用 `res.ok=false` 回 `bad_token` / `proto_mismatch` / `duplicate_pid` / `busy`，`cmd.invoke` 的 `nonce` 与 `id` 都按字符串收发。`dotnet build -c Release` 通过且无警告，尚未真机加载。
 
 联机状态经 CUCoreLib 的 `MultiplayerApi` 读，不直连 Casualties: Together。插件对 CUCoreLib 是运行时软依赖：全反射调用 `MultiplayerApi` / `MultiplayerBridge`，缺库时 `mp.*` 回 `unavailable`，插件本身照常加载。注意 CUCoreLib 文档里的 "bridge" 指它自己的 KrokMP 集成，与本模块同名不同物。
 
@@ -22,7 +24,7 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 | `bridge/handshake.rs` | 首帧 hello、共享 token 常量、proto / mods 校验、hello.ok / 拒绝 |
 | `bridge/mp.rs` | `mp.state` 回包的 `MpState` 解析；`port` 宽容解析、`room_port()` 只在主机运行时给值 |
 | `bridge/server.rs` | 监听回环端口（生产固定 `41297`，测试可用 `start_at` 注入）、单会话、最近握手失败、事件、审计 |
-| `bridge/install.rs` | 固定目标 `Plugins/CuhubBridge`、`PLUGIN_FILE` / `CORE_FILE`、payload 校验 |
+| `bridge/install.rs` | 固定目标 `Plugins/CuprumBridge`、`PLUGIN_FILE` / `CORE_FILE`、payload 校验 |
 | `hub/bridge_host.rs` | 启停状态机、`bridge_snapshot`、`invoke_bridge`、`take_events`、桥安装与只读状态 |
 
 ## 职责
@@ -67,7 +69,7 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 - `stop_bridge()`：清会话、停监听；`bridge_status()` 返回 `running`、`endpoint`、`session`、`last_error`。
 - `bridge_snapshot(&mut self) -> BridgeSnapshot`：读 `game_running`，按需启停桥，会话存在时调用 `mp.state`，返回 `{ game_running, status, mp, control, start_error }`；同时排空事件通道，避免无消费者时无限增长。
 - `game_room_port() -> Option<u16>`：游戏进程在跑、桥在监听且有会话时，取一次 `mp.state` 的 `port` 并只认 `server == true && running`；客人侧、未开房、旧插件（无 `port`）或无会话一律 `None`。只读，不启停桥、不写设置；一次 `mp.state` 往返，上限 2 秒，供后台轮询调用。
-- `bridge_control_enabled() -> bool`：`bridge.permissions` 里 `dev.cuhub.bridge` 的 `mp.host` 与 `mp.join` 都为 `granted` 才算打开；只认这两条，其它 guid 与命令不参与判断。
+- `bridge_control_enabled() -> bool`：`bridge.permissions` 里 `dev.cuprum.bridge` 的 `mp.host` 与 `mp.join` 都为 `granted` 才算打开；只认这两条，其它 guid 与命令不参与判断。
 - `set_bridge_control(bool) -> Result<(), HubError>`：只改上述两条并写回 `Settings.json`；桥在运行时立刻 `BridgeServer::set_permissions`，已连会话的下一条命令即按新权限判定；写一条 `Bridge` 活动日志；状态未变时为空操作。
 - `invoke_bridge(command, params) -> Result<Value, HubError>`：2 秒超时，不重试；未连接为 `NotConnected`。
 - `game_host(address) / game_join(address) -> Result<Value, HubError>`：包一层 `mp.host` / `mp.join`，参数是 app 拼好的 `address`，复用同一超时与权限判定。
@@ -75,10 +77,10 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 
 ## 安装链路
 
-桥是内置目录型模组，固定安装在 `<Plugins>/CuhubBridge`，不写 Store、Links 或 profile；内容库迁移固定跳过该目录（`AdoptSkip::BuiltIn`），不会把桥收进 Store 或改链接。
+桥是内置目录型模组，固定安装在 `<Plugins>/CuprumBridge`，不写 Store、Links 或 profile；内容库迁移固定跳过该目录（`AdoptSkip::BuiltIn`），不会把桥收进 Store 或改链接。
 
-- `bridge_install_status() -> Result<BridgeInstallStatus, HubError>`：由 `plugins_dir()` 算出目标目录；只有 `CuhubBridge.Plugin.dll` 与 `CuhubBridge.Core.dll` 同时存在且处于同一启用/禁用状态才算已安装（文件名大小写须精确），版本取 Plugin；不写盘，不要求游戏关闭。
-- `install_bridge(&Path) -> Result<BridgeInstallReport, HubError>`：先 `ensure_game_closed()`，`stage_archive` 解到 `<AppData>/Staging/<stamp>-<pid>`，`plan_package` 取 payload，只接受归档根或单一顶层目录下、名称精确匹配的 `CuhubBridge.Plugin.dll` 与 `CuhubBridge.Core.dll`（大小写不符、多层子目录或额外文件都报错）；用 `mods::read_identity` 校验 Plugin GUID 为 `dev.cuhub.bridge`，不符即报错且不写盘。目标路径被 `links.get` 命中时拒绝，避免破坏 profile。随后 `plan_payload` 以目标目录为 root（`owned_root` 也是它）生成计划，`apply_upgrade` 带备份执行，成功后写 `Bridge` 活动日志并返回版本、目标、文件数与备份；任何失败路径都清理 staging。
+- `bridge_install_status() -> Result<BridgeInstallStatus, HubError>`：由 `plugins_dir()` 算出目标目录；只有 `CuprumBridge.Plugin.dll` 与 `CuprumBridge.Core.dll` 同时存在且处于同一启用/禁用状态才算已安装（文件名大小写须精确），版本取 Plugin；不写盘，不要求游戏关闭。
+- `install_bridge(&Path) -> Result<BridgeInstallReport, HubError>`：先 `ensure_game_closed()`，`stage_archive` 解到 `<AppData>/Staging/<stamp>-<pid>`，`plan_package` 取 payload，只接受归档根或单一顶层目录下、名称精确匹配的 `CuprumBridge.Plugin.dll` 与 `CuprumBridge.Core.dll`（大小写不符、多层子目录或额外文件都报错）；用 `mods::read_identity` 校验 Plugin GUID 为 `dev.cuprum.bridge`，不符即报错且不写盘。目标路径被 `links.get` 命中时拒绝，避免破坏 profile。随后 `plan_payload` 以目标目录为 root（`owned_root` 也是它）生成计划，`apply_upgrade` 带备份执行，成功后写 `Bridge` 活动日志并返回版本、目标、文件数与备份；任何失败路径都清理 staging。
 - 安装与更新都在应用内完成，界面入口在 Local Mods 底部；安装后的桥仍是普通本地模组行，启用、禁用、删除走现有模组操作。
 
 ## 线程
@@ -122,7 +124,7 @@ app 已接线（W2/W3）：`Ui::watch_bridge` 每 2 秒取一次 `Hub::bridge_sn
 - 半截帧、超大帧、超时、心跳丢失、断线重连；
 - 未知命令、默认权限拒绝、显式授权允许；运行中改权限对已连会话当场生效。
 
-`cargo test -p cuhub-core` 全绿（377 单测 + 14 集成）。`cargo check --workspace --all-targets` 无警告。
+`cargo test -p cuprum-core` 全绿（377 单测 + 14 集成）。`cargo check --workspace --all-targets` 无警告。
 
 ## 未做
 

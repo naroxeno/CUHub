@@ -1,8 +1,8 @@
 //! Profile and content-library state: rows, drafts and the workers behind them.
 
 mod migration;
-use cuhub_core::hub::{Hub, HubError};
-use cuhub_core::profiles::{ApplyOp, Profile, ProfileEntry, ProfileError};
+use cuprum_core::hub::{Hub, HubError};
+use cuprum_core::profiles::{ApplyOp, Profile, ProfileEntry, ProfileError};
 pub(crate) use migration::MigrationResult;
 use nsh_core::prelude::*;
 use std::collections::BTreeSet;

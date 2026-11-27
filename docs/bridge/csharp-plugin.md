@@ -12,8 +12,8 @@
 
 已按最小闭环落地两个程序集，`dotnet build -c Release` 通过且无警告，尚未真机加载：
 
-- `CuhubBridge.Core`（netstandard2.0）：帧编解码、`hello`/`req`/`res`/`evt`、固定端点与共享 token、TCP 读写线程与队列、`Api` 契约。引用游戏自带 `Newtonsoft.Json.dll`，不引用 BepInEx/Unity。
-- `CuhubBridge.Plugin`（netstandard2.1）：`dev.cuhub.bridge` 探针，`Update()` 里连固定端点、握手、心跳与 `cmd.invoke` 分发；连不上就退避重连，不影响游戏。`BridgeSession.cs` / `CommandRouter.cs` / `MpBackend.cs` 分文件；MVP 未拆 `Mp` / `Transport` 程序集。
+- `CuprumBridge.Core`（netstandard2.0）：帧编解码、`hello`/`req`/`res`/`evt`、固定端点与共享 token、TCP 读写线程与队列、`Api` 契约。引用游戏自带 `Newtonsoft.Json.dll`，不引用 BepInEx/Unity。
+- `CuprumBridge.Plugin`（netstandard2.1）：`dev.cuprum.bridge` 探针，`Update()` 里连固定端点、握手、心跳与 `cmd.invoke` 分发；连不上就退避重连，不影响游戏。`BridgeSession.cs` / `CommandRouter.cs` / `MpBackend.cs` 分文件；MVP 未拆 `Mp` / `Transport` 程序集。
 - TFM 差异：游戏 Unity 2022.3.62f3 的 `UnityEngine.CoreModule.dll` 是 netstandard 2.1，插件用 2.0 会报 CS1705，所以插件取 2.1；Core 保持 2.0。
 - 线程：`BridgeClient` 读线程只解帧入队，写线程只发队列；Unity / CUCoreLib 调用只在 `Update()` 主线程。
 - 命令：`mp.state` 读 `MultiplayerApi` 的 `IsAvailable/IsRunning/IsClient/IsServer/IsHost/BridgeReceiversInstalled/KrokMpVersion`，并在 `running && server` 时反射 `Together.Net.Transport` → `TransportLiteNetLib.port` 给出扁平 `port`（客人、Steam、读不到都是 `null`）；`mp.host`/`mp.join` 在带 `name` 时先调 `TryConfigureLocalIdentity`，再调 `TryStartLocalQuickTestHost/Client`，成功后回读 `Together.Net` 的角色与端口，回 `{started, host, address, port}`；命令表外的 id 回 `unknown_command`，命令表内但本 build 未实现的（`mp.leave` / `mp.kick` / `save.*` / `skin.*`）回 `unavailable`，reason 写明 "command declared but not implemented in this build"。
@@ -79,7 +79,7 @@ MVP 先落地为 Plugin + Core 两个程序集：上图的 `MpBackend` 是 Plugi
 - **依赖策略：软依赖 + 全反射，不项目引用 CUCoreLib.dll。** BepInEx 的 `SoftDependency` 只管加载顺序，直接引用类型在缺库时仍是 TypeLoadException，插件会整体挂掉。反射调用缓存 MethodInfo，开销可忽略（每命令几次）。
 - **线程：读线程只解帧和入队，任何 Unity / CUCoreLib 调用都在 Update() 里跑。** 响应写入走独立写队列，不阻塞主线程。
 - **状态推送：1 s 轮询 + diff。** `Together.Net` 的 static bool 属性读取很便宜，不必 Harmony patch 联机事件（patch 别人的 patch 容易打架）。
-- **宿主不碰游戏文件。** save.* 只回路径与 scope，删除/覆盖由游戏侧确认后做，或干脆交给 Cuhub 的 service 层走用户确认。
+- **宿主不碰游戏文件。** save.* 只回路径与 scope，删除/覆盖由游戏侧确认后做，或干脆交给 Cuprum 的 service 层走用户确认。
 
 ## 命令落点建议
 
@@ -104,4 +104,4 @@ MVP 先落地为 Plugin + Core 两个程序集：上图的 `MpBackend` 是 Plugi
 1. `TryStartLocalQuickTestHost/Client` 与 UI 的 Host/Join 是否等价。
 2. 玩家列表（id + 名字）的稳定来源。
 3. 控制台命令的程序化执行入口。
-4. `--mp-startserver` 的 dedicated server 是否真的无 UI，可被 Cuhub 当主机拉起。
+4. `--mp-startserver` 的 dedicated server 是否真的无 UI，可被 Cuprum 当主机拉起。

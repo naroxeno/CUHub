@@ -1,8 +1,9 @@
 //! Delete confirmation overlay.
 
 use crate::app_state::Ui;
-use crate::components::{button, danger_button, fade_in, panel, pix, rise_in, scaled};
+use crate::components::{button, confirmation_dialog, danger_button, focus_ring, pix, scaled};
 use crate::palette::*;
+use crate::shell::keyboard::Keyboard;
 use nsh_core::prelude::*;
 
 pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
@@ -11,11 +12,24 @@ pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
     let busy = ui.delete_busy;
     let confirm_ui = ui.clone();
     let cancel_ui = ui.clone();
+    let keyboard = Keyboard::get();
+    let was_open = stored(false);
+    effect(move || {
+        let open = prompt.with(|prompt| prompt.is_some());
+        if was_open.replace(open) && !open && keyboard.bulk_delete.replace(false) {
+            spawn(async move {
+                next_frame().await;
+                if keyboard.can_restore_local() {
+                    keyboard.local.fallback.focus();
+                }
+            });
+        }
+    });
     when(
         move || prompt.get().is_some(),
         move || {
             let Some(prompt) = prompt.get() else {
-                return view();
+                return view().into_element();
             };
             let title_key = prompt.title_key();
             let title_name = prompt.target.label();
@@ -31,8 +45,8 @@ pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
             for root in &prompt.scope.roots {
                 list = list.child(pix(root.display().to_string(), 10.0, TEXT_MUTED, &z).w_full());
             }
-            let veil = fade_in();
-            let card = rise_in();
+            let cancel_ref = element_ref();
+            let busy_ref = element_ref();
             let confirm_ui = confirm_ui.clone();
             let cancel_ui = cancel_ui.clone();
             let confirm = when(
@@ -47,7 +61,12 @@ pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
                         &z,
                         move || t!(action_key),
                         true,
-                        move || confirm_ui.confirm_delete(),
+                        move || {
+                            confirm_ui.confirm_delete();
+                            if busy.get_untracked() {
+                                after_answer(move || busy_ref.focus());
+                            }
+                        },
                     )
                 }
             });
@@ -65,9 +84,19 @@ pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
                         true,
                         move || cancel_ui.cancel_delete(),
                     )
+                    .element_ref(&cancel_ref)
                 }
             });
             let body = view()
+                .element_ref(&busy_ref)
+                .focusable(move || busy.get())
+                .focus_visible(focus_ring(&z))
+                .role(AccessibilityRole::Group)
+                .label(move || t!("delete.deleting"))
+                .accessibility_state(move || AccessibilityState {
+                    busy: busy.get(),
+                    ..Default::default()
+                })
                 .flex_col()
                 .gap(scaled(&z, 8.0))
                 .child(pix(
@@ -98,21 +127,11 @@ pub fn delete_overlay(ui: &Ui) -> impl IntoElement {
                         .child(cancel)
                         .child(confirm),
                 );
-            view()
-                .absolute()
-                .inset(px(0.0))
-                .w_full()
-                .h_full()
-                .bg(rgba(0x000000CC))
-                .bind_motion(&veil)
-                .items_center()
-                .justify_center()
-                .child(
-                    panel(&z, move || t!(title_key, name = title_name), body)
-                        .w(scaled(&z, 460.0))
-                        .max_w(percentage(0.9))
-                        .bind_motion(&card),
-                )
+            let escape_ui = cancel_ui.clone();
+            confirmation_dialog(&z, move || t!(title_key, name = title_name), body)
+                .on_open(move || cancel_ref.focus())
+                .on_cancel(move || escape_ui.cancel_delete())
+                .into_element()
         },
     )
 }

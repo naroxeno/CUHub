@@ -1,12 +1,10 @@
 //! BepInEx install and status overlay with its actions.
 
 use crate::app_state::Ui;
-use crate::components::{
-    button, choice_button, fade_in, panel, pix, pix_c, rise_in, scaled, spinner,
-};
+use crate::components::{button, choice_button, confirmation_dialog, pix, pix_c, scaled, spinner};
 use crate::palette::*;
 use crate::shell::nav;
-use cuhub_core::install::{Flavor, Mode};
+use cuprum_core::install::{Flavor, Mode};
 use nsh_core::prelude::*;
 
 pub fn bepinex_overlay(ui: &Ui) -> impl IntoElement {
@@ -17,8 +15,7 @@ pub fn bepinex_overlay(ui: &Ui) -> impl IntoElement {
     when(
         move || shown.get(),
         move || {
-            let veil = fade_in();
-            let card = rise_in();
+            let cancel_ref = element_ref();
             let cancel = cancel.clone();
             let repair = repair.clone();
             let body = view()
@@ -35,12 +32,15 @@ pub fn bepinex_overlay(ui: &Ui) -> impl IntoElement {
                         .flex_row()
                         .items_center()
                         .gap(scaled(&z, 8.0))
-                        .child(button(
-                            &z,
-                            move || t!("common.cancel"),
-                            true,
-                            move || cancel.bepinex_confirm.set(false),
-                        ))
+                        .child(
+                            button(
+                                &z,
+                                move || t!("common.cancel"),
+                                true,
+                                move || cancel.bepinex_confirm.set(false),
+                            )
+                            .element_ref(&cancel_ref),
+                        )
                         .child(button(
                             &z,
                             move || t!("bepinex.repair"),
@@ -51,21 +51,9 @@ pub fn bepinex_overlay(ui: &Ui) -> impl IntoElement {
                             },
                         )),
                 );
-            view()
-                .absolute()
-                .inset(px(0.0))
-                .w_full()
-                .h_full()
-                .bg(rgba(0x000000CC))
-                .bind_motion(&veil)
-                .items_center()
-                .justify_center()
-                .child(
-                    panel(&z, move || t!("panel.bepinex_repair"), body)
-                        .w(scaled(&z, 460.0))
-                        .max_w(percentage(0.9))
-                        .bind_motion(&card),
-                )
+            confirmation_dialog(&z, move || t!("panel.bepinex_repair"), body)
+                .on_open(move || cancel_ref.focus())
+                .on_cancel(move || shown.set(false))
         },
     )
 }
@@ -125,7 +113,7 @@ fn bepinex_action_label(ui: &Ui) -> String {
     }
 }
 
-fn bepinex_installed_label(status: &cuhub_core::install::Status) -> String {
+fn bepinex_installed_label(status: &cuprum_core::install::Status) -> String {
     match (&status.version, status.major) {
         (Some(version), _) => t!("bepinex.installed", version = version),
         (None, Some(major)) => t!("bepinex.installed_no_version", major = major),

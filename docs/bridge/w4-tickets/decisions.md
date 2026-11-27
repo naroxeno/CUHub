@@ -10,7 +10,7 @@
 - **D2 端口占用的拦截层**：票面 4b 期望「桥回 unavailable + net_lnl_server_start_failed」。真机上「先占端口再开房」会先被应用层拦下（`Hub::start_host` 调 `ensure_port_available`，`crates/core/src/hub.rs:774-780`），文案是「端口 N 已被占用。」；桥的 `busy` 分支与游戏侧 `net_lnl_server_start_failed` 只能从游戏内 QuickTest 触发（§1.8 ④ 已实测）。R4-b 因此拆 b1/b2。
 - **D3 三次退避在真机不可复现**：客人侧要进入自动加入流程必须先 phase Ready（隧道已连接），此时几乎不会连续失败；现有 UI 也没有稳定办法制造 guest 侧 mp.join 失败。该逻辑以单测（mp_control 15 条）为准，真机只验「不无限重试」。
 - **D4 非法地址不可注入**：app 下发的地址恒为 `<ip>:<u16>`（`crates/app/src/ui/mp_control.rs:160-176`），端口输入框只收数字；桥的 `invalid_params`（名字/地址）真机 UI 无入口，由 t9 离线反射 harness 的 21 个用例覆盖。R4-d 改测应用层非法端口。
-- **D5 UI 不展示具体失败原因**：桥卡提示只读桥自身的 `last_error` / `start_error`（`crates/app/src/pages/multiplayer.rs:113-124`），不展示 `mp.state` 的 unavailable 文本；R4-a 只能看到「游戏内联机不可用。」，R4-c 只能看到「游戏会话不可用。」，具体原因在 Cuhub 活动日志的 `Command mp.host failed:…` 行里。若要求界面直接显示原因，记为改进项。
+- **D5 UI 不展示具体失败原因**：桥卡提示只读桥自身的 `last_error` / `start_error`（`crates/app/src/pages/multiplayer.rs:113-124`），不展示 `mp.state` 的 unavailable 文本；R4-a 只能看到「游戏内联机不可用。」，R4-c 只能看到「游戏会话不可用。」，具体原因在 Cuprum 活动日志的 `Command mp.host failed:…` 行里。若要求界面直接显示原因，记为改进项。
 - **D6 「手动」标签的触发条件**：端口来源以游戏上报值优先（`choose_host_port`，`crates/core/src/multiplayer/port.rs:25-42`）。游戏在房时手填只会出现「端口填的是 X，但游戏实际在 Y。」与「采用检测端口」，来源仍是「自动检测」；只有游戏未上报端口时才显示「手动」。票面「手填覆盖后标手动」只在后者成立。
 - **D7 R6 重连窗口**：票面「10 秒内重连」。插件退避为 1/2/5/10/30 秒（`docs/bridge/protocol.md:21`），最坏要等满 30 秒；本工单按 ≤30 秒判，应用侧释放端口后 ≤5 秒（2 个轮询周期）自动重试。
 - **D8 R2 严格路径不可达**：`Hub::start_host` 每次随机生成房间码（`crates/core/src/hub.rs:781`），界面不提供「按码开房」或「用上次房间码重新开房」（`LastRoom` 只持久化，未接 UI：`crates/core/src/multiplayer.rs:33-45`、`:93-96`）。因此无法「先让客人在某个码上等待、房主随后用同一个码开房」。若要覆盖这一场景，需要产品先补入口。

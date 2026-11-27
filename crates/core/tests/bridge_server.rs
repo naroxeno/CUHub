@@ -12,11 +12,11 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use cuhub_core::bridge::command::{BridgeSettings, Permission, Permissions};
-use cuhub_core::bridge::handshake::{HandshakeError, TOKEN};
-use cuhub_core::bridge::proto::{self, MAX_FRAME, Message, PROTO_MAJOR};
-use cuhub_core::bridge::server::{BridgeError, BridgeEvent, BridgeOptions, BridgeServer, HOST};
-use cuhub_core::logs::Logs;
+use cuprum_core::bridge::command::{BridgeSettings, Permission, Permissions};
+use cuprum_core::bridge::handshake::{HandshakeError, TOKEN};
+use cuprum_core::bridge::proto::{self, MAX_FRAME, Message, PROTO_MAJOR};
+use cuprum_core::bridge::server::{BridgeError, BridgeEvent, BridgeOptions, BridgeServer, HOST};
+use cuprum_core::logs::Logs;
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -26,7 +26,7 @@ impl TempDir {
     fn new(tag: &str) -> Self {
         let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "cuhub-bridge-test-{tag}-{}-{unique}",
+            "cuprum-bridge-test-{tag}-{}-{unique}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&path);
@@ -188,7 +188,7 @@ fn handshake_lists_commands_and_round_trips_a_command() {
         TOKEN,
         4242,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     assert_eq!(result["host_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(result["commands"].as_array().map(Vec::len), Some(15));
@@ -244,7 +244,7 @@ fn handshake_waits_for_the_guest_to_send_hello() {
         TOKEN,
         4243,
         PROTO_MAJOR,
-        "cuhub.delayed",
+        "cuprum.delayed",
     ));
     assert!(wait_until(|| fixture.server.status().session.is_some()));
 }
@@ -259,7 +259,7 @@ fn bad_token_is_rejected_with_a_failure_and_recorded_in_the_status() {
     let mut stream = connect(fixture.port);
     proto::write_message(
         &mut stream,
-        &hello(&"a".repeat(64), 7, PROTO_MAJOR, "cuhub.test"),
+        &hello(&"a".repeat(64), 7, PROTO_MAJOR, "cuprum.test"),
     )
     .expect("write hello");
     match proto::read_message(&mut stream)
@@ -281,7 +281,7 @@ fn bad_token_is_rejected_with_a_failure_and_recorded_in_the_status() {
     ));
 
     let mut stream = connect(fixture.port);
-    hello_ok(send_hello(&mut stream, TOKEN, 7, PROTO_MAJOR, "cuhub.test"));
+    hello_ok(send_hello(&mut stream, TOKEN, 7, PROTO_MAJOR, "cuprum.test"));
     let _ = stream.shutdown(std::net::Shutdown::Both);
 }
 
@@ -293,7 +293,7 @@ fn proto_major_mismatch_reports_both_versions_and_recovers() {
         &BridgeSettings::default(),
     );
     let mut stream = connect(fixture.port);
-    let reply = send_hello(&mut stream, TOKEN, 9, PROTO_MAJOR + 1, "cuhub.test");
+    let reply = send_hello(&mut stream, TOKEN, 9, PROTO_MAJOR + 1, "cuprum.test");
     match reply {
         Message::Res {
             ok,
@@ -319,7 +319,7 @@ fn proto_major_mismatch_reports_both_versions_and_recovers() {
     assert!(fixture.server.status().running);
 
     let mut stream = connect(fixture.port);
-    hello_ok(send_hello(&mut stream, TOKEN, 9, PROTO_MAJOR, "cuhub.test"));
+    hello_ok(send_hello(&mut stream, TOKEN, 9, PROTO_MAJOR, "cuprum.test"));
     assert!(wait_until(|| fixture.server.status().session.is_some()));
     assert_eq!(fixture.server.status().last_error, None);
 }
@@ -342,7 +342,7 @@ fn partial_frame_is_rejected_and_the_listener_recovers() {
         TOKEN,
         11,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     let _ = stream.shutdown(std::net::Shutdown::Both);
 }
@@ -360,7 +360,7 @@ fn oversized_frame_ends_the_session_and_allows_reconnect() {
         TOKEN,
         12,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     stream
         .write_all(&((MAX_FRAME as u32) + 1).to_le_bytes())
@@ -380,7 +380,7 @@ fn oversized_frame_ends_the_session_and_allows_reconnect() {
         TOKEN,
         13,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     let _ = stream.shutdown(std::net::Shutdown::Both);
 }
@@ -417,7 +417,7 @@ fn default_permissions_deny_control_and_mutate() {
         TOKEN,
         21,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     assert!(wait_until(|| fixture.server.status().session.is_some()));
     let (_responder, _commands) = spawn_responder(stream);
@@ -442,7 +442,7 @@ fn setting_permissions_live_grants_control_in_the_running_session() {
         TOKEN,
         23,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     assert!(wait_until(|| fixture.server.status().session.is_some()));
     let (_responder, _commands) = spawn_responder(stream);
@@ -453,7 +453,7 @@ fn setting_permissions_live_grants_control_in_the_running_session() {
     ));
 
     let entries = BTreeMap::from([(
-        "cuhub.test".to_owned(),
+        "cuprum.test".to_owned(),
         BTreeMap::from([
             ("mp.host".to_owned(), Permission::Granted),
             ("mp.join".to_owned(), Permission::Granted),
@@ -472,7 +472,7 @@ fn setting_permissions_live_grants_control_in_the_running_session() {
 fn granted_settings_permission_allows_a_mutation() {
     let mut settings = BridgeSettings::default();
     settings.permissions.insert(
-        "cuhub.test".to_owned(),
+        "cuprum.test".to_owned(),
         BTreeMap::from([("save.save".to_owned(), Permission::Granted)]),
     );
     let fixture = Fixture::new("granted", BridgeOptions::default(), &settings);
@@ -482,7 +482,7 @@ fn granted_settings_permission_allows_a_mutation() {
         TOKEN,
         22,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     assert_eq!(result["perms"]["save.save"], "granted");
     assert!(wait_until(|| fixture.server.status().session.is_some()));
@@ -507,7 +507,7 @@ fn command_times_out_without_a_reply() {
         TOKEN,
         31,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     assert!(wait_until(|| fixture.server.status().session.is_some()));
     let error = fixture
@@ -535,7 +535,7 @@ fn missed_heartbeats_close_the_session() {
         TOKEN,
         41,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
 
     let mut ended = false;
@@ -563,7 +563,7 @@ fn disconnected_client_allows_a_new_session() {
         TOKEN,
         51,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     assert!(wait_until(|| fixture.server.status().session.is_some()));
     stream.shutdown(std::net::Shutdown::Both).expect("shutdown");
@@ -575,7 +575,7 @@ fn disconnected_client_allows_a_new_session() {
         TOKEN,
         52,
         PROTO_MAJOR,
-        "cuhub.test",
+        "cuprum.test",
     ));
     assert!(wait_until(|| {
         fixture
@@ -592,10 +592,10 @@ fn disconnected_client_allows_a_new_session() {
 fn a_second_connection_is_rejected_while_busy() {
     let fixture = Fixture::new("busy", BridgeOptions::default(), &BridgeSettings::default());
     let mut first = connect(fixture.port);
-    hello_ok(send_hello(&mut first, TOKEN, 61, PROTO_MAJOR, "cuhub.test"));
+    hello_ok(send_hello(&mut first, TOKEN, 61, PROTO_MAJOR, "cuprum.test"));
 
     let mut second = connect(fixture.port);
-    match send_hello(&mut second, TOKEN, 62, PROTO_MAJOR, "cuhub.test") {
+    match send_hello(&mut second, TOKEN, 62, PROTO_MAJOR, "cuprum.test") {
         Message::Res {
             ok,
             error: Some(error),
@@ -607,7 +607,7 @@ fn a_second_connection_is_rejected_while_busy() {
         other => panic!("unexpected reply while busy: {other:?}"),
     }
     let mut duplicate = connect(fixture.port);
-    match send_hello(&mut duplicate, TOKEN, 61, PROTO_MAJOR, "cuhub.test") {
+    match send_hello(&mut duplicate, TOKEN, 61, PROTO_MAJOR, "cuprum.test") {
         Message::Res {
             ok,
             error: Some(error),

@@ -258,8 +258,8 @@ mod tests {
     use crate::test_support::temp_dir;
     use reqwest::Url;
 
-    const TEST_PAYLOAD: &[u8] = b"cuhub easytier cache test";
-    const TEST_SHA256: &str = "09ae30721537fac50c8c1c75259b070fa696e7c65eccf0ee754c4ba1f2ca4739";
+    const TEST_PAYLOAD: &[u8] = b"cuprum easytier cache test";
+    const TEST_SHA256: &str = "b57d4f671924634bfd0c180a9511ae896e61221c91ce4222f6237ee6a9684d32";
 
     fn test_asset() -> Asset {
         Asset {

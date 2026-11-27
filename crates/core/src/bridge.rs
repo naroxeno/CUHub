@@ -1,6 +1,6 @@
 //! Experimental bridge host: framing, handshake, command policy and the fixed loopback endpoint.
 
-pub const BRIDGE_GUID: &str = "dev.cuhub.bridge";
+pub const BRIDGE_GUID: &str = "dev.cuprum.bridge";
 
 pub mod command;
 pub mod handshake;

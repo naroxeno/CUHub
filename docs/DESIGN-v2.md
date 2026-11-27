@@ -1,4 +1,4 @@
-# Cuhub v2 设计：联机与模组管理
+# Cuprum v2 设计：联机与模组管理
 
 状态：审核草案 v1（2026-11-17），只写设计，不含代码。审阅重点在 §7 的待拍板清单。
 本文取代 `docs/multiplayer/easytier-plan.md` 的联机部分（那份留作背景与来源）；模组管理部分是新增。
@@ -33,7 +33,7 @@
 ### 2.2 相对 easytier-plan 的三处修正
 
 1. **不要 UDP 广播中继**：联机 mod 已支持 UDP 直连（填 IP + 端口即可入房），广播只是「局域网列表自动发现」，不是连通的前提。Windows 上因此只剩 TUN 提权一项，WinDivert 与 `--enable-udp-broadcast-relay` 整块删除。
-2. **房主发现用 hostname，不用广播也不硬编码 IP**：房主进程以 `--hostname cuhub-host-<端口>` 启动，客人从 `easytier-cli peer list -o json` 里按 hostname 前缀认出房主，读出其虚拟 IP 与端口，把两者填进联机 mod 的直连框。这条路不绑定子网、不需要房主固定静态 IP。
+2. **房主发现用 hostname，不用广播也不硬编码 IP**：房主进程以 `--hostname cuprum-host-<端口>` 启动，客人从 `easytier-cli peer list -o json` 里按 hostname 前缀认出房主，读出其虚拟 IP 与端口，把两者填进联机 mod 的直连框。这条路不绑定子网、不需要房主固定静态 IP。
 3. **工时按「只剩提权」重估**：Windows MVP 20–30 小时（提权 6–10、子进程与状态 8–12）；Linux 再 +6–8。
 
 ### 2.3 core 模块 `crates/core/src/easytier/`
@@ -60,7 +60,7 @@
   UAC/setcap 提权一次                  UAC/setcap 提权一次
   spawn easytier-core --hostname ...   spawn easytier-core
   status: Running                       status: 等待 peer
-  ← 房间码（网络名/密钥编码在内）          discovery: 找到 cuhub-host-N
+  ← 房间码（网络名/密钥编码在内）          discovery: 找到 cuprum-host-N
                                         → 得到 IP:端口 → 填进 mod
 ```
 
@@ -76,14 +76,14 @@
 ### 2.6 房主发现
 
 1. 客人 `peer list -o json` 取全部 peer 的 hostname 与虚拟 IP，路由状态只认 `p2p` 与 `relay` 两种。
-2. 匹配 `cuhub-host-<port>` 前缀且端口在 1–65535，多个命中时报「房间有多个房主」而不猜。
+2. 匹配 `cuprum-host-<port>` 前缀且端口在 1–65535，多个命中时报「房间有多个房主」而不猜。
 3. 找不到时按 5 秒一次重试，60 秒后提示「房间存在但房主未就绪」并提供「手动填写地址」退路（保留粘贴 IP:端口）。
-4. 拿到地址后不自动替用户点加入：联机 mod 的入房由用户触发，Cuhub 只负责把地址填好并高亮。
+4. 拿到地址后不自动替用户点加入：联机 mod 的入房由用户触发，Cuprum 只负责把地址填好并高亮。
 
 ### 2.7 进程、提权、端口
 
-- 内核进程由 Cuhub 拉起、Cuhub 退出即终止；不从 shell 继承 stdin，stdout/stderr 进 `Logs/`。
-- 不自提权，也不在 Linux/macOS 做进程级预检查：Windows 用 `platform::elevated()`（`Shell32!IsUserAnAdmin`）检查当前进程，不足时 `start_tunnel` 返回 `HubError::Elevation`，界面提示「以管理员身份重新打开 Cuhub」；Linux 的 TUN 权限由 core 文件的 `cap_net_admin+ep` 在 exec 时授予，Cuhub 自己缺权不影响。不弹 UAC、不循环重试。
+- 内核进程由 Cuprum 拉起、Cuprum 退出即终止；不从 shell 继承 stdin，stdout/stderr 进 `Logs/`。
+- 不自提权，也不在 Linux/macOS 做进程级预检查：Windows 用 `platform::elevated()`（`Shell32!IsUserAnAdmin`）检查当前进程，不足时 `start_tunnel` 返回 `HubError::Elevation`，界面提示「以管理员身份重新打开 Cuprum」；Linux 的 TUN 权限由 core 文件的 `cap_net_admin+ep` 在 exec 时授予，Cuprum 自己缺权不影响。不弹 UAC、不循环重试。
 - Linux 用 `sudo setcap cap_net_admin+ep <core>` 后免 root；提示里给出这条指引，不自动执行。
 - RPC 只绑 `127.0.0.1`，端口从系统分配的空闲端口拿，写进本次会话状态；不占固定 15888。
 - 端口转发不做 RPC 补丁：陶瓦靠 easytier gRPC 动态加转发，本项目没有移植 linkage，客人改为「发现房主后带 `--port-forward` 参数重启一次」，`forwarded` 标记防循环；TCP 与 UDP 各一条，本地端口尽量等于房主端口。
@@ -96,7 +96,7 @@
 | 错误 | 文案要点 | 可执行动作 |
 |---|---|---|
 | `NoCore` | 还没下载内核（约 33 MB） | 下载 / 指定已装路径 |
-| `NeedElevation` | Windows 当前进程不是管理员，无法建虚拟网卡 | 以管理员身份重新打开 Cuhub |
+| `NeedElevation` | Windows 当前进程不是管理员，无法建虚拟网卡 | 以管理员身份重新打开 Cuprum |
 | `TunUnavailable` | 虚拟网卡驱动不可用（缺 WinTun） | 重新安装内核 |
 | `PortInUse` | 端口被占用 | 换端口（自动选下一个） |
 | `PeerNotFound` | 房间在线但找不到房主 | 重试 / 手动填地址 |
@@ -211,7 +211,7 @@ BepInEx 的 Plugins 顶层就是「一个目录或一个 DLL = 一个模组」�
   "createdAt": "2026-11-17T12:00:00Z" }
 ```
 
-文件就是 zip：`pack.json` + `overrides/**`，`payload=embedded` 时再加 `mods/<modId>/<version>/payload/**`。扩展名 `.cuhubpack`，两种 payload 同一个扩展名（靠字段区分），与 MC 的 manifest / mrpack 同思路。
+文件就是 zip：`pack.json` + `overrides/**`，`payload=embedded` 时再加 `mods/<modId>/<version>/payload/**`。扩展名 `.cuprumpack`，两种 payload 同一个扩展名（靠字段区分），与 MC 的 manifest / mrpack 同思路。
 
 校验（包是不可信输入）：`schemaVersion` 已知、路径无绝对/`..`/保留名/重复、每个文件对清单 sha256、条目数 ≤4096、单文件 ≤512 MB、总量 ≤2 GB、overrides 只允许落 `config/` 与 `Plugins/` 内指定 mod 目录。
 
@@ -220,7 +220,7 @@ BepInEx 的 Plugins 顶层就是「一个目录或一个 DLL = 一个模组」�
 - **导入 manifest**：逐条走既有来源解析（nexus / github / custom）→ 下载 → 入 Store；缺失项列出来，允许「跳过缺失继续」。
 - **导入 embedded**：校验后直接入 Store，不联网。
 - **导出 manifest**：只写来源与版本，文件几 KB。
-- **导出 embedded**：把 Store 里的 payload 与用到的 config 打包，体积 = 内容大小；只作为本地导出、私下传递，Cuhub 不托管、不提供公开包库（AGENTS §3 禁止重托管第三方模组）。
+- **导出 embedded**：把 Store 里的 payload 与用到的 config 打包，体积 = 内容大小；只作为本地导出、私下传递，Cuprum 不托管、不提供公开包库（AGENTS §3 禁止重托管第三方模组）。
 
 ### 3.10 迁移
 
@@ -283,7 +283,7 @@ M1 与 M2 可并行，互不依赖。2026-11-17 用户拍板：先 M2 再 M1；�
 2. **部署策略**：目录型用 junction、单 DLL 用硬链接、异卷退拷贝——接受这个方案吗？
 3. **Store 位置**：固定在 appdata，还是允许用户指到游戏盘（跨盘时省一次拷贝）？
 4. **迁移**：默认保持旧行为、只在设置里提供「导入现有模组」，可以吗？
-5. **包格式**：`.cuhubpack` + `payload` 字段区分 manifest / embedded，可以吗？
+5. **包格式**：`.cuprumpack` + `payload` 字段区分 manifest / embedded，可以吗？
 6. **embedded 定位**：只做本地导出与私下传递，不做托管与公开包库，确认吗？
 7. **联机确认**：房间码 C1 + hostname 发现 + 无广播中继 + 不自提权（要求以管理员重开），确认吗？
 8. **联机锁 profile**：连上或游戏在跑时禁止切包，接受吗？

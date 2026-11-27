@@ -34,7 +34,7 @@ use crate::packages::{PackageError, PackagePlan};
 use crate::paths::{self, PathError};
 use crate::platform;
 use crate::profiles::{self, ProfileEntry, ProfileError, ProfileStore};
-use crate::room::{HostCandidate, RoomCode, RoomError};
+use crate::room::{RoomCode, RoomError};
 use crate::settings::{Settings, SettingsStore};
 use crate::source_choice::{ChoiceError, SourceChoices};
 use crate::sources::{self, DEFAULT_MANIFEST_URL, Repo, SourceCache, SourceKind, SourceManifest};
@@ -133,7 +133,7 @@ impl std::fmt::Display for HubError {
             Self::NoRoom => formatter.write_str("Create or join a room first."),
             Self::Elevation => write!(
                 formatter,
-                "Cuhub cannot create the virtual network adapter. On Windows, restart Cuhub as administrator; on Linux, grant CAP_NET_ADMIN to the EasyTier core."
+                "Cuprum cannot create the virtual network adapter. On Windows, restart Cuprum as administrator; on Linux, grant CAP_NET_ADMIN to the EasyTier core."
             ),
             Self::EasyTier(error) => error.fmt(formatter),
             Self::Adopt(error) => error.fmt(formatter),
@@ -450,7 +450,7 @@ impl Hub {
         if let Some(warning) = &loaded.warning {
             logs.error("Settings", &io::Error::other(warning.clone()));
         }
-        logs.info(&format!("CUHub {} started.", env!("CARGO_PKG_VERSION")));
+        logs.info(&format!("Cuprum {} started.", env!("CARGO_PKG_VERSION")));
 
         let catalogs = Catalogs::load(&app_data);
         for error in &catalogs.errors {
@@ -759,7 +759,7 @@ impl Hub {
         } else {
             0
         };
-        Self::polled_tunnel_state(role, port, candidate, peers)
+        Self::polled_tunnel_state(role, port, peers)
     }
 
     pub fn start_host(&mut self, port: u16) -> Result<String, HubError> {
@@ -998,25 +998,14 @@ impl Hub {
             .map(Tunnel::port)
     }
 
-    fn polled_tunnel_state(
-        role: Role,
-        port: u16,
-        host: Option<HostCandidate>,
-        peers: usize,
-    ) -> TunnelState {
-        match (role, host) {
-            (Role::Guest, Some(host)) => TunnelState::Connected {
-                virtual_ip: host.address,
-                port,
-                local_port: None,
-            },
-            (Role::Guest, None) | (Role::Host, Some(_)) => TunnelState::WaitingPeer,
-            (Role::Host, None) if peers > 1 => TunnelState::Connected {
+    fn polled_tunnel_state(role: Role, port: u16, peers: usize) -> TunnelState {
+        match role {
+            Role::Host if peers > 1 => TunnelState::Connected {
                 virtual_ip: Ipv4Addr::new(10, 144, 144, 1),
                 port,
                 local_port: None,
             },
-            (Role::Host, None) => TunnelState::WaitingPeer,
+            Role::Guest | Role::Host => TunnelState::WaitingPeer,
         }
     }
 
@@ -2361,7 +2350,7 @@ mod tests {
 
     #[test]
     fn a_connected_host_reports_the_tunnel_port() {
-        let state = Hub::polled_tunnel_state(Role::Host, 25566, None, 2);
+        let state = Hub::polled_tunnel_state(Role::Host, 25566, 2);
         assert_eq!(
             state,
             TunnelState::Connected {
@@ -2373,34 +2362,17 @@ mod tests {
     }
 
     #[test]
-    fn a_connected_guest_reports_the_discovered_address_and_port() {
-        let host = HostCandidate {
-            hostname: "cuhub-host-25566".to_owned(),
-            address: Ipv4Addr::new(10, 144, 144, 5),
-        };
-        let state = Hub::polled_tunnel_state(Role::Guest, 25566, Some(host), 2);
-        assert_eq!(
-            state,
-            TunnelState::Connected {
-                virtual_ip: Ipv4Addr::new(10, 144, 144, 5),
-                port: 25566,
-                local_port: None,
-            }
-        );
-    }
-
-    #[test]
     fn a_host_alone_is_still_waiting() {
         assert_eq!(
-            Hub::polled_tunnel_state(Role::Host, 25565, None, 1),
+            Hub::polled_tunnel_state(Role::Host, 25565, 1),
             TunnelState::WaitingPeer
         );
     }
 
     #[test]
-    fn a_guest_without_a_host_is_waiting() {
+    fn a_guest_without_a_forward_is_waiting() {
         assert_eq!(
-            Hub::polled_tunnel_state(Role::Guest, 25565, None, 3),
+            Hub::polled_tunnel_state(Role::Guest, 25565, 3),
             TunnelState::WaitingPeer
         );
     }

@@ -27,18 +27,26 @@
 
 联机前先装好 Casualties Together 及其依赖，再打开「多人游戏」。房主默认使用 **7790** 端口。加入者可留空房主端口，把 Cuprum 显示的地址粘贴到游戏里。地址变更后用新地址重进。双机联机与可选的 Bridge 仍待游戏实测。
 
+### 从旧测试版升级
+
+首次启动新版前，关闭旧版和游戏。运行 `python3 scripts/migrate-app-data.py "<旧数据目录>"`，Windows 上把 `python3` 换成 `py -3`。传入包含 `Settings.json` 的目录。脚本会把数据移到同级的 `Cuprum`，并在旧位置保留目录链接，让原有模组路径继续有效。如果目标目录已存在，先手动移开再重试。
+
+装过联机桥的用户，先把旧桥目录移出 BepInEx 的插件目录，再装新版桥。原来启用过游戏内自动开房和加入的用户需要重新打开该开关。联机双方升级后重新建房。
+
 ## 从源码构建
 
-需要稳定版 Rust、[nsh](https://nsh.dev) 0.5.1 和 `just`。Linux 构建需要 Clang，运行需要 GTK 4.14+ 和 GStreamer。
+需要稳定版 Rust、[nsh](https://nsh.dev) 0.7.1 和 `just`。Linux 构建需要 Clang，运行需要 GTK 4.14+。
 
 ```sh
-git clone https://github.com/naroxeno/CUHub.git
-cd CUHub
+git clone https://github.com/naroxeno/Cuprum.git
+cd Cuprum
 just dev
 just package
 ```
 
-用 `just check` 和 `just test` 验证。各平台的构建命令见 [justfile](justfile)。可选的 Bridge 用 `just package-bridge` 单独打包，构建与安装步骤见 [Bridge 指南](mods/cuhub-bridge/README.md)。
+在 Linux 上运行 `just package-appimage`，AppImage 输出到 `dist/appimage/`。请把 `appimagetool` 加入 `PATH`，或用 `NSH_APPIMAGETOOL` 指定其路径。运行 AppImage 仍需要目标系统安装 GTK 4.14+。
+
+用 `just check` 和 `just test` 验证。各平台的构建命令见 [justfile](justfile)。可选的 Bridge 用 `just package-bridge` 单独打包，构建与安装步骤见 [Bridge 指南](mods/cuprum-bridge/README.md)。
 
 ## 项目
 

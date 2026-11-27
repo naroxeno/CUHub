@@ -6,7 +6,7 @@ use crate::i18n;
 use crate::palette::{
     ACCENT, BG, BORDER, DANGER, TEXT, TEXT_DIM, TEXT_MUTED, WARN, theme_color, theme_color_with,
 };
-use cuhub_core::settings::Settings;
+use cuprum_core::settings::Settings;
 use nsh_core::file_dialog::OpenDialog;
 use nsh_core::prelude::*;
 
@@ -51,18 +51,12 @@ pub fn open(ui: &Ui) {
 
 pub fn wizard(ui: &Ui) -> impl IntoElement {
     let ui = ui.clone();
-    on_key("escape", {
-        let ui = ui.clone();
-        move |_| {
-            if ui.setup.open.get() {
-                skip(&ui);
-            }
-        }
-    });
     let open = ui.setup.open;
     when(
         move || open.get(),
         move || {
+            let dismiss = ui.clone();
+            on_key("escape", move |_| skip(&dismiss));
             let ui = ui.clone();
             let z = ui.zoom;
             let step = ui.setup.step;

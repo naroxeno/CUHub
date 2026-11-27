@@ -552,9 +552,9 @@ local.import_failed:
   zh-CN: "无法准备模组安装：%{error}"
   ja: "MOD のインストールを準備できませんでした: %{error}"
 local.bridge_title:
-  en: "CUHub Bridge"
-  zh-CN: "CUHub Bridge"
-  ja: "CUHub Bridge"
+  en: "Cuprum Bridge"
+  zh-CN: "Cuprum Bridge"
+  ja: "Cuprum Bridge"
 local.bridge_description:
   en: "Connects Cuprum to the game for multiplayer status and controls."
   zh-CN: "连接 Cuprum 和游戏，用于显示联机状态和控制开房、加入。"
@@ -596,9 +596,9 @@ local.bridge_installed_notice_unknown:
   zh-CN: "桥已安装。"
   ja: "ブリッジをインストールしました。"
 local.bridge_pick_title:
-  en: "Choose CuhubBridge.zip"
-  zh-CN: "选择 CuhubBridge.zip"
-  ja: "CuhubBridge.zip を選択"
+  en: "Choose CuprumBridge.zip"
+  zh-CN: "选择 CuprumBridge.zip"
+  ja: "CuprumBridge.zip を選択"
 local.bridge_picker_failed:
   en: "Could not open the file picker: %{error}"
   zh-CN: "无法打开文件选择器：%{error}"
@@ -962,7 +962,7 @@ multiplayer.core_missing:
 multiplayer.error_elevation:
   en: "Hosting and joining need administrator rights. Reopen Cuprum as administrator."
   zh-CN: "开房和加入需要管理员权限，请以管理员身份重新打开 Cuprum。"
-  ja: "ルームの作成・参加には管理者権限が必要です。管理者として Cuhub を開き直してください。"
+  ja: "ルームの作成・参加には管理者権限が必要です。管理者として Cuprum を開き直してください。"
 multiplayer.error_not_found:
   en: "No host found yet. Check the room code, host port and whether the host is online."
   zh-CN: "还没找到房主。请核对房间码和房主端口，并确认对方已开房。"
@@ -973,7 +973,7 @@ multiplayer.error_port:
   ja: "ポートは 1〜65535 の範囲で指定してください。"
 multiplayer.error_code:
   en: "That room code isn't valid. Check it and try again."
-  zh-CN: "房间码无效，检查一下再试。"
+  zh-CN: "房间码无效，请核对后重新输入。"
   ja: "ルームコードが正しくありません。確認してもう一度お試しください。"
 multiplayer.error_download:
   en: "EasyTier couldn't be downloaded. Check the network, or point to an installed folder."
@@ -1056,17 +1056,17 @@ home.mods.detail:
   zh-CN: "已安装到 Plugins"
   ja: "Plugins にインストール済み"
 home.catalogue.tag:
-  en: "CATALOGUE"
-  zh-CN: "目录"
-  ja: "カタログ"
+  en: "Nexus catalogue"
+  zh-CN: "Nexus 目录"
+  ja: "Nexus カタログ"
 home.catalogue.detail:
   en: "Nexus entries"
   zh-CN: "Nexus 条目"
   ja: "Nexus エントリ"
 home.ready.tag:
-  en: "BEPINEX"
-  zh-CN: "BEPINEX"
-  ja: "BEPINEX"
+  en: "BepInEx"
+  zh-CN: "BepInEx"
+  ja: "BepInEx"
 home.ready.detail:
   en: "BepInEx status"
   zh-CN: "BepInEx 状态"
@@ -1076,15 +1076,15 @@ home.ready.done:
   zh-CN: "就绪"
   ja: "準備完了"
 home.ready.incomplete:
-  en: "Incomplete"
-  zh-CN: "未完成"
-  ja: "未完了"
+  en: "Not ready"
+  zh-CN: "未就绪"
+  ja: "未準備"
 home.ready.unknown:
   en: "Unknown"
   zh-CN: "未知"
   ja: "不明"
 home.announcement.tag:
-  en: "HUB"
+  en: "Announcement"
   zh-CN: "公告"
   ja: "お知らせ"
 home.announcement.read_only:
@@ -1812,9 +1812,9 @@ wizard.finish:
   zh-CN: "完成"
   ja: "完了"
 wizard.welcome.title:
-  en: "Welcome to CuHub"
-  zh-CN: "欢迎使用 CuHub"
-  ja: "CuHub へようこそ"
+  en: "Welcome to Cuprum"
+  zh-CN: "欢迎使用 Cuprum"
+  ja: "Cuprum へようこそ"
 wizard.welcome.body:
   en: "This wizard sets up the basics. You can change everything later in Settings."
   zh-CN: "向导会完成基本设置，之后都能在设置里修改。"
@@ -2453,10 +2453,22 @@ multiplayer.game_status_hosting:
   en: "Room is open in game."
   zh-CN: "游戏内已开房。"
   ja: "ゲーム内でルームを立てています。"
+multiplayer.game_status_connecting:
+  en: "Connecting to the in-game room…"
+  zh-CN: "正在连接游戏内房间…"
+  ja: "ゲーム内ルームに接続中…"
 multiplayer.game_status_joined:
   en: "Joined the in-game room."
   zh-CN: "已加入游戏内房间。"
   ja: "ゲーム内ルームに参加しました。"
+multiplayer.game_status_client_active:
+  en: "Check the game to confirm that you joined."
+  zh-CN: "请在游戏内确认是否已入房。"
+  ja: "ゲーム内でルームに参加できたか確認してください。"
+multiplayer.game_status_rejoin:
+  en: "Leave the previous room in the game before rejoining."
+  zh-CN: "请先在游戏内退出上一场联机，再重新加入。"
+  ja: "ゲーム内で前のルームを退出してから、もう一度参加してください。"
 multiplayer.game_hosting_detail:
   en: "Host · game port %{port} (auto-detected)"
   zh-CN: "房主 · 游戏端口 %{port}（自动检测）"
@@ -2513,6 +2525,10 @@ multiplayer.game_error_timeout:
   en: "The game did not answer in time."
   zh-CN: "游戏没有及时响应。"
   ja: "ゲームが時間内に応答しませんでした。"
+multiplayer.game_error_join_unconfirmed:
+  en: "The game did not join the room. Check the in-game message and retry."
+  zh-CN: "游戏未能入房。查看游戏内提示后重试。"
+  ja: "ルームに参加できませんでした。ゲーム内のメッセージを確認して再試行してください。"
 multiplayer.game_error_ready:
   en: "Game control is not ready yet."
   zh-CN: "游戏内控制尚未就绪。"
@@ -2815,3 +2831,186 @@ settings.credential_saved:
   en: "Credential saved"
   zh-CN: "凭据已保存"
   ja: "認証情報を保存済み"
+
+task.entry_accessible:
+  en: "Task center · Needs attention (%{count})"
+  zh-CN: "任务中心，%{count} 项待处理"
+  ja: "タスクセンター、要対応 %{count} 件"
+task.section_attention:
+  en: "Needs attention"
+  zh-CN: "需处理"
+  ja: "要対応"
+task.section_progress:
+  en: "In progress"
+  zh-CN: "进行中"
+  ja: "進行中"
+task.section_failed:
+  en: "Failed this session"
+  zh-CN: "本次失败"
+  ja: "今回の失敗"
+task.kind_blocked:
+  en: "Blocked"
+  zh-CN: "已阻塞"
+  ja: "ブロック中"
+task.kind_failed:
+  en: "Failed"
+  zh-CN: "失败"
+  ja: "失敗"
+task.copy_details:
+  en: "Copy details"
+  zh-CN: "复制详情"
+  ja: "詳細をコピー"
+task.copy_done:
+  en: "Copied"
+  zh-CN: "已复制"
+  ja: "コピー済み"
+task.copy_requested:
+  en: "Sent to clipboard"
+  zh-CN: "已发送到剪贴板"
+  ja: "クリップボードに送信済み"
+task.copy_failed:
+  en: "Copy failed · retry"
+  zh-CN: "复制失败 · 重试"
+  ja: "コピー失敗・再試行"
+task.dismiss_failure:
+  en: "Dismiss"
+  zh-CN: "清除"
+  ja: "消去"
+task.open_settings:
+  en: "Open Settings"
+  zh-CN: "前往设置"
+  ja: "設定を開く"
+task.open_multiplayer:
+  en: "Open Multiplayer"
+  zh-CN: "前往多人游戏"
+  ja: "マルチプレイを開く"
+task.open_bridge:
+  en: "Find the Bridge installer"
+  zh-CN: "前往安装联机组件"
+  ja: "連携コンポーネントのインストールへ"
+task.view_issue:
+  en: "View in Tasks"
+  zh-CN: "在任务中心查看"
+  ja: "タスクで確認"
+task.issue_game:
+  en: "Game setup"
+  zh-CN: "游戏设置"
+  ja: "ゲームのセットアップ"
+task.issue_multiplayer:
+  en: "Create or join a room"
+  zh-CN: "创建或加入房间"
+  ja: "ルームの作成・参加"
+task.issue_in_game:
+  en: "In-game multiplayer"
+  zh-CN: "游戏内联机"
+  ja: "ゲーム内マルチプレイ"
+task.issue_install:
+  en: "Install or update a mod"
+  zh-CN: "安装或更新模组"
+  ja: "MOD のインストール・更新"
+task.issue_import:
+  en: "Import a local mod"
+  zh-CN: "导入本地模组"
+  ja: "ローカル MOD のインポート"
+task.issue_settings:
+  en: "Save settings"
+  zh-CN: "保存设置"
+  ja: "設定を保存"
+task.reason_dependencies:
+  en: "Resolve the missing or outdated dependencies and try again."
+  zh-CN: "请先补齐缺失或过旧的依赖，再重试。"
+  ja: "不足または古い依存関係を解消してから再試行してください。"
+task.reason_conflict:
+  en: "Review the installation plan and resolve any file conflicts."
+  zh-CN: "请检查安装计划，解决文件冲突后重试。"
+  ja: "インストール計画を確認し、ファイルの競合を解消してください。"
+task.reason_network:
+  en: "Check the connection and whether the source is reachable."
+  zh-CN: "请检查网络连接，并确认来源可访问。"
+  ja: "ネットワーク接続と配布元へのアクセスを確認してください。"
+task.reason_credentials:
+  en: "Check the configured credentials in Settings."
+  zh-CN: "请在设置中检查对应的凭据。"
+  ja: "設定で認証情報を確認してください。"
+task.reason_io:
+  en: "Check that the selected location exists and is writable."
+  zh-CN: "请确认所选位置存在且可写。"
+  ja: "選択した場所が存在し、書き込めることを確認してください。"
+task.reason_failed:
+  en: "The operation failed. Check the activity log for details."
+  zh-CN: "操作失败。详情可查看活动日志。"
+  ja: "操作に失敗しました。詳細はアクティビティログを確認してください。"
+task.reason_bridge:
+  en: "The game could not connect to the Bridge. Open Multiplayer to check its status."
+  zh-CN: "游戏未能连接联机组件。请前往多人游戏查看连接状态。"
+  ja: "ゲームが連携コンポーネントに接続できませんでした。マルチプレイで状態を確認してください。"
+task.reason_bridge_missing:
+  en: "Install the Bridge from Local Mods, then restart the game."
+  zh-CN: "请在本地模组页安装联机组件，再重启游戏。"
+  ja: "ローカル MOD から連携コンポーネントをインストールし、ゲームを再起動してください。"
+task.reason_room_port:
+  en: "The room port could not be applied. Check the port on the Multiplayer page."
+  zh-CN: "房间端口未能应用。请到多人游戏页检查端口。"
+  ja: "ルームのポートを適用できませんでした。マルチプレイでポートを確認してください。"
+task.reason_in_game:
+  en: "Check the in-game multiplayer status before retrying."
+  zh-CN: "请先确认游戏内联机状态，再重试。"
+  ja: "ゲーム内の接続状態を確認してから再試行してください。"
+task.issue_profiles:
+  en: "Manage profiles"
+  zh-CN: "管理模组档案"
+  ja: "プロファイルを管理"
+task.open_profiles:
+  en: "Open Profiles"
+  zh-CN: "前往模组档案"
+  ja: "プロファイルを開く"
+
+home.game_configured:
+  en: "Game folder configured"
+  zh-CN: "已设置游戏目录"
+  ja: "ゲームフォルダ設定済み"
+home.game_running:
+  en: "Game running"
+  zh-CN: "游戏运行中"
+  ja: "ゲーム起動中"
+home.configure_game:
+  en: "Set game folder"
+  zh-CN: "设置游戏目录"
+  ja: "ゲームフォルダを設定"
+home.game_settings:
+  en: "Game settings"
+  zh-CN: "游戏设置"
+  ja: "ゲーム設定"
+home.component_settings:
+  en: "Component settings"
+  zh-CN: "组件设置"
+  ja: "コンポーネント設定"
+home.manage_mods:
+  en: "Manage mods"
+  zh-CN: "管理模组"
+  ja: "MOD を管理"
+home.browse_catalogue:
+  en: "Browse catalogue"
+  zh-CN: "浏览目录"
+  ja: "カタログを閲覧"
+
+keyboard.goto:
+  en: "g first · e last · h sidebar · j local mods · l tasks"
+  zh-CN: "g 首项 · e 末项 · h 侧栏 · j 本地模组 · l 任务中心"
+  ja: "g 最初 · e 最後 · h サイドバー · j ローカルMod · l タスク"
+keyboard.goto_tasks:
+  en: "g first task · e last task"
+  zh-CN: "g 首张任务卡 · e 末张任务卡"
+  ja: "g 最初のタスク · e 最後のタスク"
+keyboard.expand_sidebar:
+  en: Expand sidebar
+  zh-CN: 展开侧栏
+  ja: サイドバーを展開
+keyboard.collapse_sidebar:
+  en: Collapse sidebar
+  zh-CN: 折叠侧栏
+  ja: サイドバーを折りたたむ
+keyboard.batch_select:
+  en: Select mod for update
+  zh-CN: 选中模组以批量更新
+  ja: 更新するModを選択

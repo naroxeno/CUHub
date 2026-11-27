@@ -1,6 +1,6 @@
-// CuhubBridge.Core: the fixed loopback endpoint and the handshake token shared with the Rust host.
+// CuprumBridge.Core: the fixed loopback endpoint and the handshake token shared with the Rust host.
 
-namespace CuhubBridge
+namespace CuprumBridge
 {
     public static class Transport
     {

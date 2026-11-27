@@ -7,7 +7,7 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
 
 dist=dist/windows
-stage=$dist/Cuhub
+stage=$dist/Cuprum
 if [ ! -d "$stage" ]; then
     echo "missing $stage; run nsh package --target windows --out $dist first" >&2
     exit 1
@@ -21,19 +21,19 @@ install -m 0644 docs/ARCHITECTURE.md docs/FEATURES.md docs/HANDOVER.md "$stage/d
 install -m 0644 docs/third-party/terracotta.md "$stage/docs/third-party/terracotta.md"
 install -m 0644 LICENSE "$dist/LICENSE"
 
-rm -f "$dist/Cuhub.zip"
+rm -f "$dist/Cuprum.zip"
 if command -v zip >/dev/null 2>&1; then
-    ( cd "$dist" && zip -qr Cuhub.zip Cuhub )
+    ( cd "$dist" && zip -qr Cuprum.zip Cuprum )
 elif command -v powershell.exe >/dev/null 2>&1; then
     powershell.exe -NoProfile -Command \
-        "Compress-Archive -LiteralPath '$stage' -DestinationPath '$dist/Cuhub.zip' -CompressionLevel Optimal"
+        "Compress-Archive -LiteralPath '$stage' -DestinationPath '$dist/Cuprum.zip' -CompressionLevel Optimal"
 else
-    echo "zip or powershell.exe is required to build Cuhub.zip" >&2
+    echo "zip or powershell.exe is required to build Cuprum.zip" >&2
     exit 1
 fi
 
 if command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
-python3 - "$dist/Cuhub.iss" <<'PY'
+python3 - "$dist/Cuprum.iss" <<'PY'
 import pathlib
 import re
 import sys
@@ -43,7 +43,7 @@ text = path.read_text(encoding="utf-8")
 
 match = re.search(r"(?m)^AppVersion=(.+)$", text)
 if match is None:
-    raise SystemExit("AppVersion missing from Cuhub.iss")
+    raise SystemExit("AppVersion missing from Cuprum.iss")
 version = match.group(1).strip()
 parts = version.split(".")
 while len(parts) < 4:
@@ -51,13 +51,13 @@ while len(parts) < 4:
 version_info = ".".join(parts[:4])
 
 metadata = f"""AppPublisher=Naro-Xeno
-AppPublisherURL=https://github.com/naroxeno/CUHub
-AppSupportURL=https://github.com/naroxeno/CUHub/issues
-AppUpdatesURL=https://github.com/naroxeno/CUHub/releases
+AppPublisherURL=https://github.com/naroxeno/Cuprum
+AppSupportURL=https://github.com/naroxeno/Cuprum/issues
+AppUpdatesURL=https://github.com/naroxeno/Cuprum/releases
 AppCopyright=Copyright (C) 2026 Naro-Xeno
 VersionInfoCompany=Naro-Xeno
-VersionInfoDescription=Cuhub installer
-VersionInfoProductName=Cuhub
+VersionInfoDescription=Cuprum installer
+VersionInfoProductName=Cuprum
 VersionInfoProductVersion={version}
 VersionInfoVersion={version_info}
 LicenseFile=LICENSE
@@ -66,7 +66,7 @@ if "AppPublisher=" not in text:
     text = re.sub(r"(?m)^AppVerName=.*\n", lambda m: m.group(0) + metadata, text, count=1)
 
 if "LicenseFile=" not in text:
-    raise SystemExit("LicenseFile missing from Cuhub.iss")
+    raise SystemExit("LicenseFile missing from Cuprum.iss")
 
 install_delete = """[InstallDelete]
 Type: filesandordirs; Name: "{app}\\nsh"
@@ -89,15 +89,15 @@ if "[UninstallDelete]" not in text:
     text = text.replace("\n[Run]", "\n" + uninstall_delete + "\n[Run]", 1)
 
 if "[UninstallDelete]" not in text:
-    raise SystemExit("[Run] section missing from Cuhub.iss")
+    raise SystemExit("[Run] section missing from Cuprum.iss")
 
 path.write_text(text, encoding="utf-8")
 PY
 elif command -v powershell.exe >/dev/null 2>&1; then
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File \
-        scripts/patch-windows-installer.ps1 "$dist/Cuhub.iss"
+        scripts/patch-windows-installer.ps1 "$dist/Cuprum.iss"
 else
-    echo "python3 or powershell.exe is required to update Cuhub.iss" >&2
+    echo "python3 or powershell.exe is required to update Cuprum.iss" >&2
     exit 1
 fi
 
@@ -107,15 +107,15 @@ if command -v iscc >/dev/null 2>&1; then
 elif [ -x "$LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe" ]; then
     iscc_cmd="$LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe"
 else
-    echo "Inno Setup 7 is required to build Cuhub-setup.exe" >&2
+    echo "Inno Setup 7 is required to build Cuprum-setup.exe" >&2
     exit 1
 fi
-( cd "$dist" && "$iscc_cmd" Cuhub.iss )
-if [ ! -f "$dist/Output/Cuhub-setup.exe" ]; then
-    echo "iscc did not produce Output/Cuhub-setup.exe" >&2
+( cd "$dist" && "$iscc_cmd" Cuprum.iss )
+if [ ! -f "$dist/Output/Cuprum-setup.exe" ]; then
+    echo "iscc did not produce Output/Cuprum-setup.exe" >&2
     exit 1
 fi
-mv -f "$dist/Output/Cuhub-setup.exe" "$dist/Cuhub-setup.exe"
+mv -f "$dist/Output/Cuprum-setup.exe" "$dist/Cuprum-setup.exe"
 rm -rf "$dist/Output"
 
-echo "windows package: $dist/Cuhub, $dist/Cuhub.zip, $dist/Cuhub-setup.exe"
+echo "windows package: $dist/Cuprum, $dist/Cuprum.zip, $dist/Cuprum-setup.exe"

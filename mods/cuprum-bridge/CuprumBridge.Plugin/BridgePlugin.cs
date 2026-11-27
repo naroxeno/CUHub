@@ -1,13 +1,13 @@
 using BepInEx;
 using UnityEngine;
 
-namespace CuhubBridge.Plugin
+namespace CuprumBridge.Plugin
 {
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
     public sealed class BridgePlugin : BaseUnityPlugin
     {
-        public const string PluginGuid = "dev.cuhub.bridge";
-        public const string PluginName = "CuhubBridge";
+        public const string PluginGuid = "dev.cuprum.bridge";
+        public const string PluginName = "CuprumBridge";
         public const string PluginVersion = "0.1.1";
 
         BridgeSession _session;

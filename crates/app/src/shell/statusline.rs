@@ -1,55 +1,47 @@
-//! Status line: the current notice or page title, plus the game bridge state.
+//! Transient feedback for shell commands.
+
+use std::time::Duration;
 
 use nsh_core::prelude::*;
 
-use super::nav;
-use crate::app_state::{Ui, bridge_color, bridge_text};
-use crate::components::{PIXEL_FONT, scaled};
+use crate::app_state::Ui;
+use crate::components::{fade_in, pix, scaled};
 use crate::palette::*;
 
-pub fn statusline(ui: &Ui) -> impl IntoElement {
+pub fn notice_toast(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
-    let state = ui.clone();
-    let watched = ui.clone();
-    let bridge = ui.bridge;
-    let toast = motion();
+    let notice = ui.notice;
+    let visible = signal(false);
+    let revision = signal(0u64);
     effect(move || {
-        if !watched.notice.get().is_empty() {
-            toast.play(MotionPreset::FadeInLeft);
+        if notice.get().is_empty() {
+            visible.set(false);
+        } else {
+            let current = revision.get_untracked().wrapping_add(1);
+            revision.set(current);
+            visible.set(true);
+            set_timeout(Duration::from_secs(5), move || {
+                if revision.get_untracked() == current {
+                    visible.set(false);
+                }
+            });
         }
     });
-    view()
-        .flex_row()
-        .items_center()
-        .h(scaled(&z, 24.0))
-        .px(scaled(&z, 8.0))
-        .bg(theme_color(SURFACE))
-        .border_t(scaled(&z, 1.0))
-        .border_t_color(theme_color(BORDER))
-        .child(
-            view().flex_1().min_w(px(0.0)).child(
-                text(move || {
-                    let notice = state.notice.get();
-                    if notice.is_empty() {
-                        t!(
-                            "statusline.ready",
-                            page = nav::title(state.page.get()),
-                            zoom = state.zoom.get()
-                        )
-                    } else {
-                        notice
-                    }
-                })
-                .text_size(scaled(&z, 10.0))
-                .font_family(PIXEL_FONT.family)
-                .text_color(theme_color(TEXT_MUTED))
-                .bind_motion(&toast),
-            ),
-        )
-        .child(
-            text(move || bridge_text(bridge.get()))
-                .text_size(scaled(&z, 10.0))
-                .font_family(PIXEL_FONT.family)
-                .text_color(theme_color_with(move || bridge_color(&bridge.get()))),
-        )
+    when(
+        move || visible.get(),
+        move || {
+            view()
+                .absolute()
+                .left(scaled(&z, 16.0))
+                .bottom(scaled(&z, 14.0))
+                .w(relative(0.56))
+                .pointer_events(PointerEvents::None)
+                .p(scaled(&z, 8.0))
+                .bg(theme_color(SURFACE_RAISED))
+                .border(scaled(&z, 1.0))
+                .border_color(theme_color(BORDER_DIM))
+                .bind_motion(&fade_in())
+                .child(pix(move || notice.get(), 11.0, TEXT, &z))
+        },
+    )
 }

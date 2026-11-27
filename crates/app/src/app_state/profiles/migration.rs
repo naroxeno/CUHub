@@ -3,10 +3,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use cuhub_core::hub::{HubError, MigrationPreview, MigrationRow, MigrationSession};
-use cuhub_core::packages::{PackageError, PackageReport};
-use cuhub_core::profiles::ProfileError;
-use cuhub_core::sources::SourceEntry;
+use cuprum_core::hub::{HubError, MigrationPreview, MigrationRow, MigrationSession};
+use cuprum_core::packages::{PackageError, PackageReport};
+use cuprum_core::profiles::ProfileError;
+use cuprum_core::sources::SourceEntry;
 use nsh_core::prelude::*;
 
 use super::{ProfilesBusy, Ui};

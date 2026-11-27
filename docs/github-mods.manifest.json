@@ -60,7 +60,7 @@
         ]
       },
       "asset": "CUShocker-0.2.2.zip",
-      "notes": "The zip also contains OpenShock desktop apps; CUHub only installs BepInEx/plugins/CUShocker."
+      "notes": "The zip also contains OpenShock desktop apps; Cuprum only installs BepInEx/plugins/CUShocker."
     },
     {
       "name": "Warning Editor",

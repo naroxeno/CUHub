@@ -3,14 +3,14 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use cuhub_core::hub::{BridgeInstallStatus, HubError};
+use cuprum_core::hub::{BridgeInstallStatus, HubError};
 use nsh_core::file_dialog::{FileFilter, OpenDialog};
 use nsh_core::prelude::*;
 
 use super::state::Ui;
 
-const ARCHIVE_NAME: &str = "CuhubBridge.zip";
-const WORKSPACE_ARCHIVE: &str = "dist/bridge/CuhubBridge.zip";
+const ARCHIVE_NAME: &str = "CuprumBridge.zip";
+const WORKSPACE_ARCHIVE: &str = "dist/bridge/CuprumBridge.zip";
 
 impl Ui {
     pub fn refresh_bridge_install(&self) {
@@ -69,7 +69,7 @@ impl Ui {
         let ui = self.clone();
         let picked = pick_paths(
             OpenDialog::files()
-                .filter(FileFilter::new("CuhubBridge", ["zip"]))
+                .filter(FileFilter::new("CuprumBridge", ["zip"]))
                 .title(t!("local.bridge_pick_title")),
         );
         self.spawn_worker(async move {
@@ -112,6 +112,7 @@ async fn install_archive(ui: Ui, archive: PathBuf) {
     .await;
     match result {
         Ok(Ok(report)) => {
+            ui.clear_task_failure("local.bridge_title");
             ui.bridge_install.set(Some(BridgeInstallStatus {
                 installed: true,
                 version: report.version.clone(),
@@ -124,16 +125,19 @@ async fn install_archive(ui: Ui, archive: PathBuf) {
                 None => t!("local.bridge_installed_notice_unknown"),
             });
         }
-        Ok(Err(HubError::GameRunning)) => {
-            ui.bridge_install_text.set(t!("local.bridge_game_running"))
+        Ok(Err(error)) => {
+            ui.task_failed("local.bridge_title", &error);
+            ui.bridge_install_text.set(match error {
+                HubError::GameRunning => t!("local.bridge_game_running"),
+                HubError::NoGameFolder => t!("local.bridge_no_game_folder"),
+                other => other.to_string(),
+            });
         }
-        Ok(Err(HubError::NoGameFolder)) => ui
-            .bridge_install_text
-            .set(t!("local.bridge_no_game_folder")),
-        Ok(Err(error)) => ui.bridge_install_text.set(error.to_string()),
-        Err(error) => ui
-            .bridge_install_text
-            .set(t!("local.bridge_worker_stopped", error = error)),
+        Err(error) => {
+            ui.task_failed_with("local.bridge_title", "task.reason_failed");
+            ui.bridge_install_text
+                .set(t!("local.bridge_worker_stopped", error = error));
+        }
     }
     ui.bridge_install_busy.set(false);
 }
@@ -148,6 +152,7 @@ fn bundled_archive() -> Option<PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join(WORKSPACE_ARCHIVE));
     }
+    #[cfg(debug_assertions)]
     candidates.push(
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")

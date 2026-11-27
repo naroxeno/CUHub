@@ -7,9 +7,9 @@ use super::rows::failure_notice;
 use super::rows::release_notice;
 use super::rows::source_kind_label;
 use super::state::Ui;
-use cuhub_core::github::CheckFailure;
-use cuhub_core::hub::CheckOutcome;
-use cuhub_core::sources::{Repo, SourceKind};
+use cuprum_core::github::CheckFailure;
+use cuprum_core::hub::CheckOutcome;
+use cuprum_core::sources::{Repo, SourceKind};
 use nsh_core::prelude::*;
 use std::collections::BTreeSet;
 

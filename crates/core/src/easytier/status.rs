@@ -85,7 +85,7 @@ mod tests {
     fn parses_flat_easytier_264_peers() {
         let json = r#"[
             {"hostname":"guest","ipv4":"","cost":"Local","nat_type":"Unknown"},
-            {"hostname":"cuhub-host-24444","ipv4":"10.42.0.7","cost":"p2p","nat_type":"NewNat"}
+            {"hostname":"cuprum-host-24444","ipv4":"10.42.0.7","cost":"p2p","nat_type":"NewNat"}
         ]"#;
         let members = parse_peers(json).unwrap();
         assert!(members[0].is_local);

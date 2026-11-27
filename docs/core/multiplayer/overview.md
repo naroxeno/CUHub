@@ -15,12 +15,12 @@
 - 占用检查：`ensure_port_available` 同时试绑 `0.0.0.0` 的 TCP 与 UDP，被占用或端口非法时返回 `PortError`，不静默换号。游戏已经上报该端口时跳过检查，不跟游戏自己抢。
 - 变化跟踪：`PortWatch` 约 350ms 采样一次，连续 2 次读到同一新端口才确认，确认窗口 6s；超时或读不到端口时保持旧端口并只记日志（`PortUpdate::Unsettled`），不自动重试。
 - 端口确认后 `Hub::restart_host_port` 用同一房间码重启隧道（网络名/密钥不变），成功回 `PortUpdate::Restarted`；失败回 `Failed`，端口保持旧值并尝试把隧道拉回旧端口。
-- 错误分层：`HubError::Port` 是端口本身（非法/占用），`HubError::Tunnel` 是隧道重启失败，`HubError::GamePort` 是游戏实际监听与 Cuhub 选定端口不一致。
+- 错误分层：`HubError::Port` 是端口本身（非法/占用），`HubError::Tunnel` 是隧道重启失败，`HubError::GamePort` 是游戏实际监听与 Cuprum 选定端口不一致。
 - `TunnelState::Connected{port}` 始终等于隧道当前端口：host 为白名单端口，guest 为发现到的房主端口。
 
 ## 边界
 
 - 只存房间码与上次角色，不存密钥；密钥每次从码在内存派生。
 - 写入：先写 `.json.tmp`，Unix 下 `0600`，再 rename；读失败或 JSON 损坏回默认值，不让启动失败。
-- 日志只出现网络名前 4 位，不输出 `lastRoom.code` 的密钥段。
+- 房间事件日志只出现网络名前 4 位，EasyTier 的进程日志也会遮蔽房间网络名和密钥。
 - `relayOverride` 为空表示用默认中继；`corePath` 为空表示用托管目录。

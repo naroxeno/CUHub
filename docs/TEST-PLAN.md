@@ -17,7 +17,7 @@
 ## 1. 执行约定
 
 - 破坏性用例只用临时游戏副本，不要拿真实游戏目录试删除、迁移、更新。
-- 先备份 `~/.local/share/CUHub`；至少备份 `Settings.json`、`Store/`、`Profiles/`、`Links.json`、`Backups/`。
+- 先备份 `~/.local/share/Cuprum`；至少备份 `Settings.json`、`Store/`、`Profiles/`、`Links.json`、`Backups/`。
 - 每次记录：提交号、系统、appdata 与游戏路径、操作、预期/实际、日志路径。
 - 状态含义：`自动` 每次提交可跑；`单测` 只有 core 测试；`未测` 没有可复现记录；`未实现` 功能还不存在；`需环境` 当前机器做不了。
 - 真机两机用例统一按 `docs/bridge/w4-tickets/README.md` 的 R1–R11 执行；偏差与裁定见 `docs/bridge/w4-tickets/decisions.md`，不要在执行时临时改脚本。
@@ -42,15 +42,15 @@
 | --- | --- | --- | --- |
 | A1 | `cargo fmt --all -- --check` | 无 diff | 自动 |
 | A2 | `nsh check` | 编译通过 | 自动 |
-| A3 | `cargo test -p cuhub-core` | 377 单测 + 14 集成通过 | 自动 |
-| A4 | `cargo test -p cuhub --all-targets` | 25 条通过（mp_control 15 条） | 自动 |
-| A5 | `cargo clippy -p cuhub --no-deps -- -D warnings` | 只允许既有 2 条 lint（batch.rs:46 large_enum_variant、install.rs:244 never_loop）；其它告警判失败 | 自动 |
+| A3 | `cargo test -p cuprum-core` | 377 单测 + 14 集成通过 | 自动 |
+| A4 | `cargo test -p cuprum --all-targets` | 25 条通过（mp_control 15 条） | 自动 |
+| A5 | `cargo clippy -p cuprum --no-deps -- -D warnings` | 只允许既有 2 条 lint（batch.rs:46 large_enum_variant、install.rs:244 never_loop）；其它告警判失败 | 自动 |
 | A6 | `just build-bridge` | 0 error / 0 warning，插件 0.1.1 | 自动 |
-| A7 | `cargo clippy -p cuhub-core --no-deps` | 已知 2 个既有 collapsible_if（hub.rs:823 / :1361），非门禁 | 非门禁 |
-| A8 | `just package-bridge` | `dist/bridge/CuhubBridge.zip` 含 Plugin 与 Core 两 DLL | 自动 |
-| A9 | `dotnet build mods/cuhub-bridge/CuhubBridge.Plugin/CuhubBridge.Plugin.csproj -c Release` | 0 警告 0 错误 | 自动 |
+| A7 | `cargo clippy -p cuprum-core --no-deps` | 已知 2 个既有 collapsible_if（hub.rs:823 / :1361），非门禁 | 非门禁 |
+| A8 | `just package-bridge` | `dist/bridge/CuprumBridge.zip` 含 Plugin 与 Core 两 DLL | 自动 |
+| A9 | `dotnet build mods/cuprum-bridge/CuprumBridge.Plugin/CuprumBridge.Plugin.csproj -c Release` | 0 警告 0 错误 | 自动 |
 
-t7 基线（@ b679851c，父 1d0f4361）：10 条 exit 0；clippy-app 的 101 仅由 A5 里那两条既有 lint 造成；`cargo test -p cuhub-core` 冷构建首跑命中心跳 flake，暖缓存重跑全绿（t15 负责稳定）。
+t7 基线（@ b679851c，父 1d0f4361）：10 条 exit 0；clippy-app 的 101 仅由 A5 里那两条既有 lint 造成；`cargo test -p cuprum-core` 冷构建首跑命中心跳 flake，暖缓存重跑全绿（t15 负责稳定）。
 
 t18 基线（2026-11-21 12:50，游戏以 `steam -applaunch 4576490` 保持运行）：A1–A4、A6、A8、A9 exit 0；A5 仍为 101 且只由那两条既有 lint 造成；core 377 单测 + 14 集成，`bridge_server` 连续 10 次全绿。桥集成测试用 `start_at(0)` 绑临时回环端口，不占生产 41297、可与真实游戏并行（t16）；`close_session` 改为先取会话槽位并发 `SessionEnded` 再 shutdown，消除关闭/心跳竞态（`crates/core/src/bridge/server.rs`，t17）。
 
@@ -129,8 +129,8 @@ t18 基线（2026-11-21 12:50，游戏以 `steam -applaunch 4576490` 保持运�
 
 | ID | 用例 | 通过标准 | 现状 |
 | --- | --- | --- | --- |
-| F1 | Rust 宿主回环 | `cargo test -p cuhub-core` 的 14 条集成全过 | 自动 |
-| F2 | 桥制品 | `just package-bridge` 生成 `dist/bridge/CuhubBridge.zip`，含 Plugin 与 Core 两 DLL，插件 0.1.1 | 自动 |
+| F1 | Rust 宿主回环 | `cargo test -p cuprum-core` 的 14 条集成全过 | 自动 |
+| F2 | 桥制品 | `just package-bridge` 生成 `dist/bridge/CuprumBridge.zip`，含 Plugin 与 Core 两 DLL，插件 0.1.1 | 自动 |
 | F3 | C# 构建 | `just build-bridge` / `dotnet build -c Release` 0 警告 0 错误 | 自动 |
 | F4 | 握手、权限、超时、单会话 | 第二连接被拒、超时清理、运行中授权立即生效 | 自动 |
 | F10 | 事件消费 | `take_events` 仍未消费，状态只经 snapshot 轮询 | 未实现 |
@@ -151,7 +151,7 @@ t18 基线（2026-11-21 12:50，游戏以 `steam -applaunch 4576490` 保持运�
 | R10 | 房主退出后客人侧 | ≤30 秒提示「房主已离开房间，等房主回来后可以重试。」；停止自动重试；可手动重试 |
 | R11 | 房主换端口后客人侧 | 客人侧提示「房主已换房（游戏端口变了），请用房间码重进。」（或先落「房主已离开…」，以实际为准）；地址不显示旧端口；按码重进恢复 |
 
-真机执行仍按 §1 的破坏性约定：只用临时游戏副本、先备份 `~/.local/share/CUHub`（至少 `Settings.json`、`multiplayer.json`）、每例记录提交号、系统、路径、操作、预期/实际与日志路径。
+真机执行仍按 §1 的破坏性约定：只用临时游戏副本、先备份 `~/.local/share/Cuprum`（至少 `Settings.json`、`multiplayer.json`）、每例记录提交号、系统、路径、操作、预期/实际与日志路径。
 
 ## 9. UI、安全与 Linux 打包（批次 G）
 
@@ -177,7 +177,7 @@ t18 基线（2026-11-21 12:50，游戏以 `steam -applaunch 4576490` 保持运�
 | H2 | 以管理员重开并开房 | core 启动；WaitingPeer；房间码正常；退出后进程清理 | 未测 |
 | H3 | 无边框窗口 | 拖动、双击、最小化、最大化、关闭、四边四角缩放都正常 | 未测 |
 | H4 | Windows 缩放 | 1x、1.25x、2x 下标题栏、按钮、文字不重叠 | 未测 |
-| H5 | `just package-windows` 与 `Cuhub-setup.exe` | 安装、启动、卸载；无缺 DLL；快捷方式正确 | 未测 |
+| H5 | `just package-windows` 与 `Cuprum-setup.exe` | 安装、启动、卸载；无缺 DLL；快捷方式正确 | 未测 |
 | H6 | Windows 旧数据升级 | 不丢 Settings、Profiles、Store、Links、日志 | 未测 |
 
 ## 11. 发布门槛建议
@@ -197,6 +197,6 @@ t18 基线（2026-11-21 12:50，游戏以 `steam -applaunch 4576490` 保持运�
 
 ## 13. GitHub 源未扩充（非测试待办）
 
-`docs/GITHUB_SOURCE.md` 的代码侧（清单读取、匹配、pin、Check）已落地；远程清单拉取也已接（2026-11-19，`naroxeno/CUHub-Store` 根 `manifest.json`，6h 缓存，启动刷新，本地兜底）。但仓库当前为空，本机 `<appdata>/Sources/manifest.json` 目前只有 2 条，尚未扩充，所以当前只能测本地清单与 fixture，不能证明真实社区模组的匹配覆盖率。
+`docs/GITHUB_SOURCE.md` 的代码侧（清单读取、匹配、pin、Check）已落地；远程清单拉取也已接（2026-11-19，来源清单仓库 根 `manifest.json`，6h 缓存，启动刷新，本地兜底）。但仓库当前为空，本机 `<appdata>/Sources/manifest.json` 目前只有 2 条，尚未扩充，所以当前只能测本地清单与 fixture，不能证明真实社区模组的匹配覆盖率。
 
 扩充清单是数据/运营工作，不是本轮测试代码；建议单独列任务，扩到能覆盖第 6 节列出的样本类型后，再跑 D2–D5。

@@ -1,6 +1,6 @@
 # GitHub 源（交接给下一会话）
 
-状态：**离线层、Check 与 pin 按钮已实现（2026-11-15）；远程清单拉取已接（2026-11-19）**，见 `docs/core/sources/overview.md`。清单仓库为 `https://github.com/naroxeno/CUHub-Store`（默认分支 `main`），客户端读根 `manifest.json`，缓存 6 小时，启动时后台刷新，缓存缺失才回退本地清单；2026-11-19 已上传 26 条清单并验证 raw 可读（`main` 根 `manifest.json`）；本机 `<appdata>/Sources/manifest.json` 仍只有 2 条，作为离线兜底。2026-11-14 Naro 决定在 Nexus 之外增加一个 GitHub 源，清单由单独仓库维护（仓库里放一批模组的 GitHub 链接）。
+状态：**离线层、Check 与 pin 按钮已实现（2026-11-15）；远程清单拉取已接（2026-11-19）**，见 `docs/core/sources/overview.md`。清单仓库为 `https://github.com/naroxeno/Cuprum-Store`（默认分支 `main`），客户端读根 `manifest.json`，缓存 6 小时，启动时后台刷新，缓存缺失才回退本地清单；2026-11-19 已上传 26 条清单并验证 raw 可读（`main` 根 `manifest.json`）；本机 `<appdata>/Sources/manifest.json` 仍只有 2 条，作为离线兜底。2026-11-14 Naro 决定在 Nexus 之外增加一个 GitHub 源，清单由单独仓库维护（仓库里放一批模组的 GitHub 链接）。
 
 ## 目标
 
@@ -26,7 +26,7 @@
 
 ## 需要 Naro 先拍板
 
-1. **清单仓库位置**：URL、分支与路径已定（`naroxeno/CUHub-Store`，`main`，根 `manifest.json`）；许可证仍待拍板。仓库公开，已上传 26 条清单（2026-11-19）。
+1. **清单仓库位置**：URL、分支与路径已定（`naroxeno/Cuprum-Store`，`main`，根 `manifest.json`）；许可证仍待拍板。仓库公开，已上传 26 条清单（2026-11-19）。
 2. **清单 schema**：v1 已按 `SourceManifest` 落地（`name` / `repo` / `match` / `depends` / `asset` / `notes`，见 overview）；仍需确认是否允许一个模组对应多个仓库。
 3. **取数方式**：清单本体已定为由客户端直接 GET raw 根 `manifest.json`（2026-11-19 已实现）。release 信息仍待定：
    - A. 客户端直接请求 `api.github.com/repos/{owner}/{repo}/releases/latest`；

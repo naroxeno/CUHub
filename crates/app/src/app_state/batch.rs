@@ -2,9 +2,9 @@
 
 use crate::app_state::install::{DependencyPrompt, PendingInstall, RemoteAttempt, prepare_update};
 use crate::app_state::state::Ui;
-use cuhub_core::hub::{Hub, HubError};
-use cuhub_core::mods::{DependencyIssue, InstalledMod};
-use cuhub_core::sources::{Repo, SourceEntry, SourceKind};
+use cuprum_core::hub::{Hub, HubError};
+use cuprum_core::mods::{DependencyIssue, InstalledMod};
+use cuprum_core::sources::{Repo, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
@@ -277,6 +277,7 @@ fn run_batch(ui: &Ui, hub: Arc<Mutex<Hub>>, targets: Vec<BatchTarget>) {
             ui.batch_progress.set(None);
             ui.remote_busy.set(None);
             let error = abort.unwrap_or_default();
+            ui.task_failed_with("task.batch_title", "task.reason_failed");
             ui.notice.set(t!("notice.batch_aborted", error = error));
             return;
         }
@@ -318,6 +319,11 @@ fn run_batch(ui: &Ui, hub: Arc<Mutex<Hub>>, targets: Vec<BatchTarget>) {
                 target: None,
                 issues: dedupe_issues(late),
             }));
+        }
+        if tally.failed == 0 {
+            ui.clear_task_failure("task.batch_title");
+        } else {
+            ui.task_failed_with("task.batch_title", "task.reason_failed");
         }
         let summary = t!(
             "notice.batch_done",
@@ -426,7 +432,7 @@ impl Ui {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cuhub_core::mods::IssueKind;
+    use cuprum_core::mods::IssueKind;
 
     fn issue(name: &str, kind: IssueKind) -> DependencyIssue {
         DependencyIssue {

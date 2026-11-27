@@ -1,12 +1,12 @@
 //! Row models and the pure functions that build them from hub data.
 
-use cuhub_core::github::{CheckFailure, ReleaseInfo};
-use cuhub_core::hub::Hub;
-use cuhub_core::metadata::MetadataMod;
-use cuhub_core::mods::{InstalledMod, ModStatus};
-use cuhub_core::source_choice::mod_key;
-use cuhub_core::sources::{self, LocalMod, MatchKind, Repo, SourceEntry, SourceKind};
-use cuhub_core::version::HubVersion;
+use cuprum_core::github::{CheckFailure, ReleaseInfo};
+use cuprum_core::hub::Hub;
+use cuprum_core::metadata::MetadataMod;
+use cuprum_core::mods::{InstalledMod, ModStatus};
+use cuprum_core::source_choice::mod_key;
+use cuprum_core::sources::{self, LocalMod, MatchKind, Repo, SourceEntry, SourceKind};
+use cuprum_core::version::HubVersion;
 use nsh_core::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -81,6 +81,19 @@ pub struct LocalModRow {
 impl LocalModRow {
     pub fn row_key(&self) -> String {
         self.key.clone()
+    }
+
+    pub fn focus_key(&self) -> String {
+        let path = &self.item.source_path;
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("disabled"))
+            && self.item.dll_paths.contains(path)
+        {
+            format!("{:?}", path.with_extension(""))
+        } else {
+            format!("{path:?}")
+        }
     }
 
     pub fn can_update(&self) -> bool {
@@ -351,7 +364,7 @@ pub(super) fn build_nexus_rows(
                 cover: entry.image_url().map(str::to_owned),
                 page_url: entry
                     .nexus_url()
-                    .and_then(cuhub_core::metadata::nexus_public_page)
+                    .and_then(cuprum_core::metadata::nexus_public_page)
                     .map(|url| url.to_string()),
                 id: entry.id.clone(),
                 name: if entry.name.trim().is_empty() {

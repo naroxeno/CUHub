@@ -1,12 +1,14 @@
 use crate::app_state::{LocalModRow, Ui};
-use crate::components::{button, pix, scaled, spinner};
+use crate::components::{button, focus_ring, pix, scaled, spinner};
 use crate::palette::*;
-use nsh_base::{menu, menu_item};
+use crate::shell::keyboard::Keyboard;
+use nsh_base::{MenuEvent, OpenChangeReason, menu, menu_item};
 use nsh_core::prelude::*;
-use nsh_core::{LayoutAnimation, LayoutTransition};
+use nsh_core::{Checked, LayoutAnimation, LayoutTransition};
 
 pub(super) fn bulk_menu(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
     let z = *z;
+    let keys = Keyboard::get();
     let watch = ui.clone();
     let ui = ui.clone();
     when(
@@ -14,10 +16,16 @@ pub(super) fn bulk_menu(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
         move || button(&z, move || t!("local.bulk_actions"), false, || {}),
     )
     .otherwise(move || {
+        cleanup(move || keys.menu_open("bulk", false));
         let enable = ui.clone();
         let disable = ui.clone();
         let delete = ui.clone();
         actions_menu(&z, "local.bulk_actions")
+            .on_open_change(move |event: &MenuEvent| {
+                if let MenuEvent::OpenChange(open, _) = event {
+                    keys.menu_open("bulk", *open);
+                }
+            })
             .child(action(&z, "local.enable_all", TEXT, move || {
                 enable.set_all_mods_enabled(true);
             }))
@@ -26,15 +34,23 @@ pub(super) fn bulk_menu(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
             }))
             .child(action(&z, "common.delete_all", DANGER, move || {
                 delete.request_delete_all();
+                keys.bulk_delete.replace(delete.delete_busy.get_untracked());
             }))
     })
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct RowActionState {
+    pub details: Signal<bool>,
+    pub menu_open: Signal<bool>,
+    pub open_from_row: Signal<bool>,
 }
 
 pub(super) fn row_actions(
     z: &Signal<u8>,
     row: &LocalModRow,
     ui: &Ui,
-    details: Signal<bool>,
+    state: RowActionState,
 ) -> View {
     let watch = ui.clone();
     let locked_watch = ui.clone();
@@ -58,7 +74,7 @@ pub(super) fn row_actions(
                 move || mod_buttons(&z, &row, &ui, true)
             }),
         )
-        .child(row_menu(&z, &row, &ui, details))
+        .child(row_menu(&z, &row, &ui, state))
 }
 
 fn mod_buttons(z: &Signal<u8>, row: &LocalModRow, ui: &Ui, enabled: bool) -> View {
@@ -112,7 +128,19 @@ fn mod_buttons(z: &Signal<u8>, row: &LocalModRow, ui: &Ui, enabled: bool) -> Vie
     ))
 }
 
-fn row_menu(z: &Signal<u8>, row: &LocalModRow, ui: &Ui, details: Signal<bool>) -> impl IntoElement {
+fn row_menu(z: &Signal<u8>, row: &LocalModRow, ui: &Ui, state: RowActionState) -> impl IntoElement {
+    let RowActionState {
+        details,
+        menu_open,
+        open_from_row,
+    } = state;
+    let keyboard = Keyboard::get();
+    let menu_id = row.focus_key();
+    let cleanup_id = menu_id.clone();
+    let watch_id = menu_id.clone();
+    cleanup(move || keyboard.menu_open(&cleanup_id, false));
+    effect(move || keyboard.menu_open(&watch_id, menu_open.get()));
+    let first_item = element_ref();
     let detail_label = move || {
         if details.get() {
             t!("local.hide_details")
@@ -123,19 +151,33 @@ fn row_menu(z: &Signal<u8>, row: &LocalModRow, ui: &Ui, details: Signal<bool>) -
     let delete = ui.clone();
     let delete_busy = ui.clone();
     let delete_key = row.source_key.clone();
-    let mut menu = actions_menu(z, "local.row_actions").child(
-        menu_item_style(z)
-            .on_select(move || {
-                animate_layout(LayoutAnimation {
-                    update: Some(LayoutTransition::spring(
-                        Spring::new(220.0).damping_ratio(0.8),
-                    )),
-                    ..LayoutAnimation::default()
-                });
-                details.set(!details.get());
-            })
-            .child(pix(detail_label, 11.0, TEXT, z)),
-    );
+    let mut menu = actions_menu(z, "local.row_actions")
+        .open(move || Some(menu_open.get()))
+        .on_open_change(move |event: &MenuEvent| {
+            if let MenuEvent::OpenChange(next, reason) = event {
+                menu_open.set(*next);
+                if !next && open_from_row.get_untracked() {
+                    open_from_row.set(false);
+                    if matches!(reason, OpenChangeReason::Cancel | OpenChangeReason::Select) {
+                        after_answer({
+                            let menu_id = menu_id.clone();
+                            move || keyboard.local.focus(&menu_id)
+                        });
+                    }
+                }
+            }
+        })
+        .on_open(move || {
+            if open_from_row.get_untracked() {
+                first_item.focus();
+            }
+        })
+        .child(
+            menu_item_style(z)
+                .element_ref(&first_item)
+                .on_select(move || toggle_details(details))
+                .child(pix(detail_label, 11.0, TEXT, z)),
+        );
     if row.source.can_pin() {
         let pin = ui.clone();
         let key = row.source_key.clone();
@@ -171,9 +213,22 @@ fn row_menu(z: &Signal<u8>, row: &LocalModRow, ui: &Ui, details: Signal<bool>) -
     menu.child(
         menu_item_style(z)
             .disabled(move || delete_busy.mod_files_busy())
-            .on_select(move || delete.request_delete_mod(delete_key.clone()))
+            .on_select(move || {
+                keyboard.bulk_delete.replace(false);
+                delete.request_delete_mod(delete_key.clone());
+            })
             .child(pix(move || t!("common.delete"), 11.0, DANGER, z)),
     )
+}
+
+pub(super) fn toggle_details(details: Signal<bool>) {
+    animate_layout(LayoutAnimation {
+        update: Some(LayoutTransition::spring(
+            Spring::new(220.0).damping_ratio(0.8),
+        )),
+        ..LayoutAnimation::default()
+    });
+    details.set(!details.get());
 }
 
 fn actions_menu(z: &Signal<u8>, label: &'static str) -> nsh_base::MenuElement {
@@ -199,6 +254,7 @@ fn menu_item_style(z: &Signal<u8>) -> nsh_base::MenuItemElement {
         .py(scaled(z, 5.0))
         .hover(|s| s.bg(theme_color(ACCENT_PRESS)))
         .focus(|s| s.bg(theme_color(ACCENT_PRESS)))
+        .focus_visible(focus_ring(z))
 }
 
 fn action(
@@ -217,7 +273,20 @@ pub(super) fn batch_checkbox(z: &Signal<u8>, ui: &Ui, key: String, enabled: bool
     let press = ui.clone();
     let press_key = key.clone();
     let watch = ui.clone();
+    let checked = ui.batch_selection;
+    let accessible_key = key.clone();
     let mut cell = view()
+        .role(AccessibilityRole::Checkbox)
+        .label(move || t!("keyboard.batch_select"))
+        .accessibility_state(move || AccessibilityState {
+            checked: Some(if checked.get().contains(&accessible_key) {
+                Checked::True
+            } else {
+                Checked::False
+            }),
+            ..AccessibilityState::default()
+        })
+        .focus_visible(focus_ring(&z))
         .w(scaled(&z, 12.0))
         .h(scaled(&z, 12.0))
         .flex_shrink_0()

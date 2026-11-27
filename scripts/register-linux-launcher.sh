@@ -2,8 +2,8 @@
 set -euo pipefail
 
 package=$(realpath -- "${1:?Usage: bash scripts/register-linux-launcher.sh PACKAGE_DIRECTORY}")
-id=com.naroxeno.cuhub
-exe="$package/Cuhub"
+id=com.naroxeno.cuprum
+exe="$package/Cuprum"
 icon="$package/$id.png"
 entry="$package/$id.desktop"
 test -x "$exe" && test -f "$icon" && test -f "$entry" || {

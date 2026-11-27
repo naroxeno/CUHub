@@ -6,7 +6,7 @@ using BepInEx.Logging;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
-namespace CuhubBridge.Plugin
+namespace CuprumBridge.Plugin
 {
     sealed class BridgeSession
     {
@@ -41,12 +41,12 @@ namespace CuhubBridge.Plugin
         {
             _log = log;
             _router = new CommandRouter(new MpBackend());
-            _clientLog = message => _log.LogWarning("CuhubBridge: " + message);
+            _clientLog = message => _log.LogWarning("CuprumBridge: " + message);
         }
 
         internal void Start()
         {
-            _log.LogInfo("CuhubBridge " + BridgePlugin.PluginVersion + " loaded; connecting to " + Transport.Host + ":" + Transport.Port);
+            _log.LogInfo("CuprumBridge " + BridgePlugin.PluginVersion + " loaded; connecting to " + Transport.Host + ":" + Transport.Port);
         }
 
         internal void Pump()
@@ -105,7 +105,7 @@ namespace CuhubBridge.Plugin
                 {
                     var code = message.Error?.Code ?? "unknown";
                     var detail = message.Error?.Message ?? string.Empty;
-                    _log.LogError("CuhubBridge: host rejected the handshake (" + code + ") " + detail);
+                    _log.LogError("CuprumBridge: host rejected the handshake (" + code + ") " + detail);
                     StopClient();
                     if (code == "duplicate_pid")
                     {
@@ -123,7 +123,7 @@ namespace CuhubBridge.Plugin
                 _helloAccepted = true;
                 _nextPingAt = DateTime.UtcNow.AddSeconds(Protocol.PingIntervalSeconds);
                 var hostVersion = (message.Result as JObject)?.Value<string>("host_version") ?? "unknown";
-                _log.LogInfo("CuhubBridge: connected to cuhub " + hostVersion);
+                _log.LogInfo("CuprumBridge: connected to cuprum " + hostVersion);
                 return;
             }
             if (_pingId != 0 && message.Id == _pingId)
@@ -232,7 +232,7 @@ namespace CuhubBridge.Plugin
 
         void Restart(string reason)
         {
-            _log.LogWarning("CuhubBridge: " + reason + "; reconnecting");
+            _log.LogWarning("CuprumBridge: " + reason + "; reconnecting");
             StopClient();
             _retryAt = DateTime.UtcNow.AddSeconds(5);
         }

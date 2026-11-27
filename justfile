@@ -1,4 +1,4 @@
-# Cuhub build entrypoints. Run `just` for the list.
+# Cuprum build entrypoints. Run `just` for the list.
 
 # Prefer the user's own cargo (~/.cargo/bin) over the system one.
 user_home := if os() == "windows" { env_var("USERPROFILE") } else { home_directory() }
@@ -14,14 +14,12 @@ installer_shell := if os() == "windows" { "niu" } else { "sh" }
 # Release tuning, shared by every packaged build. nsh compiles inside its own
 # generated workspace (.nsh/rust), so the profile travels as cargo env
 # overrides rather than a [profile.release] table:
-# thin LTO + one codegen unit keeps most of fat LTO's code quality at a
-# fraction of its link time; debug info is dropped but symbols stay, so
-# backtraces keep their names. panic stays "unwind" on purpose: nsh catches
-# component panics and shows them instead of aborting the app.
+# Thin LTO keeps link times manageable. Strip release symbols to shrink
+# distributed binaries. Unwinding lets nsh display component panics.
 export CARGO_PROFILE_RELEASE_OPT_LEVEL := "3"
 export CARGO_PROFILE_RELEASE_LTO := "thin"
 export CARGO_PROFILE_RELEASE_CODEGEN_UNITS := "1"
-export CARGO_PROFILE_RELEASE_STRIP := "debuginfo"
+export CARGO_PROFILE_RELEASE_STRIP := "symbols"
 
 default:
     @just --list
@@ -54,28 +52,33 @@ release:
 
 # build the BepInEx bridge (needs dotnet 10 and the game's Managed DLLs)
 build-bridge:
-    dotnet build mods/cuhub-bridge/CuhubBridge.Plugin/CuhubBridge.Plugin.csproj -c Release
+    dotnet build mods/cuprum-bridge/CuprumBridge.Plugin/CuprumBridge.Plugin.csproj -c Release
 
 # platform-neutral bridge in dist/bridge; unzip into BepInEx/plugins
 package-bridge: build-bridge
     rm -rf dist/bridge
-    mkdir -p dist/bridge/CuhubBridge
-    install -m 0644 mods/cuhub-bridge/CuhubBridge.Plugin/bin/Release/netstandard2.1/CuhubBridge.Plugin.dll dist/bridge/CuhubBridge/
-    install -m 0644 mods/cuhub-bridge/CuhubBridge.Plugin/bin/Release/netstandard2.1/CuhubBridge.Core.dll dist/bridge/CuhubBridge/
-    cd dist/bridge && zip -qr CuhubBridge.zip CuhubBridge
+    mkdir -p dist/bridge/CuprumBridge
+    install -m 0644 mods/cuprum-bridge/CuprumBridge.Plugin/bin/Release/netstandard2.1/CuprumBridge.Plugin.dll dist/bridge/CuprumBridge/
+    install -m 0644 mods/cuprum-bridge/CuprumBridge.Plugin/bin/Release/netstandard2.1/CuprumBridge.Core.dll dist/bridge/CuprumBridge/
+    cd dist/bridge && zip -qr CuprumBridge.zip CuprumBridge
 
 # installable package for this host in dist/<platform>/
 package:
     rm -rf dist/{{os()}}
     nsh package --target {{os()}} --out dist/{{os()}}
 
-# Linux directory and tarball in dist/linux; needs GTK 4.14+ and GStreamer at runtime.
+# Linux directory and tarball in dist/linux; needs GTK 4.14+ at runtime.
 package-linux:
     test "{{os()}}" = "linux" || { echo "package-linux builds on Linux only"; exit 1; }
     rm -rf dist/linux
     nsh package --target linux --out dist/linux
 
-# Windows directory, .zip and Cuhub-setup.exe in dist/windows; cross-compiled.
+# Linux AppImage in dist/appimage; requires appimagetool.
+package-appimage:
+    test "{{os()}}" = "linux" || { echo "package-appimage builds on Linux only"; exit 1; }
+    nsh package --target linux --format appimage --out dist/appimage
+
+# Windows directory, .zip and Cuprum-setup.exe in dist/windows; cross-compiled.
 package-windows:
     rm -rf dist/windows
     nsh package --target windows --out dist/windows

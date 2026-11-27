@@ -1,14 +1,14 @@
 # 游戏内联动协议（CU Bridge Protocol）
 
-cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的线协议，以及第三方 CU mod 接入时依赖的契约。
+cuprum（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的线协议，以及第三方 CU mod 接入时依赖的契约。
 实现可以换，这份契约不能随手改；改了就要抬 `proto` 主版本。
 
 命名提示：CUCoreLib 文档里的 "bridge" 指它对 KrokMP 的集成，与本协议的 `CU Bridge` 无关；引用时写全名。
 
 ## 1. 拓扑与职责
 
-- **宿主（host）= cuhub**：监听方，持有真相（装了哪些模组、开关、设置），决定哪些命令被允许。
-- **客户端（guest）= 游戏进程**：连接方，每次启动一条连接；进程内所有 mod 共用这一条（由 `CuhubBridge.Core` 收口），不允许各 mod 自己开。
+- **宿主（host）= cuprum**：监听方，持有真相（装了哪些模组、开关、设置），决定哪些命令被允许。
+- **客户端（guest）= 游戏进程**：连接方，每次启动一条连接；进程内所有 mod 共用这一条（由 `CuprumBridge.Core` 收口），不允许各 mod 自己开。
 - 宿主同时只服务一个游戏进程；第二个连接在握手阶段被拒（同 pid 为 `duplicate_pid`，异 pid 为 `busy`）。
 - 宿主不在时，客户端必须降级为无桥运行：不抛异常、不阻塞主线程、不往游戏目录之外写东西。
 
@@ -16,12 +16,12 @@ cuhub（Rust，宿主）与游戏内 BepInEx 插件（C#，客户端）之间的
 
 宿主固定监听 `127.0.0.1:41297`；客户端直接连这个端口，不读发现文件、不写游戏 prefix。固定端口是为了避开跨 Wine/Proton 的发现路径（`%ProgramData%`、prefix、bottle 三种推导都不可靠），loopback TCP 是目前唯一已验证可用的本机传输。
 
-- 宿主只在检测到游戏进程运行，或用户从 cuhub 点启动游戏时开始监听；游戏退出后停止并断开。
+- 宿主只在检测到游戏进程运行，或用户从 cuprum 点启动游戏时开始监听；游戏退出后停止并断开。
 - 端口被占用时宿主不启动桥，把失败留在状态里（状态栏显示端口被占用），不 panic、不静默换端口。
 - 客户端连不上 → 退避重试（1/2/5/10/30 秒封顶），只在第一次失败时写一条日志。
 - 客户端不得因为桥的任何失败影响游戏启动与主循环。
 
-token 不再是运行时生成的文件内容：Rust 与 C# 两端各有一个相同的 64 位小写十六进制常量（`crates/core/src/bridge/handshake.rs` 的 `TOKEN`、`CuhubBridge.Core/Transport.cs` 的 `Transport.Token`），改一处必须同时改另一处。它只挡住误连（例如连到别的旧版本或别的程序），不是安全边界；边界是只监听回环地址与握手的字段校验。
+token 不再是运行时生成的文件内容：Rust 与 C# 两端各有一个相同的 64 位小写十六进制常量（`crates/core/src/bridge/handshake.rs` 的 `TOKEN`、`CuprumBridge.Core/Transport.cs` 的 `Transport.Token`），改一处必须同时改另一处。它只挡住误连（例如连到别的旧版本或别的程序），不是安全边界；边界是只监听回环地址与握手的字段校验。
 
 ## 3. 帧
 
@@ -55,7 +55,7 @@ token 不再是运行时生成的文件内容：Rust 与 C# 两端各有一个�
 
 `host → guest: hello.ok`：`res` 的 `result` 为 `{host_version, caps, commands, perms}`（`ok:true`）。
 
-`commands` 是宿主已知的命令表，`perms` 是每条命令当下的授权（`granted` / `denied` / `ask`）。授权不在握手里改，只能由用户在 cuhub 里改，改完用 `evt: perms.changed` 通知。
+`commands` 是宿主已知的命令表，`perms` 是每条命令当下的授权（`granted` / `denied` / `ask`）。授权不在握手里改，只能由用户在 cuprum 里改，改完用 `evt: perms.changed` 通知。
 
 拒绝：先回 `res.ok:false` 再断开；`bad_token`（message 只写 token rejected，不回详情）、`proto_mismatch`（附带双方 major）、`duplicate_pid`、`busy`（已有会话）。宿主把最近一次握手失败留在桥状态里，状态栏据此显示坏 token / 版本不符 / 忙；成功握手后清空。客户端收到 `busy` / `duplicate_pid` 后按自身退避策略重试；`bad_token`、`proto_mismatch` 不在本次运行内重试。
 
@@ -119,6 +119,7 @@ MVP 尚未实现这两个上报，宿主收到未知 `evt` 忽略。
 |---|---|---|
 | `available` | bool | CUCoreLib 的 `MultiplayerApi.IsAvailable` |
 | `running` | bool | 联机是否在跑（`IsRunning`） |
+| `connected` | bool \| null | Together 的 `IsConnected`，区分正在拨号和已连接。旧插件省略此字段 |
 | `client` / `server` / `host` | bool | 角色（`IsClient` / `IsServer` / `IsHost`） |
 | `bridge_receivers_installed` | bool | CUCoreLib 的自定义通道接收器是否装好 |
 | `krokmp_version` | string \| null | CT 版本（`System.Version.ToString()`），读不到为 `null` |
@@ -144,6 +145,8 @@ MVP 尚未实现这两个上报，宿主收到未知 `evt` 忽略。
 `port` 用 CT 自己的规则解析，与 `Net.TryParseIPPORT` 等价：`[v6]:port` 取括号后的端口；其它情况只有"点号在冒号前"才按 IPv4 取最后一个冒号后的端口；否则整串当 IPv6、端口回落 `7790`。所以**无点号的主机名带端口（如 `localhost:24444`）会被 CT 当成 IPv6，端口是 7790**——这是游戏的既有怪癖，插件照着来、不修正；宿主想连这种地址应当自己补点号或直接用 IP。端口 `0` 直接 `invalid_params`：CT 会把 0 交给 `NetManager.Start(0)` 随机挑端口，隧道追不上。
 
 成功回包前回读确认：`Together.Net.IsRunning` 为 `true`，`IsServer`（host）/ `IsClient`（join）与请求一致，`Transport` 非空；房主侧还要求 `Transport.port` 等于请求端口。任一项不符回 `unavailable`，message 写明哪一项没对上，不假装成功。
+
+客人的 `started` 只确认游戏已启动连接，入房状态以随后 `mp.state.connected` 为准。客机已有活动游戏会话时，重复调用 `mp.join` 回 `busy`，由玩家先在游戏内退出原会话。
 
 失败映射：
 
@@ -184,4 +187,4 @@ CT 的失败原因只有本地化的 `multiplayerStatusMessage`。插件把它�
 - `proto.major` 变更 = 破坏性，两端都拒连并给出可读原因。
 - `proto.minor` 变更 = 只增字段，旧端忽略。
 - 命令表只增不删；删命令等同破坏性变更。
-- 第三方 mod 的接入面是 `CuhubBridge.Core` 的公开 API + 本文件，不是 `CuhubBridge.Plugin` 的内部实现。
+- 第三方 mod 的接入面是 `CuprumBridge.Core` 的公开 API + 本文件，不是 `CuprumBridge.Plugin` 的内部实现。

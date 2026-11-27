@@ -3,14 +3,14 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>CuhubBridge</RootNamespace>
+    <RootNamespace>CuprumBridge</RootNamespace>
     <Nullable>disable</Nullable>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
     <Reference Include="Newtonsoft.Json">
-      <HintPath>$(CuhubGameDir)/CasualtiesUnknown_Data/Managed/Newtonsoft.Json.dll</HintPath>
+      <HintPath>$(CuprumGameDir)/CasualtiesUnknown_Data/Managed/Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

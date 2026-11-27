@@ -226,9 +226,9 @@ fn skips_the_bundled_bridge_directory() {
     let (_game_root, plugins) = game(&directory);
     let source = plugins.join(crate::bridge::install::BRIDGE_DIR);
     fs::create_dir_all(&source).unwrap();
-    fs::write(source.join("CuhubBridge.Plugin.dll"), b"MZ").unwrap();
-    fs::write(source.join("CuhubBridge.Core.dll"), b"MZ").unwrap();
-    let mods = [installed("CuhubBridge", source, Some("0.1.0"), false)];
+    fs::write(source.join("CuprumBridge.Plugin.dll"), b"MZ").unwrap();
+    fs::write(source.join("CuprumBridge.Core.dll"), b"MZ").unwrap();
+    let mods = [installed("CuprumBridge", source, Some("0.1.0"), false)];
     let store = Store::new(directory.join("Store"));
     let links = LinkIndex::load(&directory);
     let plan = plan_adopt(&mods, &plugins, &store, &links);

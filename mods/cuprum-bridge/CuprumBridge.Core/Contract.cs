@@ -1,7 +1,7 @@
-// CuhubBridge.Core: protocol constants and the third-party-facing contract.
+// CuprumBridge.Core: protocol constants and the third-party-facing contract.
 // No BepInEx or Unity dependency; safe to reference from any CU mod.
 
-namespace CuhubBridge
+namespace CuprumBridge
 {
     public enum CommandPolicy
     {
@@ -70,6 +70,6 @@ namespace CuhubBridge
         public const bool Implemented = true;
 
         public static string Status =>
-            "CuhubBridge.Plugin owns the loopback connection; third-party command registration is not exposed yet.";
+            "CuprumBridge.Plugin owns the loopback connection; third-party command registration is not exposed yet.";
     }
 }

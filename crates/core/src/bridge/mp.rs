@@ -10,6 +10,8 @@ pub struct MpState {
     pub client: bool,
     pub server: bool,
     pub host: bool,
+    #[serde(default)]
+    pub connected: Option<bool>,
     #[serde(default, deserialize_with = "lenient_port")]
     pub port: Option<u16>,
     #[serde(default)]

@@ -2,8 +2,8 @@
 
 use super::state::Ui;
 use super::tasks::DownloadTracker;
-use cuhub_core::hub::HubError;
-use cuhub_core::install::{Flavor, Mode};
+use cuprum_core::hub::HubError;
+use cuprum_core::install::{Flavor, Mode};
 use nsh_core::prelude::*;
 use std::sync::Arc;
 
@@ -63,21 +63,29 @@ impl Ui {
             .await;
             match result {
                 Ok(Ok(install)) => {
+                    ui.clear_task_failure("task.bepinex_title");
                     ui.bepinex_status_text.set(String::new());
                     ui.bepinex_pending.set(Some(install));
                 }
-                Ok(Err(HubError::GameRunning)) => {
+                Ok(Err(error @ HubError::GameRunning)) => {
+                    ui.task_failed("task.bepinex_title", &error);
                     ui.bepinex_status_text
                         .set(t!("notice.bepinex_game_running"));
                 }
-                Ok(Err(HubError::NoGameFolder)) => {
+                Ok(Err(error @ HubError::NoGameFolder)) => {
+                    ui.task_failed("task.bepinex_title", &error);
                     ui.bepinex_status_text
                         .set(t!("notice.bepinex_no_game_folder"));
                 }
-                Ok(Err(error)) => ui.bepinex_status_text.set(error.to_string()),
-                Err(error) => ui
-                    .bepinex_status_text
-                    .set(t!("notice.bepinex_worker_stopped", error = error)),
+                Ok(Err(error)) => {
+                    ui.task_failed("task.bepinex_title", &error);
+                    ui.bepinex_status_text.set(error.to_string());
+                }
+                Err(error) => {
+                    ui.task_failed_with("task.bepinex_title", "task.reason_failed");
+                    ui.bepinex_status_text
+                        .set(t!("notice.bepinex_worker_stopped", error = error));
+                }
             }
             ui.bepinex_busy.set(false);
         });
@@ -116,6 +124,7 @@ impl Ui {
                     .await;
                     match finished {
                         Ok(Ok(_)) => {
+                            ui.clear_task_failure("task.bepinex_title");
                             ui.bepinex_pending.set(None);
                             ui.bepinex_status_text.set(String::new());
                             ui.notice.set(t!("notice.bepinex_installed"));
@@ -123,20 +132,31 @@ impl Ui {
                             ui.refresh_mods();
                             ui.refresh_bridge_install();
                         }
-                        Ok(Err(error)) => ui.bepinex_status_text.set(error.to_string()),
-                        Err(error) => ui
-                            .bepinex_status_text
-                            .set(t!("notice.bepinex_worker_stopped", error = error)),
+                        Ok(Err(error)) => {
+                            ui.task_failed("task.bepinex_title", &error);
+                            ui.bepinex_status_text.set(error.to_string());
+                        }
+                        Err(error) => {
+                            ui.task_failed_with("task.bepinex_title", "task.reason_failed");
+                            ui.bepinex_status_text
+                                .set(t!("notice.bepinex_worker_stopped", error = error));
+                        }
                     }
                 }
-                Ok(Err(HubError::GameRunning)) => {
+                Ok(Err(error @ HubError::GameRunning)) => {
+                    ui.task_failed("task.bepinex_title", &error);
                     ui.bepinex_status_text
                         .set(t!("notice.bepinex_game_running"));
                 }
-                Ok(Err(error)) => ui.bepinex_status_text.set(error.to_string()),
-                Err(error) => ui
-                    .bepinex_status_text
-                    .set(t!("notice.bepinex_worker_stopped", error = error)),
+                Ok(Err(error)) => {
+                    ui.task_failed("task.bepinex_title", &error);
+                    ui.bepinex_status_text.set(error.to_string());
+                }
+                Err(error) => {
+                    ui.task_failed_with("task.bepinex_title", "task.reason_failed");
+                    ui.bepinex_status_text
+                        .set(t!("notice.bepinex_worker_stopped", error = error));
+                }
             }
             ui.bepinex_busy.set(false);
         });

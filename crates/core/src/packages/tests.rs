@@ -22,7 +22,7 @@ impl Case {
             .unwrap()
             .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "cuhub-packages-{name}-{}-{stamp}",
+            "cuprum-packages-{name}-{}-{stamp}",
             std::process::id()
         ));
         let appdata = root.join("appdata");

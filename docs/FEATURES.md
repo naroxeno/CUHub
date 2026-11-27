@@ -68,7 +68,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 ### A. 应用外壳与导航
 
 - **A1 (P0)** 左侧栏由 `shell/nav.rs` 的 `NAV` 表驱动：Hub Home（默认页）、模组组（Nexus Dashboard / Remote Mods / Local Mods / 模组档案，父节点只折叠/展开、不切页）、Multiplayer、Skins & Backups、Settings、About；折叠状态只在本次运行内保留（不落盘）。折叠/展开是一次 NSH 原生布局动画（`animate_layout` + `LayoutTransition::spring`）：宽度在 176px 与 44px 之间插值，响应 220ms、阻尼比 0.8，快速连点从当前帧重新收敛，不再用定时器阶梯跳变。页面身份是稳定 id，不依赖索引；子页的页头与状态栏显示「模组 / <子页>」两段路径。Credits 不进侧栏，由 Hub Home 打开。每次切页重建页面实例（读最新设置，等价于“切页即刷新”）。
-- **A2 (P0)** 标题栏：无系统边框，自绘 40px HUD 条——左侧品牌块、CUHUB 与版本，中间状态点与 `///`，右侧最小化/最大化/关闭；空白区可拖动窗口，按钮区不拖动。启动游戏在侧栏页脚，反馈问题在 About 页。
+- **A2 (P0)** 标题栏：无系统边框，自绘 40px HUD 条——左侧品牌块、CUPRUM 与版本，中间状态点与 `///`，右侧最小化/最大化/关闭；空白区可拖动窗口，按钮区不拖动。启动游戏在侧栏页脚，反馈问题在 About 页。
 - **A3 (P0)** 底部状态栏：单一 status 文本，由各页面与外壳写入（“Game folder detected.”、“Asked Steam to launch Casualties Unknown.”、“Could not launch: …” 等）。
 - **A4 (P1)** 侧栏底部显示 `v{version}`；3 秒内点击 5 次打开开发者控制台（Debug 页/窗口）。这是隐藏入口，不走设置。
 - **A5 (P2)** 彩蛋：需在设置中开启 Easter Eggs 才生效（默认关，首次启动写一次 Initialized 标记，避免“默认开”误判）；含一段固定外链跳转与吉祥物点击计数。
@@ -78,8 +78,9 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **A9 (P1)** 单实例行为：当前实现无单实例锁（不实现也可），但下载监视器必须只跑一份。
 - **A10 (P1)** 设置向导：首次启动（`setupCompleted` 为 false 且游戏路径为空）打开六步向导——欢迎 → 游戏目录 → BepInEx（只读）→ 下载目录 → 外观 → 完成；顶部显示 Step n/6，底部 Back / Next / Skip，完成页按钮为 Finish。每步 Next 即时保存，`setupCompleted` 只在 Finish / Skip 时写入；Esc 等同 Skip，不二次确认。设置页可随时重新打开（P9）。
 - **A11 (P1)** 关于页：产品名与版本、项目源码、反馈问题、许可证全文三个外链；链接只接受 HTTPS，经 Hub 交给系统浏览器打开；页面注明非官方且与 Nexus Mods、游戏开发者无隶属关系。
-- **A12 (P0)** 任务中心：右下角常驻浮动按钮打开右侧抽屉（`sheet`，右侧，Esc / 点遮罩 / 滑动关闭），抽屉内容独立滚动。抽屉里按当前状态即时渲染 Win10 风格卡片：安装/更新（`pending_install`，标题为模组名、副标题为版本，行内给来源与目标根、替换与新增文件数、通知与冲突、游戏运行中提示；按钮 Apply / Cancel）、依赖（`dependency_prompt`，逐条 Missing / Outdated，按钮 Install missing / Cancel）、BepInEx（`bepinex_pending`，由 Settings 的 Install / Repair 生成，按钮 Install 或 Replace / Cancel）、下载（每份进行中的下载一张卡，真实字节进度条 + 百分比，缺 Content-Length 时改为脉冲条且只显示已下载字节）。抽屉默认关闭，新任务只让按钮上的角标脉冲并显示计数，不自动打开。失败只写状态行与日志，不保留失败卡片。游戏运行中被阻断的卡片不自动重试，必须由用户在关闭游戏后重新点击 Apply。页面内的 pending / 依赖面板与 Settings 的 BepInEx pending 区块已删除；设置向导的 BepInEx 浮层与删除确认弹窗保持原样。
-- **A13 (P0)** 批量更新：本地页只有可更新（`can_update`）的行带复选框，表头另有 Select updatable (N) / Clear selection 切换；选择按 `source_key` 保存，行刷新时清掉失效项。任务中心的批量卡片给出 Update selected (N) / Update all (M)，计数现算。点按钮后先逐项预检依赖（GitHub 源用 `remote_install_issues`，纯 Nexus 项用既有 prepare 路径），任一项 Missing / Outdated 就整批不开始，只弹一张聚合依赖卡列出全部阻塞；依赖解决后重新点击才开跑。干净的一批在 worker 里顺序执行：预检 → 应用前重查依赖 → 应用，卡片显示当前项 index/total；单项失败只写日志与最终摘要并继续下一项，不保留失败卡片。单条更新行为不变。
+- **A12 (P0)** 任务中心：右侧窄入口悬停或键盘聚焦时展开，激活后打开独立滚动的侧抽屉。按需处理、进行中、本次失败排列，沿用安装/更新、依赖、BepInEx、批量和下载卡片。阻塞与失败卡支持复制公开摘要，抽屉不随新任务自动打开。关闭游戏后解除游戏运行中造成的安装阻塞，应用仍需用户确认。
+- **A13 (P0)** 批量更新：本地页只有可更新（`can_update`）的行带复选框，表头另有 Select updatable (N) / Clear selection 切换；选择按 `source_key` 保存，行刷新时清掉失效项。任务中心的批量卡片给出 Update selected (N) / Update all (M)，计数现算。点按钮后先逐项预检依赖（GitHub 源用 `remote_install_issues`，纯 Nexus 项用既有 prepare 路径），任一项 Missing / Outdated 就整批不开始，只弹一张聚合依赖卡列出全部阻塞；依赖解决后重新点击才开跑。干净的一批在 worker 里顺序执行：预检 → 应用前重查依赖 → 应用，卡片显示当前项 index/total；单项失败写日志并继续下一项，批量操作结束后保留一张失败摘要卡。单条更新行为不变。
+- **A14 (P1)** QWERTY 键盘导航首版覆盖侧栏、本地模组和任务中心。方向键或 `j` / `k` 逐项移动，`g g` / `g e` 到首尾，`g h` / `g j` / `g l` 到侧栏、本地模组、任务中心。用 `F6` / `Shift+F6` 循环导航区。输入框继续交给原生输入法。菜单、抽屉和确认弹层关闭后恢复焦点，目标消失时回到相邻项或区入口。安装与删除沿用显式确认。
 
 ### B. 游戏目录识别
 
@@ -221,7 +222,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 ### L. Hub Home（公告与发布信息）
 
-当前实现：2 列磁贴（GAME / MODS / CATALOGUE / BEPINEX）加整行公告卡；拖拽换位并把顺序写入 `homeOrder`；公告只读本地缓存，无缓存显示“未加载”。L1–L10 记录完整目标，当前只落地磁贴与缓存公告。
+当前实现：顶部集中显示游戏状态、启动或设置入口及多人游戏入口。游戏目录、本地模组、Nexus 目录和 BepInEx 为可拖拽的概览卡，窄窗切为单列，顺序仍写入 `homeOrder`。公告从现有缓存读取，有内容时呈现。L1–L10 记录完整目标。
 
 - **L1 (P1)** 顶部公告卡：发布者公告正文 + 发布时间；Check now（30s 冷却，按钮显示 `Check now (23s)` 倒计时）。
 - **L2 (P1)** Previous announcements：本机保存、可回看最近 3 条（即使订阅源已不再列出）。
@@ -326,7 +327,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **R7 (P0)** 错误文案：房间码错、权限不足、下载/网络、核心目录无效、启动失败、找不到房主、其它；不出现「内核」「RPC」「网络密钥」。`PortInUse` 与 `TunUnavailable` 未细分（P2）。
 - **R8 (P0)** `multiplayer.json`（0600，原子写）只存 `lastRoom{role,code}`、`corePath`、`relayOverride`；密钥只从房间码在内存派生，不落盘、不进日志。
 - **R9 (P0)** 同一时刻只允许一个隧道；重复开房或加入先停旧进程再起新的。
-- **R10 (P0)** 提权：不自提权。Windows 用 `platform::elevated()`（`Shell32!IsUserAnAdmin`）判断当前进程，不足时状态卡常显提示「以管理员身份重新打开 Cuhub」，点击开房/加入直接报权限错；Linux/macOS 不做进程级预检查，由 EasyTier core 文件能力（如 `cap_net_admin+ep`）在 exec 时取得 TUN 权限。不弹 UAC、不循环重试。
+- **R10 (P0)** 提权：不自提权。Windows 用 `platform::elevated()`（`Shell32!IsUserAnAdmin`）判断当前进程，不足时状态卡常显提示「以管理员身份重新打开 Cuprum」，点击开房/加入直接报权限错；Linux/macOS 不做进程级预检查，由 EasyTier core 文件能力（如 `cap_net_admin+ep`）在 exec 时取得 TUN 权限。不弹 UAC、不循环重试。
 - **R11 (P1)** 桥（W1–W6 条件触发）：`mp.state` 扩展 `transport` / `virtual_ip` / `lan_port` / `room_code`，`mp.join` 接受这些字段；联机 mod 作者确认前保留复制粘贴兜底。桥宿主与 C# 插件 MVP 已落地，Multiplayer 页尚未消费桥事件。
 - **R12 (P1)** 单测：房间码往返/校验/多命中、CLI JSON、参数生成、release 解压；本机双实例、双机同/异 NAT、杀内核清理仍待实测。
 - **S1 (P0)** 单文件自包含可执行（Windows exe + Linux）；内嵌：依赖目录、不兼容目录、发布说明（`Version {version}.txt`）、离线公告副本。
@@ -337,7 +338,7 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 - **S6 (P1)** Windows：单 exe；DPAPI 可用；注册表探 Steam。
 - **S7 (P2)** 发布流水线检查（GitHub Actions）：仅 main 能打 tag、版本可读、内嵌说明存在、tag 不重复、版本类型（预发布/正式）与 tag 一致、产物自报版本与 tag 一致。
 
-- **S8 (P2, 暂不做)** 体积优化备选。实测现状（2026-11-17）：Linux 57.8 MB、Windows 56.7 MB、`Cuhub.zip` 23.0 MB、`Cuhub-setup.exe` 17.6 MB；打包 profile 已是 `opt-level=3` + thin LTO + `codegen-units=1` + `strip="debuginfo"`（见 justfile 顶部导出）。以下各项均未实施，按预估收益排序：
+- **S8 (P2, 暂不做)** 体积优化备选。实测现状（2026-11-17）：Linux 57.8 MB、Windows 56.7 MB、`Cuprum.zip` 23.0 MB、`Cuprum-setup.exe` 17.6 MB；打包 profile 已是 `opt-level=3` + thin LTO + `codegen-units=1` + `strip="debuginfo"`（见 justfile 顶部导出）。以下各项均未实施，按预估收益排序：
 
 | 项 | 现状 | 做法 | 预估 | 代价 / 风险 | 决定 |
 |---|---|---|---|---|---|
@@ -378,27 +379,27 @@ Casualties Unknown（Nexus 游戏域 `scavprototype`）的 BepInEx 模组管理�
 
 社区目录是从 Nexus 生成的，作者只在 GitHub 发版的模组常常不在里面。清单是项目单独维护的公开仓库：`sources.json` 人工维护条目，`releases.json` 由 Actions 预生成；客户端只读，不抓网页、不代提交。V1/V2 是清单的维护面与开关面，清单的读取与匹配随 GitHub 源本体落地。
 
-实现状态（2026-11-15）：GitHub 清单读取、匹配、pin 与手动 Check 已落地（见 `docs/core/sources/overview.md`）；release 结果不缓存。GitHub 资产下载与单模组升级已接：`OutOfDate` 行可 Update，下载归档后先展示计划再 Apply，游戏运行时保持卡片阻塞、关游戏后需重新点 Apply；批量更新见 A13；未做收件箱中间层与 `Open release`；裸 DLL release 与「生效源为 GitHub 且 release 版本更高即显示 Update」已接；单 DLL 模组 release 改名时替换唯一已装 DLL 并给 warning。V1/V2 的编辑器与源开关仍在待办；Remote Mods 页已有手动刷新列表按钮（force=true，绕过 ETag），刷新成功后同时重建本地行，来源判定不会停留在旧清单。清单读取已接远程（2026-11-19）：默认从 `naroxeno/CUHub-Store` 的 `main` 根 `manifest.json` 条件拉取，缓存 6 小时，启动时后台刷新，缓存缺失才回退本地 `<AppData>/Sources/manifest.json`；2026-11-19 已上传 26 条清单并验证 raw 可读；本机清单仍仅 2 条，作为离线兜底。
+实现状态（2026-11-15）：GitHub 清单读取、匹配、pin 与手动 Check 已落地（见 `docs/core/sources/overview.md`）；release 结果不缓存。GitHub 资产下载与单模组升级已接：`OutOfDate` 行可 Update，下载归档后先展示计划再 Apply，游戏运行时保持卡片阻塞、关游戏后需重新点 Apply；批量更新见 A13；未做收件箱中间层与 `Open release`；裸 DLL release 与「生效源为 GitHub 且 release 版本更高即显示 Update」已接；单 DLL 模组 release 改名时替换唯一已装 DLL 并给 warning。V1/V2 的编辑器与源开关仍在待办；Remote Mods 页已有手动刷新列表按钮（force=true，绕过 ETag），刷新成功后同时重建本地行，来源判定不会停留在旧清单。清单读取已接远程（2026-11-19）：默认从 `naroxeno/Cuprum-Store` 的 `main` 根 `manifest.json` 条件拉取，缓存 6 小时，启动时后台刷新，缓存缺失才回退本地 `<AppData>/Sources/manifest.json`；2026-11-19 已上传 26 条清单并验证 raw 可读；本机清单仍仅 2 条，作为离线兜底。
 
 - **V1 (P2)** 清单 schema 编辑器：Settings → Mod sources → Edit manifest 打开，表单与原始 JSON 双视图，切换视图前先校验；表单含 `repo`（`owner/name`）、`name`、`match.guid` / `match.dll` / `match.name`（均多值）、可选 `asset.include` / `asset.exclude` 与 `notes`，`id` 从 `repo` 派生并去重。保存前跑与运行时同一套校验（`schemaVersion`、`owner/name` 形状、`match` 至少一项、正则可编译），错误定位到条目与字段，只拒绝坏条目、不整表报废。结果写成草稿 `appdata/GithubSourcesDraft.json`（粘贴上限 1 MB），不写远端仓库、不写游戏目录；另给 Copy JSON / Save as… 导出，由人自己提 PR。删除条目与覆盖导入要确认，且只影响草稿。编辑器内可对已安装模组做一次只读试匹配，列出每个条目命中的 DLL/GUID（不发网络请求）。
 - **V2 (P2)** Settings 的 Mod 源管理：设置页新增 MOD SOURCES 区块，列出 Nexus 目录（只读、常开）、GitHub 清单（开关 / URL / Last synced / Refresh now / Clear cache）、用户来源表（U8 落地前显示为未配置）；顶部只读显示当前生效的优先级顺序，本版不做拖拽排序。关掉清单只影响解析、不删缓存；URL 必须 https，否则就地拒绝且不保存；写入只碰设置与缓存，不碰游戏目录。
 
 ### W. 游戏内联动（Bridge）
 
-宿主 cuhub 与游戏进程（BepInEx 插件）之间的桥。协议契约见 `docs/bridge/protocol.md`，模块说明见 `docs/core/bridge/overview.md`。
+宿主 cuprum 与游戏进程（BepInEx 插件）之间的桥。协议契约见 `docs/bridge/protocol.md`，模块说明见 `docs/core/bridge/overview.md`。
 
 - **W1 (P0)** 固定端点与握手：宿主只在游戏运行时监听 `127.0.0.1:41297`；插件直连该端口，token 或协议 major 不符即拒。不再写/读 `bridge.json`，token 是两端共享的固定常量（只防误连，不是安全边界）；端口被占用时在状态栏报错，不 panic。
 - **W2 (P0)** 连接状态：状态栏显示“游戏未运行 / 游戏运行但桥未连接 / 已连接（pid）”，最近一次握手失败（坏 token、版本不符、忙）与端口占用也显示出来；Local Mods 每行按 hello 的 guid 快照标“运行中已加载”。桥的任何失败都不影响游戏启动，也不阻塞主线程。
 - **W3 (P0)** 联机只读：Multiplayer 页顶部只读卡片显示 `mp.state` 的 available / running / client / server / host 与 KrokMpVersion；房间与玩家列表仍未接（CUCoreLib 没有公开 API），页面其余部分仍是 EasyTier。
-- **W4 (P0)** 联机控制：`mp.host` / `mp.join` / `mp.leave` 走 `control` 档，默认关闭，由 Multiplayer 桥卡片的「游戏内控制」开关开启（只授权 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`）；房主在桥会话就绪时自动开房一次，客人在隧道连上后自动加入、最多 3 次退避（0/3/8 秒），两边都保留手动按钮与重试；`denied` / `invalid_params` 立即停。`mp.kick` 走 `mutate`，逐次确认。游戏房间端口自动检测：桥经 `mp.state` 上报游戏实际监听端口，应用按「上报 > 手填 > 默认 7790」选端口并显示来源（自动检测 / 手动 / 默认）；游戏在房时手填只提示不一致并可一键采纳，不静默换号；端口变化经 350ms×2 采样与 6 秒窗口确认后重建隧道，房主侧跟随，客人侧提示「房主已换房，请用房间码重进」。四类交接：进入房间、换房/重进、游戏退出、房主离开或换端口。
+- **W4 (P0)** 联机控制：`mp.host` / `mp.join` / `mp.leave` 走 `control` 档，默认关闭，由 Multiplayer 桥卡片的「游戏内控制」开关开启（只授权 `dev.cuprum.bridge` 的 `mp.host` / `mp.join`）；房主在桥会话就绪时自动开房一次，客人在隧道连上后自动加入、最多 3 次退避（0/3/8 秒），两边都保留手动按钮与重试；`denied` / `invalid_params` 立即停。`mp.kick` 走 `mutate`，逐次确认。游戏房间端口自动检测：桥经 `mp.state` 上报游戏实际监听端口，应用按「上报 > 手填 > 默认 7790」选端口并显示来源（自动检测 / 手动 / 默认）；游戏在房时手填只提示不一致并可一键采纳，不静默换号；端口变化经 350ms×2 采样与 6 秒窗口确认后重建隧道，房主侧跟随，客人侧提示「房主已换房，请用房间码重进」。四类交接：进入房间、换房/重进、游戏退出、房主离开或换端口。
 - **W5 (P0)** 存档只读：`save.list` / `save.current` 显示槽位与时间；存档备份归存档 mod 自己管，`backup` 模块不接管。
 - **W6 (P0)** 存档危险操作：`save.save` / `save.load` / `save.restore` 一律 `mutate`，两段式确认写清“当前进度将丢失”与目标槽位。
 - **W7 (P1)** 皮肤 mod：`skin.current` / `skin.list` 只读接入 Skins 页；`skin.apply` / `skin.reload` 走 `control`。
 - **W8 (P1)** 权限管理：设置页的桥区块列出每条命令与三档权限，默认只读；任何授权变更写日志（旧值、新值、来源）。
-- **W9 (P2)** 第三方接入：发布 `CuhubBridge.Core` 的接入说明与最小示例，协议文档作为跨语言契约。
-- **W10 (P0)** 安装入口：本地模组页底部的联机组件卡片显示安装版本、禁用与连接状态，提供安装或重新安装入口。优先使用 exe 同目录的 `CuhubBridge.zip`，其次工作区 `dist/bridge/CuhubBridge.zip`，都没有时用文件选择器；安装走 staging → plan → apply（含备份），固定目标 `Plugins/CuhubBridge`，只接受归档根或单一顶层目录下、名称精确匹配的 `CuhubBridge.Plugin.dll` 与 `CuhubBridge.Core.dll`（大小写不符、多层子目录或额外文件都报错），并校验 GUID `dev.cuhub.bridge`，目标被 Links 托管时拒绝。标准双 DLL 在固定目录下合并显示，散装、额外 DLL 和档案托管条目仍按普通模组显示。批量操作仍涵盖桥，详情说明其范围。安装不写 Store、Links 或 profile。
+- **W9 (P2)** 第三方接入：发布 `CuprumBridge.Core` 的接入说明与最小示例，协议文档作为跨语言契约。
+- **W10 (P0)** 安装入口：本地模组页底部的联机组件卡片显示安装版本、禁用与连接状态，提供安装或重新安装入口。优先使用 exe 同目录的 `CuprumBridge.zip`，其次工作区 `dist/bridge/CuprumBridge.zip`，都没有时用文件选择器；安装走 staging → plan → apply（含备份），固定目标 `Plugins/CuprumBridge`，只接受归档根或单一顶层目录下、名称精确匹配的 `CuprumBridge.Plugin.dll` 与 `CuprumBridge.Core.dll`（大小写不符、多层子目录或额外文件都报错），并校验 GUID `dev.cuprum.bridge`，目标被 Links 托管时拒绝。标准双 DLL 在固定目录下合并显示，散装、额外 DLL 和档案托管条目仍按普通模组显示。批量操作仍涵盖桥，详情说明其范围。安装不写 Store、Links 或 profile。
 
-实现状态（2026-11-21，实验性，不发布）：W1 已落地——Rust 宿主固定监听 `127.0.0.1:41297`，有握手、单会话、命令表、权限、审计与 14 个回环集成测试；token 是两端共享常量，不再落盘发现文件。W2/W3 已接线：app 在检测到游戏进程或从 cuhub 启动游戏时开始监听、游戏退出后停止（Linux/Proton 下 exe 常是 wine preloader，按进程 cwd 与 cmdline 兜底识别）；状态栏三态加最近握手失败，Local Mods 标“运行中已加载”，Multiplayer 顶部只读状态卡；桥失败只进状态，不阻塞启动或主线程。C# `CuhubBridge.Core` + `CuhubBridge.Plugin` 能编译（`dotnet build -c Release` 无警告，未真机加载），实现 `hello`、10 秒心跳与 `mp.state` / `mp.host` / `mp.join`；`mp.leave` / `mp.kick` / `save.*` / `skin.*` 回 `unavailable`。W4 已接线：桥卡片开关、房间卡「游戏内房间」区块（状态、地址、手动开房/加入与两段式确认、重试与错误行），权限在运行中即时生效，自动逻辑有 15 条纯函数单测；QuickTest 未真机验证，仍按实验性处理。W5–W9 未开始。插件未打进 Cuhub 安装包，需 `just package-bridge` 单独生成；Local Mods 底部已有独立安装区块（W10），可直接用该 zip 或用户自选 zip 走现有安装链路。 2026-11-21 本波：`mp.state` 增加主机监听端口（仅 running && server），`Hub::game_room_port` / `start_game_host` 回读校验，端口选择、占用检查与房主换端口重建（350ms×2 / 6 秒窗口）落地；app 增加端口来源三态与重新检测、游戏内直接开房的 Hosting 相位、四类交接提示。自动基线：377 单测 + 14 集成（桥集成测试用 `start_at(0)` 注入临时端口，可与真实游戏并行）、app 25 条、`just build-bridge` 与 `dotnet build -c Release` 0 警告、`just package-bridge` 产出 0.1.1 的 zip；clippy 只剩已知既有告警。真机联调仍未做（R1–R11 待搭档），QuickTest 语义仍未真机确认，W4 保持实验性；用例与裁决见 `docs/bridge/w4-tickets/README.md` 与 `docs/bridge/w4-tickets/decisions.md`。
+实现状态（2026-11-21，实验性，不发布）：W1 已落地——Rust 宿主固定监听 `127.0.0.1:41297`，有握手、单会话、命令表、权限、审计与 14 个回环集成测试；token 是两端共享常量，不再落盘发现文件。W2/W3 已接线：app 在检测到游戏进程或从 cuprum 启动游戏时开始监听、游戏退出后停止（Linux/Proton 下 exe 常是 wine preloader，按进程 cwd 与 cmdline 兜底识别）；状态栏三态加最近握手失败，Local Mods 标“运行中已加载”，Multiplayer 顶部只读状态卡；桥失败只进状态，不阻塞启动或主线程。C# `CuprumBridge.Core` + `CuprumBridge.Plugin` 能编译（`dotnet build -c Release` 无警告，未真机加载），实现 `hello`、10 秒心跳与 `mp.state` / `mp.host` / `mp.join`；`mp.leave` / `mp.kick` / `save.*` / `skin.*` 回 `unavailable`。W4 已接线：桥卡片开关、房间卡「游戏内房间」区块（状态、地址、手动开房/加入与两段式确认、重试与错误行），权限在运行中即时生效，自动逻辑有 15 条纯函数单测；QuickTest 未真机验证，仍按实验性处理。W5–W9 未开始。插件未打进 Cuprum 安装包，需 `just package-bridge` 单独生成；Local Mods 底部已有独立安装区块（W10），可直接用该 zip 或用户自选 zip 走现有安装链路。 2026-11-21 本波：`mp.state` 增加主机监听端口（仅 running && server），`Hub::game_room_port` / `start_game_host` 回读校验，端口选择、占用检查与房主换端口重建（350ms×2 / 6 秒窗口）落地；app 增加端口来源三态与重新检测、游戏内直接开房的 Hosting 相位、四类交接提示。自动基线：377 单测 + 14 集成（桥集成测试用 `start_at(0)` 注入临时端口，可与真实游戏并行）、app 25 条、`just build-bridge` 与 `dotnet build -c Release` 0 警告、`just package-bridge` 产出 0.1.1 的 zip；clippy 只剩已知既有告警。真机联调仍未做（R1–R11 待搭档），QuickTest 语义仍未真机确认，W4 保持实验性；用例与裁决见 `docs/bridge/w4-tickets/README.md` 与 `docs/bridge/w4-tickets/decisions.md`。
 
 边界：不做通用 RPC、不做任意文件读写、不做进程注入；命令表只增不删；Nexus key 与 GitHub token 永不进桥。
 
@@ -432,7 +433,7 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
 
-实现状态（2026-11-19）：`crates/app/src/app_state/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。GitHub 发布版本可按需查询，操作按钮按安装状态显示。清单已改为启动拉取 `naroxeno/CUHub-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。2026-11-20：GitHub 更新支持清单 asset 精确名缺失时按版本号形状唯一回退，同形多资产仍报错。
+实现状态（2026-11-19）：`crates/app/src/app_state/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。GitHub 发布版本可按需查询，操作按钮按安装状态显示。清单已改为启动拉取 `naroxeno/Cuprum-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。2026-11-20：GitHub 更新支持清单 asset 精确名缺失时按版本号形状唯一回退，同形多资产仍报错。
 
 边界：只读清单，不在应用内编辑或抓取；不重托管模组、不伪造下载 URL；游戏进程检查、路径越界与目标已存在由 core 拒绝，界面只展示错误。
 
@@ -532,7 +533,7 @@ DESIGN-v2 §3 把「装了什么、装在哪」从游戏目录搬到应用数据
 ### 4.4 建议的 crate / 模块骨架
 
 ```
-cuhub/
+cuprum/
   crates/
     app/            # nsh UI：components、pages、状态栏、导航、palette.rs（调色板 token 与缩放）；不联网
     core/           # 领域模型 + 设置 + 服务（无 UI 依赖，可单测）

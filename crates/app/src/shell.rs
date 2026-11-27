@@ -3,6 +3,7 @@
 mod dev;
 mod frame_edges;
 mod icon_masks;
+pub(crate) mod keyboard;
 pub mod nav;
 mod sidebar;
 mod statusline;
@@ -13,7 +14,7 @@ mod title_bar;
 pub use dev::dev_overlay;
 pub use frame_edges::frame_edges;
 pub use sidebar::sidebar;
-pub use statusline::statusline;
+pub use statusline::notice_toast;
 pub use task_center::{task_center, task_drawer};
 pub use title_bar::title_bar;
 
@@ -26,6 +27,7 @@ use crate::palette::*;
 pub fn content(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let selected = ui.page;
+    let keys = keyboard::Keyboard::get();
     let dashboard = ui.clone();
     let other = ui.clone();
     view().flex_col().flex_1().bg(theme_color(BG)).child(
@@ -43,7 +45,11 @@ pub fn content(ui: &Ui) -> impl IntoElement {
                     pages = pages.child(page_region(ui, entry.id, *render));
                 }
             }
-            scroll().flex_1().child(pages)
+            scroll()
+                .element_ref(&keys.local.scroll)
+                .on_scroll(move |event: &ScrollEvent| keys.local.on_scroll(event))
+                .flex_1()
+                .child(pages)
         }),
     )
 }

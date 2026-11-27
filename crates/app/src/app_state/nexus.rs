@@ -1,7 +1,7 @@
 //! Nexus metadata refresh, downloads and API key handling.
 
 use super::state::Ui;
-use cuhub_core::hub::{HubError, MetadataRefresh};
+use cuprum_core::hub::{HubError, MetadataRefresh};
 use nsh_core::prelude::*;
 
 impl Ui {

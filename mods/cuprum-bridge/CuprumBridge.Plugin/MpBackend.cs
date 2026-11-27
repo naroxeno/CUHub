@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 
-namespace CuhubBridge.Plugin
+namespace CuprumBridge.Plugin
 {
     sealed class MpBackend
     {
@@ -53,6 +53,9 @@ namespace CuhubBridge.Plugin
                 var version = ReadValue(api, VersionProperty);
                 state["krokmp_version"] = version?.ToString();
                 state["port"] = running && server ? ListeningPort() : JValue.CreateNull();
+                var net = NetType();
+                state["connected"] = net != null && TryReadBool(net, "IsConnected", out var connected)
+                    ? new JValue(connected) : JValue.CreateNull();
                 return CommandOutcome.Success(state);
             }
             catch (Exception ex)
@@ -78,6 +81,9 @@ namespace CuhubBridge.Plugin
                 return CommandOutcome.Failure(Protocol.Errors.Unavailable, "CUCoreLib is not loaded (plugin GUID net.cucorelib)");
             try
             {
+                var net = NetType();
+                if (!host && net != null && TryReadBool(net, "IsRunning", out var running) && running)
+                    return CommandOutcome.Failure(Protocol.Errors.Busy, "leave the current game session before joining");
                 if (host && !IsHosting(port) && IsPortBusy(port))
                     return CommandOutcome.Failure(Protocol.Errors.Busy, "port " + port + " is already in use by another process");
                 var startName = host ? "TryStartLocalQuickTestHost" : "TryStartLocalQuickTestClient";
@@ -115,6 +121,8 @@ namespace CuhubBridge.Plugin
             var role = host ? "IsServer" : "IsClient";
             if (!TryReadBool(net, role, out var active) || !active)
                 return CommandOutcome.Failure(Protocol.Errors.Unavailable, "Together.Net." + role + " is false" + after + StatusSuffix());
+            if (StaticValue(net, TransportProperty) == null)
+                return CommandOutcome.Failure(Protocol.Errors.Unavailable, "Together.Net.Transport is missing" + after + StatusSuffix());
             if (host)
             {
                 var probe = ProbePort();

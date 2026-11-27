@@ -22,7 +22,7 @@ Nexus Mods 官方 API v1 的窄客户端：读取 mod 的文件列表、选择�
 ## 请求与安全
 
 - 只请求 `https://api.nexusmods.com`；mod id 必须是纯数字，避免拼出别的路径。
-- 每个请求带 `apikey`、`Application-Name: Cuhub`、`Application-Version: <core 版本>`；不冒充 Vortex 或其它应用。
+- 每个请求带 `apikey`、`Application-Name: Cuprum`、`Application-Version: <core 版本>`；不冒充 Vortex 或其它应用。
 - 不记录 key；错误信息不回显 key。响应体上限 2 MiB。
 - 错误按状态给出可操作文案：401 提示 key 无效；403 提示需要 Premium 或 key 无效；404 提示未找到；其余保留状态码与 URL。
 - 没有 key、文件列表为空、没有 https 下载链接、没有文件名都各自返回明确错误；不会假装可以下载。

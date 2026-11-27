@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use cuhub_core::hub::{Hub, HubError};
+use cuprum_core::hub::{Hub, HubError};
 use nsh_core::file_dialog::{FileFilter, OpenDialog};
 use nsh_core::prelude::*;
 
@@ -57,7 +57,7 @@ impl Ui {
         match result {
             Ok(Ok(RemoteAttempt::Ready(pending))) => {
                 if accept_pending(self, *pending) {
-                    self.task_open.set(true);
+                    self.clear_task_failure("task.issue_import");
                     self.notice.set(t!("local.import_ready"));
                 }
             }
@@ -66,11 +66,16 @@ impl Ui {
                     target: None,
                     issues,
                 }));
-                self.task_open.set(true);
                 self.notice.set(t!("dependency.blocked"));
             }
-            Ok(Err(error)) => self.notice.set(t!("local.import_failed", error = error)),
-            Err(error) => self.notice.set(t!("local.import_failed", error = error)),
+            Ok(Err(error)) => {
+                self.task_failed("task.issue_import", &error);
+                self.notice.set(t!("local.import_failed", error = error));
+            }
+            Err(error) => {
+                self.task_failed_with("task.issue_import", "task.reason_failed");
+                self.notice.set(t!("local.import_failed", error = error));
+            }
         }
     }
 }

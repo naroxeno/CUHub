@@ -228,7 +228,7 @@ fn copy_atomic(source: &Path, target: &Path) -> Result<(), ApplyError> {
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let name = target.file_name().unwrap_or_default().to_string_lossy();
     let temporary = target.with_file_name(format!(
-        ".{name}.cuhub-{}-{counter}.tmp",
+        ".{name}.cuprum-{}-{counter}.tmp",
         std::process::id()
     ));
     let result = (|| -> Result<(), ApplyError> {

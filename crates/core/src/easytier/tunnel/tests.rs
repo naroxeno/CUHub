@@ -10,8 +10,8 @@ const PORT: u16 = 25565;
 const HOST_ADDRESS: Ipv4Addr = Ipv4Addr::new(10, 144, 144, 1);
 const PEERS: &str = r#"[
     {"route":[{"hostname":"guest-laptop","ipv4":"10.144.144.23","cost":"Local","nat_type":"Unknown"}]},
-    {"route":[{"hostname":"cuhub-host-25566","ipv4":"10.144.144.5","cost":"9.2 ms","nat_type":"FullCone"}]},
-    {"route":[{"hostname":"cuhub-host-25565","ipv4":"10.144.144.1","cost":"3.1 ms","nat_type":"FullCone"}]}
+    {"route":[{"hostname":"cuprum-host-25566","ipv4":"10.144.144.5","cost":"9.2 ms","nat_type":"FullCone"}]},
+    {"route":[{"hostname":"cuprum-host-25565","ipv4":"10.144.144.1","cost":"3.1 ms","nat_type":"FullCone"}]}
 ]"#;
 
 fn room() -> RoomCode {
@@ -41,9 +41,9 @@ fn has_pair(arguments: &[String], flag: &str, value: &str) -> bool {
 #[test]
 fn host_arguments_whitelist_and_identity() {
     let arguments = render(host_arguments(&room(), &relays(), PORT));
-    assert!(has_pair(&arguments, "--hostname", "cuhub-host-25565"));
+    assert!(has_pair(&arguments, "--hostname", "cuprum-host-25565"));
     assert!(has_pair(&arguments, "--ipv4", "10.144.144.1"));
-    assert!(has_pair(&arguments, "--network-name", "cuhub-7K3M9Q2X"));
+    assert!(has_pair(&arguments, "--network-name", "cuprum-7K3M9Q2X"));
     assert!(has_pair(&arguments, "--network-secret", "4H8PV6R"));
     assert!(arguments.contains(&"--tcp-whitelist=25565".to_owned()));
     assert!(arguments.contains(&"--udp-whitelist=25565".to_owned()));
@@ -107,13 +107,13 @@ fn discovery_is_left_to_room() {
     assert!(peers[0].is_local);
     assert!(!peers[2].is_local);
     let host = find_host(&peers, PORT).unwrap();
-    assert_eq!(host.hostname, "cuhub-host-25565");
+    assert_eq!(host.hostname, "cuprum-host-25565");
     assert_eq!(host.address, HOST_ADDRESS);
 }
 
 #[cfg(unix)]
 fn restart_dir(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("cuhub-tunnel-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("cuprum-tunnel-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -178,16 +178,56 @@ fn host_tunnel(dir: &std::path::Path, core: &std::path::Path) -> Tunnel {
 
 #[cfg(unix)]
 #[test]
+fn easytier_logs_do_not_reveal_room_credentials() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::time::{Duration, Instant};
+
+    let dir = restart_dir("redact-room");
+    let core = dir.join("fake-core.sh");
+    std::fs::write(&core, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n").unwrap();
+    std::fs::set_permissions(&core, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let logs = Arc::new(Logs::start(&dir));
+    let room = room();
+    let process = spawn(
+        LaunchConfig {
+            core: core.clone(),
+            cli: core,
+            arguments: host_arguments(&room, &[], PORT),
+        },
+        Arc::clone(&logs),
+    )
+    .unwrap();
+    assert!(process.wait().unwrap().success());
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let entries = loop {
+        let entries = logs.entries().join("\n");
+        if entries.contains("EasyTier exited") {
+            break entries;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the child output was never logged"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    assert!(entries.contains("[redacted]"));
+    assert!(!entries.contains(&room.network_name()));
+    assert!(!entries.contains(&room.network_secret()));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
 fn restart_moves_the_port_and_keeps_the_room() {
     let dir = restart_dir("restart-move");
     let args = dir.join("args.txt");
     let core = fake_core(&dir, &args, true);
     let mut tunnel = host_tunnel(&dir, &core);
-    let before = wait_for_arguments(&args, "cuhub-host-25565");
-    assert!(has_pair(&before, "--network-name", "cuhub-7K3M9Q2X"));
+    let before = wait_for_arguments(&args, "cuprum-host-25565");
+    assert!(has_pair(&before, "--network-name", "cuprum-7K3M9Q2X"));
     tunnel.restart(PORT + 1).unwrap();
-    let after = wait_for_arguments(&args, "cuhub-host-25566");
-    assert!(has_pair(&after, "--network-name", "cuhub-7K3M9Q2X"));
+    let after = wait_for_arguments(&args, "cuprum-host-25566");
+    assert!(has_pair(&after, "--network-name", "cuprum-7K3M9Q2X"));
     assert!(has_pair(&after, "--network-secret", "4H8PV6R"));
     assert!(after.contains(&"--tcp-whitelist=25566".to_owned()));
     assert!(after.contains(&"--udp-whitelist=25566".to_owned()));
@@ -204,7 +244,7 @@ fn restart_failure_keeps_the_old_port() {
     let args = dir.join("args.txt");
     let core = fake_core(&dir, &args, true);
     let mut tunnel = host_tunnel(&dir, &core);
-    wait_for_arguments(&args, "cuhub-host-25565");
+    wait_for_arguments(&args, "cuprum-host-25565");
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&core, std::fs::Permissions::from_mode(0o644)).unwrap();
     let error = tunnel.restart(PORT + 1).unwrap_err();
@@ -230,7 +270,7 @@ fn guest_discovers_and_retargets_without_reserving_the_hosts_port() {
     std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
     let advertise = |port| {
         std::fs::write(&peers, format!(
-            r#"[{{"route":[{{"hostname":"cuhub-host-{port}","ipv4":"10.42.0.7","cost":"1 ms","nat_type":"Unknown"}}]}}]"#
+            r#"[{{"route":[{{"hostname":"cuprum-host-{port}","ipv4":"10.42.0.7","cost":"1 ms","nat_type":"Unknown"}}]}}]"#
         )).unwrap();
     };
     advertise(host_port);

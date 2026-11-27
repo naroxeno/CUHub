@@ -1,7 +1,7 @@
 //! Pixel-scaled widgets and motion helpers shared by app views.
 
 use nsh_base::{Input, input};
-use nsh_core::element::FontAsset;
+use nsh_core::element::{FontAsset, Modal, StyleRefinement};
 use nsh_core::prelude::*;
 
 use super::fx::{PRESS_SHIFT, states};
@@ -12,6 +12,16 @@ pub const PIXEL_FONT: FontAsset = asset!("fonts/fusion-pixel-12px-proportional-z
 pub fn scaled(zoom: &Signal<u8>, base: f32) -> impl Fn() -> Points + Clone + use<> {
     let zoom = *zoom;
     move || px(base * zoom.get() as f32)
+}
+
+pub fn focus_ring(zoom: &Signal<u8>) -> impl FnOnce(StyleRefinement) -> StyleRefinement + use<> {
+    let zoom = *zoom;
+    move |style| {
+        style
+            .ring_inset()
+            .ring(move || px(if zoom.get() == 3 { 3.0 } else { 2.0 }))
+            .ring_color(theme_color(ACCENT))
+    }
 }
 
 pub fn pix(
@@ -121,6 +131,33 @@ pub fn panel(
         )
 }
 
+pub fn confirmation_dialog(
+    z: &Signal<u8>,
+    title: impl IntoReactive<SharedString> + Clone,
+    body: View,
+) -> Modal {
+    nsh_base::dialog()
+        .animation(nsh_core::ModalAnimation::None)
+        .role(AccessibilityRole::AlertDialog)
+        .label(title.clone())
+        .close_on_escape(false)
+        .close_on_backdrop_press(false)
+        .child(
+            view()
+                .size_full()
+                .bg(rgba(0x000000CC))
+                .bind_motion(&fade_in())
+                .items_center()
+                .justify_center()
+                .child(
+                    panel(z, title, body)
+                        .w(scaled(z, 460.0))
+                        .max_w(percentage(0.9))
+                        .bind_motion(&rise_in()),
+                ),
+        )
+}
+
 pub fn text_input(zoom: &Signal<u8>) -> Input {
     input()
         .font_family(PIXEL_FONT.family)
@@ -161,7 +198,7 @@ pub fn choice_button(
             move || if border() { ACCENT } else { BORDER_DIM },
         ))
         .hover(|s| s.bg(theme_color(ACCENT_SURFACE)))
-        .focus_visible(|s| s.border_color(theme_color(ACCENT)))
+        .focus_visible(focus_ring(z))
         .active(|s| s.translate_y(px(PRESS_SHIFT)))
         .cursor(Cursor::Pointer)
         .accessibility_state(move || AccessibilityState {
@@ -195,7 +232,7 @@ pub fn button(
                 s.bg(theme_color(ACCENT_SURFACE))
                     .border_color(theme_color(ACCENT))
             })
-            .focus_visible(|s| s.border_color(theme_color(ACCENT)))
+            .focus_visible(focus_ring(&z))
             .active(|s| {
                 s.bg(theme_color(ACCENT_PRESS))
                     .text_color(theme_color(TEXT))

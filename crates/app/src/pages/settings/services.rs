@@ -1,4 +1,4 @@
-use cuhub_core::nexus_auth::{GithubTokenStore, NexusKeyStore};
+use cuprum_core::nexus_auth::{GithubTokenStore, NexusKeyStore};
 use nsh_core::prelude::*;
 
 use super::{actions, section, settings_input};

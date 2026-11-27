@@ -1,13 +1,13 @@
-# Cuhub 联机方案（EasyTier）与实施计划
+# Cuprum 联机方案（EasyTier）与实施计划
 
 状态：草案 v2（2026-11-16 按 Naro 拍板修改），等审计；只写计划，不含代码。
 
 ## 0. 结论
 
-- 走 **EasyTier 内核子进程**方案：Cuhub 负责下载/校验/拉起/配置/状态，不自研 NAT 穿透，也不把内核编进 GUI；**安装包不带内核**，首次联机时在应用内下载，或指向用户自己装的 EasyTier。
-- 房间码与房间协议**自己做一套**（不追求兼容 Scaffolding）：码里带网络名 + 密钥 + 校验；**mod 兼容交给联机 mod 自己检查**，Cuhub 不重复实现、也不因 mod 差异拒绝进入；MVP **不需要自建大厅或中继服务器**。
+- 走 **EasyTier 内核子进程**方案：Cuprum 负责下载/校验/拉起/配置/状态，不自研 NAT 穿透，也不把内核编进 GUI；**安装包不带内核**，首次联机时在应用内下载，或指向用户自己装的 EasyTier。
+- 房间码与房间协议**自己做一套**（不追求兼容 Scaffolding）：码里带网络名 + 密钥 + 校验；**mod 兼容交给联机 mod 自己检查**，Cuprum 不重复实现、也不因 mod 差异拒绝进入；MVP **不需要自建大厅或中继服务器**。
 - **Windows 优先**，Linux 次之，macOS 最后（提权与签名成本最高）。
-- 联机 mod 的 **Steam 与 UDP 两条路径都要留**：Steam 走 mod 自己，Cuhub 只读状态；UDP 直连走 EasyTier 虚拟局域网。
+- 联机 mod 的 **Steam 与 UDP 两条路径都要留**：Steam 走 mod 自己，Cuprum 只读状态；UDP 直连走 EasyTier 虚拟局域网。
 - 需要 Naro 拍板 7 件事，见 §10。
 
 ## 1. 需求与约束
@@ -46,17 +46,17 @@
 5. **不要自建专有大堂**：MC 启动器社区曾在联合公告后停掉各自联机，改投中立的 Terracotta/EasyTier。
 6. **许可要提前想**：EasyTier 是 LGPL-3.0，下载分发同样要带许可证与源码地址；不修改二进制。
 
-## 3. 与 Minecraft 的差异（对 Cuhub 的影响）
+## 3. 与 Minecraft 的差异（对 Cuprum 的影响）
 
-- CU 没有内置的 LAN 大厅协议；「房间」由联机 mod 定义（Steam lobby 或 UDP 端口），Cuhub 只能通过桥读状态。
-- Steam 路径可能完全不需要虚拟局域网；Cuhub 不应强制装内核。
-- 联机 mod 可能自带大厅/端口/房间码；若检测到 mod 已接管，Cuhub 退化为「启动 + 状态 + 引导」，避免两套隧道打架。
+- CU 没有内置的 LAN 大厅协议；「房间」由联机 mod 定义（Steam lobby 或 UDP 端口），Cuprum 只能通过桥读状态。
+- Steam 路径可能完全不需要虚拟局域网；Cuprum 不应强制装内核。
+- 联机 mod 可能自带大厅/端口/房间码；若检测到 mod 已接管，Cuprum 退化为「启动 + 状态 + 引导」，避免两套隧道打架。
 - 平台重心不同：Windows 是主战场；Linux 有 Steam/Proton，但 TUN 权限与广播中继都要另测；macOS 暂缓。
 
 ## 4. 方案选型
 
-- **A. 应用内下载内核 + Cuhub 管理（推荐）**：安装包不增大；首次联机时下载（Windows zip 约 32.6 MB），版本 pin、sha256 可校验，失败可重试。
-- **B. 用户自装 EasyTier/EasyTierGame，Cuhub 探测复用**：设置里可指定路径；版本/路径/驱动由用户负责，Cuhub 只做兼容性校验。
+- **A. 应用内下载内核 + Cuprum 管理（推荐）**：安装包不增大；首次联机时下载（Windows zip 约 32.6 MB），版本 pin、sha256 可校验，失败可重试。
+- **B. 用户自装 EasyTier/EasyTierGame，Cuprum 探测复用**：设置里可指定路径；版本/路径/驱动由用户负责，Cuprum 只做兼容性校验。
 - **C. 把 `easytier` 作为库编进 core（不推荐）**：tokio 运行时、TUN 权限、崩溃面、版本漂移、macOS 签名，全部进 GUI；crates.io 版本还停在 2024-10。
 - **D. 只做房间码 + 让用户自己开 EasyTier GUI（不推荐）**：体验割裂，无法自动化状态。
 
@@ -79,7 +79,7 @@
 `C1-7K3M-9Q2X-4H8P-V6RW`：
 
 - 字符表 32 个（`23456789ABCDEFGHJKLMNPQRSTUVWXYZ`，去掉 0/O/1/I/L），每字符 5 bit；共 16 个字符 = 80 bit。
-- 前 8 字符是网络名（40 bit，解码为 `--network-name cuhub-XXXXXXXX`），接着 7 字符是密钥（35 bit），最后 1 字符是校验（5 bit，覆盖前 15 字符）；有效数据 75 bit。
+- 前 8 字符是网络名（40 bit，解码为 `--network-name cuprum-XXXXXXXX`），接着 7 字符是密钥（35 bit），最后 1 字符是校验（5 bit，覆盖前 15 字符）；有效数据 75 bit。
 - 不包含房主 IP/端口：双方各自向公共节点/对端发起连接，房主换网络不影响同一个码。
 - 输入容错：大小写不敏感，粘贴时忽略连字符与空白；格式或校验错在本地直接报「邀请码不对」，不必等连接超时。
 - 强度：密钥 35 bit（约 3.4×10^10），且要先知道网络名；房间是临时的，泄露只影响这一局。
@@ -90,7 +90,7 @@
 
 - 应用层没有自定义握手：房间码只负责派生 EasyTier 的网络名与密钥，连上就是同一张虚拟局域网。
 - mod 检查由联机 mod 自己做：很多 mod 只影响客户端、不影响服务端，一刀切按「不一致」拒绝会误伤；重复实现也容易和 mod 的检查打架。
-- Cuhub 的职责止于隧道：启动/停止内核、显示对端与连接状态；mod 报错时把它自己的提示原样展示（通过桥或日志），不替它下结论。
+- Cuprum 的职责止于隧道：启动/停止内核、显示对端与连接状态；mod 报错时把它自己的提示原样展示（通过桥或日志），不替它下结论。
 - 如果将来 mod 作者希望把检查结果前置到建房页，再按 §7 的桥扩展位单独讨论，不预付设计成本。
 
 ### 5.4 地址与网络参数
@@ -102,7 +102,7 @@
 
 ### 5.5 提权
 
-- Windows：独立 `easytier-core.exe` 通过 UAC（`runas`）拉起；Cuhub 主进程不提权；用户拒绝时给出「以管理员重试 / 取消」。
+- Windows：独立 `easytier-core.exe` 通过 UAC（`runas`）拉起；Cuprum 主进程不提权；用户拒绝时给出「以管理员重试 / 取消」。
 - Linux：首次提示 `setcap cap_net_admin+ep easytier-core`（一次性），或 `pkexec` 拉起；没有 polkit 时明确报错。
 - macOS：后置；utun 需要 root，走 Authorization Services 或让用户手动装服务，成本高。
 
@@ -118,7 +118,7 @@
 - 自装路径：用户已装 EasyTier/EasyTierGame 时，在设置里指定 `easytier-core.exe` 与 `easytier-cli.exe`；版本与伴随 DLL 检查通过才允许使用。
 - Linux tar / macOS zip 同样不含内核，按需下载对应资产。
 - 下载页与关于页展示 EasyTier 的 LICENSE（LGPL-3.0）与源码地址；不改二进制；sha256 写进代码。
-- 不自动更新；内核版本随 Cuhub 版本 pin，更新时提示用户重新下载。
+- 不自动更新；内核版本随 Cuprum 版本 pin，更新时提示用户重新下载。
 
 ### 5.8 安全
 
@@ -139,11 +139,11 @@
 
 ## 7. Steam 模式与 mod 联动
 
-- Steam 模式：Cuhub 只负责启动游戏（`core::launch` 已有），Multiplayer 页通过桥 W3 显示房间/玩家；W4 的 host/join/leave 交给 mod。
-- EasyTier 模式：Cuhub 管隧道；mod 仍负责游戏会话（host/join）。桥扩展位：
-  - mod → Cuhub：`mp.state` 增加 `transport`（steam/udp）、`virtual_ip`、`lan_port`、`room_code`（可选）。
-  - Cuhub → mod：`mp.host`/`mp.join` 带 `{transport, room_code, virtual_ip}`；control 档，默认关。
-- 若 mod 自己就带大厅/隧道，Cuhub 只显示状态并提供启动，避免双隧道。
+- Steam 模式：Cuprum 只负责启动游戏（`core::launch` 已有），Multiplayer 页通过桥 W3 显示房间/玩家；W4 的 host/join/leave 交给 mod。
+- EasyTier 模式：Cuprum 管隧道；mod 仍负责游戏会话（host/join）。桥扩展位：
+  - mod → Cuprum：`mp.state` 增加 `transport`（steam/udp）、`virtual_ip`、`lan_port`、`room_code`（可选）。
+  - Cuprum → mod：`mp.host`/`mp.join` 带 `{transport, room_code, virtual_ip}`；control 档，默认关。
+- 若 mod 自己就带大厅/隧道，Cuprum 只显示状态并提供启动，避免双隧道。
 - 这部分依赖 mod 作者确认协议；本计划只定义扩展位，不实现。
 
 ## 8. 分阶段任务（不含代码）
@@ -166,7 +166,7 @@
 - 双机：Windows+Windows、Windows+Linux；同 NAT、不同 NAT；错误房间码；断线重连；杀进程后 TUN 清理。
 - 游戏：CU + 联机 mod，主机开房 → 客机在 LAN 列表看到；开/关广播中继对比；Steam 模式对照。
 - 打包：干净 Windows 10/11 安装器；非管理员启动 → 引导提权；卸载残留检查；断网/校验失败/磁盘不足时的下载提示。
-- mod 兼容：确认 Cuhub 不因 mod 差异拒绝进入；联机 mod 自己的检查按其 UI/日志走。
+- mod 兼容：确认 Cuprum 不因 mod 差异拒绝进入；联机 mod 自己的检查按其 UI/日志走。
 - 安全：确认日志无密钥、RPC 不外露、内核退出后无残留进程/网卡。
 
 ## 10. 风险与待拍板
@@ -176,11 +176,11 @@
 需要 Naro 决定：
 
 1. **平台顺序**：Windows 优先、Linux 次之、macOS 后置，可以吗？
-2. **mod 检查结果**：完全交给联机 mod（Cuhub 不拦截），还是把它的结果只读转述到 Multiplayer 页？
+2. **mod 检查结果**：完全交给联机 mod（Cuprum 不拦截），还是把它的结果只读转述到 Multiplayer 页？
 3. **房间协议**：已确认自定（不兼容 Scaffolding）、不另设应用层握手，前缀 `C1`，OK 吗？
 4. **默认中继节点**：默认内置 EasyTier 公共节点、不打算自建服务器（没有长期 VPS），可以吗？高级里仍允许用户覆盖。
 5. **提权体验**：接受「点连接 → UAC/授权」一次吗？
-6. **Steam 模式**：Cuhub 只做启动与状态，邀请好友完全交给 Steam/mod，行吗？
+6. **Steam 模式**：Cuprum 只做启动与状态，邀请好友完全交给 Steam/mod，行吗？
 7. **FEATURES 的 R 段**：直接删掉样例服务器、改成真实联机页，优先级按 P1/P0 定？
 
 参考来源见 §2；EasyTier 版本与资产事实：2.6.4，Windows zip 32,657,720 B、sha256 `27af91e2…5f84`，Linux zip 25,506,523 B、sha256 `61b659ea…dfd6`（本次下载实测，正式 pin 前再对官方 release 页核一遍）。

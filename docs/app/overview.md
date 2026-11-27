@@ -2,7 +2,7 @@
 
 ## 职责
 
-nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容区（模组树下的 Nexus / 远程模组 / 本地模组，加 Multiplayer / Skins & Backups / Hub Home / Settings / About）、右下角任务按钮与右侧任务中心抽屉（见下文「任务中心」，取代原先散落在页面里的 pending / 依赖面板）与开发者控制台浮层。数据全部来自 `cuhub_core::hub::Hub`；后台任务只写 signal，界面只读 signal（线程模型见 `docs/ARCHITECTURE.md`）。nsh 细节与坑见同目录 `nsh-notes.md`。
+nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容区（模组树下的 Nexus / 远程模组 / 本地模组，加 Multiplayer / Skins & Backups / Hub Home / Settings / About）、右侧任务入口与任务中心抽屉（见下文「任务中心」，取代原先散落在页面里的 pending / 依赖面板）与开发者控制台浮层。数据全部来自 `cuprum_core::hub::Hub`；后台任务只写 signal，界面只读 signal（线程模型见 `docs/ARCHITECTURE.md`）。nsh 细节与坑见同目录 `nsh-notes.md`。
 
 ## 代码边界
 
@@ -44,7 +44,7 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 | 开发者控制台 | 打开浮层 | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
 | 删除确认弹窗 | 打开（`when` 重新挂载） | 遮罩淡入 + 面板滑入 | 300ms / 450ms |
 | 设置向导 | 打开 / 切步 | 遮罩淡入 + 卡片滑入；步骤内容淡入 | 450ms / 200ms |
-| 任务中心抽屉 | 点右下角任务按钮（`task_open` 为真） | 右侧滑入 + 遮罩淡入 | 450ms / 300ms |
+| 任务中心抽屉 | 激活右侧任务入口（`task_open` 为真） | 右侧滑入 + 遮罩淡入 | 450ms / 300ms |
 | 任务卡 | 卡片进入（`each` 重建） | 自右淡入，逐张错峰 | 45ms/级，最多 6 级 |
 | 任务角标 | 有待处理项且抽屉关闭 | DANGER 色方块脉冲 | 900ms 循环，20 Hz 上限 |
 | Check 进行中 | `can_check` 为假且已知仓库 | 4 个 3px 方块脉冲追逐 | 640ms 循环，20 Hz 上限 |
@@ -61,10 +61,11 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 
 ## Hub Home 磁贴
 
-- 2 列 `grid`：GAME、MODS、CATALOGUE、BEPINEX 四张半宽卡，公告卡 `col_span_full()` 收尾；入口仍是 `pages::hub_home`，标题与面包屑走 `nav::title`。
+- 顶部游戏面板显示当前状态，复用启动游戏、游戏设置和多人游戏入口。游戏目录、本地模组、Nexus 目录和 BepInEx 概览卡各自保留相关入口。
+- 概览按实际内容区宽度选择单列或双列，拖动定位跟随当前列数。标题走 `nav::title`，游戏目录中段截断，悬停可查看完整路径。
 - 拖拽用原生 pan：整张卡片（外框）`pan_values` + `bind_translate_x/y` 跟手，`on_pan_end` 按水平/垂直位移换位；拖拽中 `z_index` 抬升、底色 `SURFACE_RAISED`、边框 `ACCENT`，松手 spring 回位。
 - 顺序存 `Settings.home_order`（JSON `homeOrder`），经 `Ui::save_home_order` 写回；读取时按固定 id 表忽略未知、去重、补齐缺失，旧设置缺键即默认顺序。
-- 公告在启动时由 `Hub::hub_config_cached()` 读一次缓存存入 `Ui.announcement`，渲染路径不取 Hub 锁、只读缓存不联网；无当前公告显示 `hub.not_loaded`，不报错。GAME 卡副文本同时显示游戏目录与 app data 路径。
+- 公告使用 `Ui.announcement` 的现有快照。有正文时呈现，渲染路径不取 Hub 锁也不联网。应用数据路径可在设置查看。
 
 ## Nexus 仪表盘
 
@@ -78,7 +79,7 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 - 远程页联查来源清单与 Nexus 缓存，支持来源和安装状态组合筛选，沿用 Nexus 成人内容开关。只有唯一的显式 `nexusId` 对应唯一 Nexus 条目时才合并。来源分别显示 Nexus 快照版本和按需查询的 GitHub 发布标签。
 - 两页共享安装状态和 Nexus 安装准备。授权下载进入任务卡，预览显示所选来源、载荷版本和具体目标。浏览器详情和 Files 链接使用现有的 Nexus 页面边界。
 - 状态都在 `Ui` 上：`remote_all` / `remote_rows` / `remote_page` / `remote_total` / `remote_query` / `remote_filter` / `remote_busy`；搜索、过滤与翻页只重建内存切片，不写设置。
-- 安装与更新共用 `pending_install`：准备阶段写 `remote_busy`（该行按钮与其它行一起禁用），成功后进任务中心的任务卡（右下角按钮打开；抽屉不会自动弹出），卡片里的 Apply 走既有的 `apply_pending`，Cancel 走 `discard_pending` 删 staging；`refresh_mods` 同时重建本地与远程行，装完按钮立即变成 Update。
+- 安装与更新共用 `pending_install`：准备阶段写 `remote_busy`（该行按钮与其它行一起禁用），成功后进任务中心的任务卡（右侧入口打开；抽屉不会自动弹出），卡片里的 Apply 走既有的 `apply_pending`，Cancel 走 `discard_pending` 删 staging；`refresh_mods` 同时重建本地与远程行，装完按钮立即变成 Update。
 - 依赖门禁在 `app_state::install::prepare_remote_pending` 与 `prepare_update`：core 返回 `HubError::Dependencies` 时不进 pending，而是写 `dependency_prompt`（目标条目可选 + 问题列表）与状态行提示。渲染路径只读该 signal，不取 Hub 锁。
 - 依赖卡列 `Missing` / `Outdated`：有清单条目的缺失项可以 `Install missing`，worker 依次准备并 Apply 每个依赖，清 staging；首次安装随后自动重新准备目标条目，更新则清掉提示并让用户再点一次更新。未知依赖或版本不足只显示手动处理说明，不自动安装。`Cancel` 清掉提示，不触碰已装文件。卡片与其他任务卡同处右侧抽屉，页面内不再有依赖面板。
 - 清单缺失时提示其路径，仍可浏览和搜索 Nexus 缓存。
@@ -114,21 +115,21 @@ nsh 0.5.1 桌面壳：标题栏、侧栏树形导航、状态行、八页内容�
 ## 桥状态与联机控制
 
 - `app_state::bridge::watch_bridge` 随其他后台任务启动，每 2 秒取一次 `Hub::bridge_snapshot`：检测到游戏进程才启动桥、退出后停止，会话存在时顺带取 `mp.state`；值不变不写 signal。单次 `invoke_bridge` 最多持 Hub 锁 2 秒，轮询不更密。
-- 状态栏右侧显示桥三态与最近一次握手失败；Local Mods 行按 hello 的 guid 快照标「运行中已加载」；Multiplayer 页用紧凑状态栏显示桥状态，并提供「自动在游戏内开房／加入」开关（只授权 `dev.cuhub.bridge` 的 `mp.host` / `mp.join`）。
+- 状态栏右侧显示桥三态与最近一次握手失败；Local Mods 行按 hello 的 guid 快照标「运行中已加载」；Multiplayer 页用紧凑状态栏显示桥状态，并提供「自动在游戏内开房／加入」开关（只授权 `dev.cuprum.bridge` 的 `mp.host` / `mp.join`）。
 - `app_state::multiplayer_bridge` 的 `watch_mp_control` 每 2 秒读同一个桥快照：`status.session.pid` 按「进入 / 换房 / 退出」重置门控与检测缓存，房主只自动开房一次，客人在隧道 `Connected` 后最多 3 次（0/3/8 秒），`denied` / `invalid_params` 立即停；房主侧 `NoRoom` / `GamePort` 失败也只尝试一次；确认对话框打开或其它任务忙碌时不自动。房主侧同一循环调 `Hub::reconcile_room_port`（core 内 350ms×2、6s 窗口）：`Restarted` 把显示地址与检测端口更新到新端口，`Failed` 只显示错误并保留旧地址，`Unsettled` 不动作。用户也能随时关掉开关停下自动逻辑。
 - 开房默认显示选定端口，优先级为游戏上报 → 手填 → 7790。重新检测和手填放进端口选项。加入侧默认只填房间码，高级选项可限定房主端口，留空自动发现。当前房间区分隧道和游戏状态，房主显示实际转发端口，客人隧道就绪后可复制本地回环转发地址。
 - 房间卡「游戏内房间」区块：状态来自 `game_phase`（未连接 / 不可用 / 未授权 / 等隧道 / 可开房 / 可加入 / 已开房 / 已加入；`mp.server` 即视为游戏内已开房，包含玩家在游戏菜单直接开房）；地址房主固定 `10.144.144.1:<chosen port>`，客人取隧道 `virtual_ip:port`；手动开房/加入走两段式确认，失败行可重试，命令期间是 `MpBusy::Game`。房主开房走 `Hub::start_game_host()`，游戏上报端口与隧道端口不一致时显示 `GamePort` 错误，不自动改写。
 - 交接：游戏内直接开房 → `mp.server` 使相位转 `Hosting`，自动逻辑停止；换房/重进 → 清 `game_error`、检测缓存并重置门控后按新房间码执行；游戏退出 → 会话消失，相位回 `NoSession` 并清缓存，不自动重连；房主退出时客人侧 `Connected` 端点消失或端口变化 → 提示「房主已离开」/「房主已换房」，停掉自动重试，只保留手动「重试」。
 - 桥未运行、端口被占、版本不符都只反映到状态，不影响游戏启动、安装、删除等既有流程。
-- 本地模组页底部的 CUHub Bridge 联机组件卡片分别展示安装版本、禁用标记与连接状态。只归并固定安装路径下完整、未被档案托管的标准双 DLL；散装、不完整或混合目录保留普通行。多人游戏页与底部状态栏共用连接状态及错误文案。详情显示安装路径和批量操作范围。安装继续走已有 worker 和受校验的归档入口，模组刷新后同步重读桥安装状态。
+- 本地模组页底部的 Cuprum Bridge 联机组件卡片分别展示安装版本、禁用标记与连接状态。只归并固定安装路径下完整、未被档案托管的标准双 DLL；散装、不完整或混合目录保留普通行。多人游戏页与底部状态栏共用连接状态及错误文案。详情显示安装路径和批量操作范围。安装继续走已有 worker 和受校验的归档入口，模组刷新后同步重读桥安装状态。
 
 ## 任务中心
 
-- 入口：根视图尾部常驻一个右下角浮动按钮（`shell::task_center`，`absolute` + `right/bottom`，随 `zoom` 缩放），点它把 `task_open` 置真；`shell::task_drawer` 是 `sheet().side(Placement::Right)`，宽度 `relative(0.42)`——缩放只有整数档，没有 `max_w`，按比例取宽在最小窗口下仍可读。抽屉标题行含标题与 Close，内容区是 `scroll().flex_1().min_h(px(0.0))`，卡片多了只滚动抽屉，不撑破窗口。Esc、点遮罩、滑动关闭都经 `SheetEvent::OpenChange` 回写 `task_open`。
-- 不自动弹：新任务只改变 `pending_count`，让按钮上的角标（DANGER 方块 + 计数）脉冲；`task_open` 只在用户点按钮或关闭抽屉时被改，所以来新计划时界面不会自己跳出来。
-- 卡片：`app_state::tasks::cards` 每帧从现有 signal 现算（不缓存、不存失败态），五类 `TaskKind`——安装/更新（`pending_install`：标题为模组名，副标题为版本，行显示来源与目标根、替换/新增文件数、通知与冲突、游戏运行中提示，按钮 Apply/Cancel）、依赖（`dependency_prompt`：逐条 Missing/Outdated/手动说明，Install missing/Cancel）、BepInEx（`bepinex_pending`：Settings 的 Install/Repair 生成，按钮 Install 或 Replace / Cancel）、批量（`TaskKind::Batch`：预检写 `Checking dependencies index/total`，执行写当前项 `index/total · name`，按钮 Update selected (N) / Update all (M)，见「批量更新」）、下载（每个 `DownloadTrack` 一张，无按钮）、以及上述卡片的 run-blocked 变体（游戏运行中只标红提示，点 Apply 也只提示一次，不自动重试）。卡片样式是 Win10 风格：`SURFACE` 底、1px `BORDER` 边、左侧 3px 类型色条（安装/BepInEx/批量用 `ACCENT`、依赖用 `WARN`、下载用 `TEXT_MUTED`），右上角小号类型标签。
-- 下载进度是真实字节：core 的 `DownloadProgress { written, total }` 经 `DownloadTracker` 写进进程级表（`ui/tasks.rs` 的 `static DOWNLOADS`，`OnceLock<Mutex<Vec<DownloadTrack>>>`），`Ui::watch_downloads` 每 120ms 取一次快照写 `Ui.downloads`，值不变就不写 signal。进度条宽度按 `written / total`，标签是 `percent% · written / total`；`total` 为 `None`（服务端没给 Content-Length）时不显示百分比，条体脉冲、标签只写已下载字节，绝不编造进度。
-- 失败：下载/安装/应用失败仍只写状态行（`notice` / `apply_status`）与日志，进度表在 `DownloadTracker` 的 `Drop` 里清掉，所以不会留下失败卡片；重试只能由用户重新发起。
+- 右侧入口在悬停或键盘聚焦时向左展开。计数包括需处理项和本次失败，下载进度不触发角标。侧抽屉内容独立滚动。
+- 「需处理」收录联机条件、游戏目录、档案错误、安装预检与确认。「进行中」显示安装和下载进度。「本次失败」记录已接入流程的失败摘要，直到清除、相应流程成功或退出应用。
+- 关闭游戏后解除游戏运行中造成的阻塞。现有的安装确认和重试继续由用户发起。联机表单保留字段提示，详细原因进入任务卡。
+- 卡片复制文本由预先定义的操作名和原因生成，不包含自由格式的错误详情、房间码和凭据。结果显示在复制按钮上。
+- 原状态行的操作通知改为自动消失的提示。Bridge 实时状态留在联机页和联机组件卡。
 
 ## 批量更新
 

@@ -2,7 +2,7 @@
 
 生成日期：2026-11-19。数据来自 GitHub API 与各仓库 release；筛选条件是仓库在 2026-10-19 之后有推送（`pushed:>2026-10-19`），且能找到可安装的 release 资产。共 26 条、25 个仓库（New Firearms 的 release 里有两个独立插件）。
 
-可直接使用的清单：[docs/github-mods.manifest.json](github-mods.manifest.json)。这份 JSON 已用 `cuhub-core` 的 `SourceManifest::parse` 验证：26 条全部通过，0 条被跳过。
+可直接使用的清单：[docs/github-mods.manifest.json](github-mods.manifest.json)。这份 JSON 已用 `cuprum-core` 的 `SourceManifest::parse` 验证：26 条全部通过，0 条被跳过。
 
 ## 表
 
@@ -51,10 +51,10 @@
 ## 安装说明
 
 - manifest 会优先按 `asset` 精确匹配 release 资产；精确名缺失时，只有版本号数字段不同且形状唯一的资产才作为更新回退，同形多资产仍报错；New Firearms、Gun Minigame、CUShocker、Custom Structures 等有多个资产的仓库已经锁定文件名。
-- CUShocker 的 zip 同时带 OpenShock 桌面程序；CUHub 的安装器会按 `BepInEx/plugins` 前缀只取插件部分。
+- CUShocker 的 zip 同时带 OpenShock 桌面程序；Cuprum 的安装器会按 `BepInEx/plugins` 前缀只取插件部分。
 - CT 的 release 自带 `CUCoreLib.dll`；manifest 已声明 CUCoreLib 依赖，安装时会先要求安装 CUCoreLib，并跳过包内副本。
 - Bark 是目录型模组，会落到 `Plugins/Bark/`；BepInEx 5 会递归扫描插件目录。
-- Custom Structures 依赖 CUCoreLib；CUAP 的 `.apworld` 与 YAML 是 Archipelago 服务端文件，不在 CUHub 的安装范围内。
+- Custom Structures 依赖 CUCoreLib；CUAP 的 `.apworld` 与 YAML 是 Archipelago 服务端文件，不在 Cuprum 的安装范围内。
 - Russian Voice Over 约 106 MB，第一次安装会明显比其它条目慢。
 
 ## 未收录
@@ -66,6 +66,6 @@
 
 ## 用法
 
-本地兜底：备份后把 `github-mods.manifest.json` 复制到 `~/.local/share/CUHub/Sources/manifest.json`。远程方式：把它上传到 `naroxeno/CUHub-Store` 根目录并改名为 `manifest.json`。
+本地兜底：备份后把 `github-mods.manifest.json` 复制到 `~/.local/share/Cuprum/Sources/manifest.json`。远程方式：把它上传到 `naroxeno/Cuprum-Store` 根目录并改名为 `manifest.json`。
 
 > 现有本地 manifest 只有 QoL Unknown 与 Casualties Together 两条；直接覆盖前请备份。

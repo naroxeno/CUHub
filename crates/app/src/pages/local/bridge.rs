@@ -2,8 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use cuhub_core::bridge::install::{CORE_FILE, PLUGIN_FILE};
-use cuhub_core::hub::BridgeInstallStatus;
+use cuprum_core::bridge::install::{CORE_FILE, PLUGIN_FILE};
+use cuprum_core::hub::BridgeInstallStatus;
 use nsh_core::prelude::*;
 
 use crate::app_state::{LocalModRow, Ui, bridge_color, bridge_text};
@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn groups_only_the_complete_pair_under_the_install_target() {
-        let target = Path::new("BepInEx/plugins/CuhubBridge");
+        let target = Path::new("BepInEx/plugins/CuprumBridge");
         let plugin = target.join(PLUGIN_FILE);
         let core = target.join(CORE_FILE);
 

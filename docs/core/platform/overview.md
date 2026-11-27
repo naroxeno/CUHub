@@ -6,7 +6,7 @@
 
 ## 输入输出
 
-- `app_data_root()`：绝对路径，末尾拼 CUHub；不创建目录。Linux 用 XDG `data_local_dir`，macOS 用 `data_local_dir`（即 `~/Library/Application Support`），Windows 用本地 AppData。
+- `app_data_root()`：绝对路径，末尾拼 Cuprum；不创建目录。Linux 用 XDG `data_local_dir`，macOS 用 `data_local_dir`（即 `~/Library/Application Support`），Windows 用本地 AppData。
 - `downloads_dir()`：存在则用系统下载目录，否则 home/Downloads；Windows 用已知文件夹。
 - `open_url(url)`：spawn 系统 handler（Linux `xdg-open`、macOS `open`、Windows `cmd /C start`）并立即返回 Child；stdin/stdout/stderr 置空。
 - `steam_executable()`：Linux 用 PATH 里的 `steam`；macOS 用 `open`（Steam 没有可执行的 `-applaunch` 入口）；Windows 先在候选 Steam 根找 `steam.exe`，再退回 PATH。
@@ -22,4 +22,4 @@
 
 ## 常量出处
 
-目录名 CUHub 由 docs/FEATURES.md P6 与开发者确认；Linux 的 XDG 回退顺序沿用上游 HubPaths.cs，macOS 的两处 Steam 根来自 `~/Library/Application Support/Steam` 与 `~/.steam/steam`。
+目录名 Cuprum 由 docs/FEATURES.md P6 与开发者确认；Linux 的 XDG 回退顺序沿用上游 HubPaths.cs，macOS 的两处 Steam 根来自 `~/Library/Application Support/Steam` 与 `~/.steam/steam`。

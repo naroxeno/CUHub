@@ -1,4 +1,4 @@
-//! Cuhub domain logic. No UI, no window state, no nsh dependency.
+//! Cuprum domain logic. No UI, no window state, no nsh dependency.
 
 mod atomic;
 

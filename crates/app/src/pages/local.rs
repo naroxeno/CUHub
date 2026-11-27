@@ -2,12 +2,13 @@
 
 use super::bepinex::{bepinex_missing, bepinex_progress, start_bepinex};
 use crate::app_state::{LocalModRow, Ui};
-use crate::components::{button, panel, pix, rise_in, scaled};
+use crate::components::{button, focus_ring, panel, pix, rise_in, scaled};
 use crate::i18n;
 use crate::palette::*;
+use crate::shell::keyboard::{Area, FocusItem, Keyboard};
 use crate::shell::nav;
 use actions::batch_checkbox;
-use cuhub_core::mods::ModStatus;
+use cuprum_core::mods::ModStatus;
 use nsh_core::prelude::*;
 
 mod actions;
@@ -17,13 +18,14 @@ use bridge::{bridge_section, is_bridge_row};
 
 pub fn local_mods(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
+    let keys = Keyboard::get();
+    let area = element_ref();
+    keys.track_area(area, Area::Local);
     let empty = ui.clone();
     let empty_ui = ui.clone();
     let empty_z = z;
     let refresh = ui.clone();
     let select_ui = ui.clone();
-    let import_ui = ui.clone();
-    let import_watch = ui.clone();
     let refresh_watch = ui.clone();
     let list_z = z;
     let rows_ui = ui.clone();
@@ -37,6 +39,14 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
             .filter(|row| !is_bridge_row(row, status.as_ref()))
             .collect::<Vec<_>>()
     });
+    effect(move || {
+        let order = visible_rows
+            .get()
+            .iter()
+            .map(LocalModRow::focus_key)
+            .collect();
+        keys.local.set_order(order, keys.active(Area::Local));
+    });
     let rows = each(
         move || visible_rows.get(),
         |row| row.row_key(),
@@ -45,86 +55,129 @@ pub fn local_mods(ui: &Ui) -> impl IntoElement {
             mod_row(&list_z, &row, &rows_ui)
         },
     );
-    view().flex_col().flex_1().bind_motion(&rise_in()).child(
-        panel(
-            &z,
-            move || nav::title(nav::LOCAL),
-            view()
-                .flex_col()
-                .gap(scaled(&z, 8.0))
-                .child(
-                    view()
-                        .flex_row()
-                        .flex_wrap()
-                        .items_center()
-                        .justify_between()
-                        .gap(scaled(&z, 8.0))
-                        .px(scaled(&z, 8.0))
-                        .py(scaled(&z, 4.0))
-                        .bg(theme_color(SURFACE_RAISED))
-                        .border_b(scaled(&z, 1.0))
-                        .border_b_color(theme_color(BORDER_DIM))
-                        .child(pix(
-                            move || t!("local.count", count = visible_rows.get().len()),
-                            11.0,
-                            TEXT_MUTED,
-                            &z,
-                        ))
-                        .child(
-                            view()
-                                .flex_row()
-                                .flex_wrap()
-                                .items_center()
-                                .gap(scaled(&z, 8.0))
-                                .child(
-                                    when(
-                                        move || import_watch.can_import_local(),
-                                        move || {
-                                            let import_ui = import_ui.clone();
-                                            button(&z, move || t!("local.import"), true, move || {
-                                                import_ui.pick_local_mod();
-                                            })
-                                        },
-                                    )
-                                    .otherwise(move || {
-                                        button(&z, move || t!("local.import"), false, || {})
-                                    }),
-                                )
-                                .child(bulk_menu(&z, ui))
-                                .child(batch_select_button(&z, &select_ui))
-                                .child(
-                                    when(
-                                        move || refresh_watch.mod_files_busy(),
-                                        move || {
-                                            button(&z, move || t!("common.refresh"), false, || {})
-                                        },
-                                    )
-                                    .otherwise({
-                                        let refresh = refresh.clone();
-                                        move || {
+    view()
+        .element_ref(&area)
+        .flex_col()
+        .flex_1()
+        .bind_motion(&rise_in())
+        .child(
+            panel(
+                &z,
+                move || nav::title(nav::LOCAL),
+                view()
+                    .flex_col()
+                    .gap(scaled(&z, 8.0))
+                    .child(
+                        view()
+                            .element_ref(&keys.local.fallback)
+                            .focusable(true)
+                            .label(move || t!("nav.local_mods"))
+                            .focus_visible(focus_ring(&z))
+                            .flex_row()
+                            .flex_wrap()
+                            .items_center()
+                            .justify_between()
+                            .gap(scaled(&z, 8.0))
+                            .px(scaled(&z, 8.0))
+                            .py(scaled(&z, 4.0))
+                            .bg(theme_color(SURFACE_RAISED))
+                            .border_b(scaled(&z, 1.0))
+                            .border_b_color(theme_color(BORDER_DIM))
+                            .child(pix(
+                                move || t!("local.count", count = visible_rows.get().len()),
+                                11.0,
+                                TEXT_MUTED,
+                                &z,
+                            ))
+                            .child(
+                                view()
+                                    .flex_row()
+                                    .flex_wrap()
+                                    .items_center()
+                                    .gap(scaled(&z, 8.0))
+                                    .child(import_button(&z, ui))
+                                    .child(bulk_menu(&z, ui))
+                                    .child(batch_select_button(&z, &select_ui))
+                                    .child(
+                                        when(
+                                            move || refresh_watch.mod_files_busy(),
+                                            move || {
+                                                button(
+                                                    &z,
+                                                    move || t!("common.refresh"),
+                                                    false,
+                                                    || {},
+                                                )
+                                            },
+                                        )
+                                        .otherwise({
                                             let refresh = refresh.clone();
-                                            button(
-                                                &z,
-                                                move || t!("common.refresh"),
-                                                true,
-                                                move || {
-                                                    refresh.refresh_mods();
-                                                },
-                                            )
-                                        }
-                                    }),
-                                ),
-                        ),
-                )
-                .child(when(
-                    move || empty.mods.get().is_empty(),
-                    move || empty_state(&empty_z, &empty_ui),
-                ))
-                .child(rows)
-                .child(bridge_section(&z, ui)),
+                                            move || {
+                                                let refresh = refresh.clone();
+                                                button(
+                                                    &z,
+                                                    move || t!("common.refresh"),
+                                                    true,
+                                                    move || {
+                                                        refresh.refresh_mods();
+                                                    },
+                                                )
+                                            }
+                                        }),
+                                    ),
+                            ),
+                    )
+                    .child(when(
+                        move || empty.mods.get().is_empty(),
+                        move || empty_state(&empty_z, &empty_ui),
+                    ))
+                    .child(rows)
+                    .child(bridge_section(&z, ui)),
+            )
+            .flex_1(),
         )
-        .flex_1(),
+}
+
+fn import_button(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
+    let z = *z;
+    let keys = Keyboard::get();
+    let busy = ui.local_import_busy;
+    let watching = signal(false);
+    let trigger = element_ref();
+    effect(move || {
+        if watching.get() && !busy.get() {
+            watching.set(false);
+            spawn(async move {
+                next_frame().await;
+                if keys.can_restore_local() {
+                    if trigger.node().is_some() {
+                        trigger.focus();
+                    } else {
+                        keys.local.fallback.focus();
+                    }
+                }
+            });
+        }
+    });
+    let watch = ui.clone();
+    let import = ui.clone();
+    when(
+        move || watch.can_import_local(),
+        move || {
+            let import = import.clone();
+            button(
+                &z,
+                move || t!("local.import"),
+                true,
+                move || {
+                    import.pick_local_mod();
+                    watching.set(busy.get_untracked());
+                },
+            )
+            .element_ref(&trigger)
+        },
     )
+    .otherwise(move || button(&z, move || t!("local.import"), false, || {}))
 }
 
 fn batch_select_button(z: &Signal<u8>, ui: &Ui) -> impl IntoElement {
@@ -221,6 +274,9 @@ fn empty_state(z: &Signal<u8>, ui: &Ui) -> View {
 
 fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
     let details = signal(false);
+    let menu_open = signal(false);
+    let open_from_row = signal(false);
+    let keys = Keyboard::get();
     let zoom = *z;
     let item = &row.item;
     let update_ready = row.can_update();
@@ -264,8 +320,24 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
         identity = identity.child(pix(move || t!("local.loaded"), 10.0, ACCENT, z).flex_shrink_0());
     }
     let detail_row = row.clone();
+    let name = item.name.clone();
+    let select = ui.clone();
+    let select_key = row.source_key.clone();
+    let action = move |key: &str| match key {
+        "Enter" => actions::toggle_details(details),
+        "l" | "ArrowRight" => {
+            open_from_row.set(true);
+            menu_open.set(true);
+        }
+        "s" if update_ready => select.toggle_batch_selection(select_key.clone()),
+        _ => {}
+    };
 
-    view()
+    let view = view()
+        .label(name)
+        .role(AccessibilityRole::Group)
+        .focus_within(|s| s.bg(theme_color(SURFACE_RAISED)))
+        .focus_visible(focus_ring(z))
         .flex_col()
         .border_b(scaled(z, 1.0))
         .border_b_color(theme_color(BORDER_DIM))
@@ -291,13 +363,36 @@ fn mod_row(z: &Signal<u8>, row: &LocalModRow, ui: &Ui) -> View {
                         ))
                         .child(pix(move || t!(status_key), 10.0, color, z)),
                 )
-                .child(row_actions(z, row, ui, details)),
+                .child(row_actions(
+                    z,
+                    row,
+                    ui,
+                    actions::RowActionState {
+                        details,
+                        menu_open,
+                        open_from_row,
+                    },
+                )),
         )
         .child(row_warnings(z, row))
         .child(when(
             move || details.get(),
             move || row_details(&zoom, &detail_row),
-        ))
+        ));
+    keys.item(
+        view,
+        FocusItem {
+            area: Area::Local,
+            id: row.focus_key(),
+            extra: if update_ready {
+                &["enter", "l", "right", "s"]
+            } else {
+                &["enter", "l", "right"]
+            },
+            action: Box::new(action),
+            back: None,
+        },
+    )
 }
 
 fn mod_marker(z: &Signal<u8>, color: ColorRole) -> View {
@@ -320,7 +415,7 @@ fn mod_marker(z: &Signal<u8>, color: ColorRole) -> View {
 }
 
 fn visible_version(row: &LocalModRow) -> Option<String> {
-    use cuhub_core::{sources::SourceKind, version::HubVersion};
+    use cuprum_core::{sources::SourceKind, version::HubVersion};
 
     let installed = row.item.installed_version.as_ref()?;
     if row.can_update() {
@@ -342,14 +437,14 @@ fn visible_version(row: &LocalModRow) -> Option<String> {
 }
 
 fn update_status(row: &LocalModRow) -> (&'static str, ColorRole) {
-    use cuhub_core::sources::SourceKind;
+    use cuprum_core::sources::SourceKind;
 
     if row.item.disabled {
         ("status.disabled", TEXT_MUTED)
     } else if row.can_update() {
         ("status.update_available", WARN)
     } else if row.source.effective == Some(SourceKind::Github) {
-        use cuhub_core::version::HubVersion;
+        use cuprum_core::version::HubVersion;
 
         let installed = row
             .item

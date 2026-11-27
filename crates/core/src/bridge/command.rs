@@ -201,7 +201,7 @@ mod tests {
     #[test]
     fn defaults_follow_policy() {
         let permissions = Permissions::default();
-        let known = guids(&["cuhub.bridge"]);
+        let known = guids(&["cuprum.bridge"]);
         assert_eq!(
             permissions.resolve(find("mp.state").unwrap(), &known),
             Permission::Granted
@@ -219,8 +219,8 @@ mod tests {
 
     #[test]
     fn explicit_permission_overrides_default() {
-        let permissions = Permissions::new(entries("cuhub.bridge", "mp.host", Permission::Granted));
-        let known = guids(&["cuhub.bridge"]);
+        let permissions = Permissions::new(entries("cuprum.bridge", "mp.host", Permission::Granted));
+        let known = guids(&["cuprum.bridge"]);
         assert!(permissions.allows(find("mp.host").unwrap(), &known));
         assert_eq!(
             permissions.resolve(find("mp.state").unwrap(), &known),
@@ -232,7 +232,7 @@ mod tests {
     fn denied_wins_across_mods_and_unknown_mods_are_ignored() {
         let mut map = BTreeMap::new();
         map.insert(
-            "cuhub.bridge".to_owned(),
+            "cuprum.bridge".to_owned(),
             BTreeMap::from([("mp.state".to_owned(), Permission::Granted)]),
         );
         map.insert(
@@ -240,8 +240,8 @@ mod tests {
             BTreeMap::from([("mp.state".to_owned(), Permission::Denied)]),
         );
         let permissions = Permissions::new(map);
-        let both = guids(&["cuhub.bridge", "other.mod"]);
-        let only_known = guids(&["cuhub.bridge"]);
+        let both = guids(&["cuprum.bridge", "other.mod"]);
+        let only_known = guids(&["cuprum.bridge"]);
         let unknown = guids(&["not.declared"]);
         assert_eq!(
             permissions.resolve(find("mp.state").unwrap(), &both),
@@ -259,18 +259,18 @@ mod tests {
 
     #[test]
     fn snapshot_lists_every_command() {
-        let permissions = Permissions::new(entries("cuhub.bridge", "skin.reload", Permission::Ask));
-        let snapshot = permissions.snapshot(&guids(&["cuhub.bridge"]));
+        let permissions = Permissions::new(entries("cuprum.bridge", "skin.reload", Permission::Ask));
+        let snapshot = permissions.snapshot(&guids(&["cuprum.bridge"]));
         assert_eq!(snapshot.len(), 15);
         assert_eq!(snapshot.get("skin.reload"), Some(&Permission::Ask));
         assert_eq!(snapshot.get("mp.kick"), Some(&Permission::Denied));
-        assert!(!permissions.allows(find("skin.reload").unwrap(), &guids(&["cuhub.bridge"])));
+        assert!(!permissions.allows(find("skin.reload").unwrap(), &guids(&["cuprum.bridge"])));
     }
 
     #[test]
     fn settings_round_trip_camel_case() {
         let settings = BridgeSettings {
-            permissions: entries("cuhub.bridge", "mp.host", Permission::Granted),
+            permissions: entries("cuprum.bridge", "mp.host", Permission::Granted),
         };
         let raw = serde_json::to_string(&settings).unwrap();
         assert!(raw.contains("\"permissions\""));

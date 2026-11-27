@@ -1,8 +1,8 @@
 //! Content library migration scan, confirmations and per-mod results.
 
-use cuhub_core::adopt::AdoptSkip;
-use cuhub_core::hub::{MigrationPreview, MigrationRow};
-use cuhub_core::sources::MatchKind;
+use cuprum_core::adopt::AdoptSkip;
+use cuprum_core::hub::{MigrationPreview, MigrationRow};
+use cuprum_core::sources::MatchKind;
 use nsh_core::prelude::*;
 
 use crate::app_state::{MigrationResult, ProfilesBusy, Ui};

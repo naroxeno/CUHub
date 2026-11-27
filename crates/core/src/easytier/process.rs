@@ -80,11 +80,17 @@ pub fn spawn(config: LaunchConfig, logs: Arc<Logs>) -> Result<EasyTierProcess, P
         return Err(ProcessError::MissingExecutable { path: core });
     }
     let rpc = PortRequest::EasyTierRPC.request();
+    let room_credentials: Vec<_> = arguments
+        .iter()
+        .filter_map(|argument| match argument {
+            Argument::NetworkName(value) | Argument::NetworkSecret(value) if !value.is_empty() => {
+                Some(value.to_string())
+            }
+            _ => None,
+        })
+        .collect();
     let arguments = command_arguments(arguments);
-    logs.activity(
-        AREA,
-        &format!("starting {} {:?} rpc={rpc}", core.display(), arguments),
-    );
+    logs.activity(AREA, &format!("starting {} rpc={rpc}", core.display()));
 
     let mut command = Command::new(&core);
     command
@@ -121,7 +127,7 @@ pub fn spawn(config: LaunchConfig, logs: Arc<Logs>) -> Result<EasyTierProcess, P
     let child = Arc::new(Mutex::new(child));
     let watched = Arc::clone(&child);
     let monitor_logs = Arc::clone(&logs);
-    thread::spawn(move || monitor(watched, receiver, monitor_logs));
+    thread::spawn(move || monitor(watched, receiver, monitor_logs, room_credentials));
 
     Ok(EasyTierProcess {
         child,
@@ -221,7 +227,12 @@ fn read_lines<R: BufRead>(reader: R, sender: mpsc::Sender<String>) {
     }
 }
 
-fn monitor(child: Arc<Mutex<Child>>, receiver: mpsc::Receiver<String>, logs: Arc<Logs>) {
+fn monitor(
+    child: Arc<Mutex<Child>>,
+    receiver: mpsc::Receiver<String>,
+    logs: Arc<Logs>,
+    room_credentials: Vec<String>,
+) {
     let mut buffer: [Option<String>; EXIT_LINES] = std::array::from_fn(|_| None);
     let mut index = 0;
     let mut closed = false;
@@ -271,6 +282,9 @@ fn monitor(child: Arc<Mutex<Child>>, receiver: mpsc::Receiver<String>, logs: Arc
         }
     }
     summary.push_str("\n############################################################");
+    for value in room_credentials {
+        summary = summary.replace(&value, "[redacted]");
+    }
     logs.activity(AREA, &summary);
 }
 

@@ -1,12 +1,12 @@
 # CU Bridge 实施方案
 
-这一段解决的是「EasyTier 把双方放进同一虚拟网段之后」的事：谁在游戏里开房间、客人连哪个 IP、状态怎么回到 Cuhub。线协议见 [protocol.md](protocol.md)，C# 侧 API 研究见 [csharp-plugin.md](csharp-plugin.md)，Rust 侧现状见 [core/bridge/overview.md](../core/bridge/overview.md)。
+这一段解决的是「EasyTier 把双方放进同一虚拟网段之后」的事：谁在游戏里开房间、客人连哪个 IP、状态怎么回到 Cuprum。线协议见 [protocol.md](protocol.md)，C# 侧 API 研究见 [csharp-plugin.md](csharp-plugin.md)，Rust 侧现状见 [core/bridge/overview.md](../core/bridge/overview.md)。
 
 > 变更（2026-11-20）：下文关于 rendezvous 发现文件与临时端口的方案已被固定端口 `127.0.0.1:41297` + 两端共享 token 取代，以实现与 [protocol.md](protocol.md) 为准；这里保留原始决策记录。
 
 ## 0. 结论
 
-- EasyTier 只保证房主在 `10.144.144.1` 可达；开房/入房由游戏本体负责，Cuhub 不代劳。
+- EasyTier 只保证房主在 `10.144.144.1` 可达；开房/入房由游戏本体负责，Cuprum 不代劳。
 - 控制游戏分两条路：运行时桥 → 手动填 IP。游戏经 Steam `steam://rungameid` 启动，没有传参通道，启动参数路线不存在。
 - 桥不重写反射。CUCoreLib 的 `MultiplayerApi` 是游戏侧唯一稳定入口；CT 自身没有给第三方 mod 的网络 API。
 - 本机 IPC 继续 TCP loopback + rendezvous 文件。命名管道在 Proton 下原生 Rust 进程连不进去。
@@ -20,17 +20,17 @@
 
 A 的形态：`mp.host` / `mp.join` 到达插件后，调 CUCoreLib `TryConfigureLocalIdentity(name, address)` + `TryStartLocalQuickTestHost/Client(address)`，全程主线程。
 
-B 的形态：Cuhub 把 `10.144.144.1:7790` 显示出来，供玩家复制。
+B 的形态：Cuprum 把 `10.144.144.1:7790` 显示出来，供玩家复制。
 
 ## 2. C# 侧布局
 
 ```
-<game>/BepInEx/plugins/CuhubBridge/
-  CuhubBridge.Plugin.dll      # 唯一 BepInPlugin 入口：探针与加载器
-  CuhubBridge.Core.dll        # 协议常量、帧、rendezvous、TCP 客户端、命令契约
+<game>/BepInEx/plugins/CuprumBridge/
+  CuprumBridge.Plugin.dll      # 唯一 BepInPlugin 入口：探针与加载器
+  CuprumBridge.Core.dll        # 协议常量、帧、rendezvous、TCP 客户端、命令契约
 ```
 
-- 整体是一个目录型模组，Cuhub 的 mod 列表里只出现一条；启停、删除、更新按目录走。MVP 先给两个 DLL；MpBackend / Transport 的拆分等命令面变大再做。
+- 整体是一个目录型模组，Cuprum 的 mod 列表里只出现一条；启停、删除、更新按目录走。MVP 先给两个 DLL；MpBackend / Transport 的拆分等命令面变大再做。
 - 只有 Plugin 带 `[BepInPlugin]`，其余 DLL 由 Plugin 在启动时加载。BepInEx 会递归扫描并尝试把每个 DLL 当插件，找不到 `BaseUnityPlugin` 自动跳过，无害；但别给它们也标 `[BepInPlugin]`。
 - 主 DLL 只做：读 rendezvous、连宿主、心跳、按方法名转给 Transport/Mp、把结果回填。业务不在这里。
 - CUCoreLib 是软依赖 + 全反射，不项目引用 `CUCoreLib.dll`（缺库时直接引用会 `TypeLoadException` 拖垮整个插件）。反射结果缓存，每命令几次调用，开销可忽略。
@@ -73,11 +73,11 @@ B 的形态：Cuhub 把 `10.144.144.1:7790` 显示出来，供玩家复制。
 
 桥是内置目录型模组：扫描、启停、删除仍交给 `mods` 模块，安装走 `install` 的 staging → plan → 备份 → apply 链路，不另做链接与版本层：
 
-- 安装：Cuhub 把内置的 `CuhubBridge/` 目录放进 `Plugins/CuhubBridge`，入口是 Local Mods 卡片底部的独立安装区块（优先用应用旁的 `CuhubBridge.zip`，没有则选本地 zip）；只接受 `CuhubBridge.Plugin.dll` 与 `CuhubBridge.Core.dll` 并校验 GUID，目标被 Links 托管时拒绝。
+- 安装：Cuprum 把内置的 `CuprumBridge/` 目录放进 `Plugins/CuprumBridge`，入口是 Local Mods 卡片底部的独立安装区块（优先用应用旁的 `CuprumBridge.zip`，没有则选本地 zip）；只接受 `CuprumBridge.Plugin.dll` 与 `CuprumBridge.Core.dll` 并校验 GUID，目标被 Links 托管时拒绝。
 - 识别：普通目录型模组，mods 列表里显示一条；启用、禁用、删除走现有 `set_mod_enabled` / `delete_mod`。
 - 纯原版：在 mods 里禁用该条目（或整表禁用），联机功能随之不可用，界面说明原因。
-- 更新：不做版本比较与差异，随 Cuhub 安装包整体替换。
-- 缺 CUCoreLib 时插件仍加载，`mp.*` 回 `unavailable` 并在状态里报「缺 CUCoreLib」。CUCoreLib 与 CT 是第三方模组，Cuhub 不代装，只提示去 Nexus。
+- 更新：不做版本比较与差异，随 Cuprum 安装包整体替换。
+- 缺 CUCoreLib 时插件仍加载，`mp.*` 回 `unavailable` 并在状态里报「缺 CUCoreLib」。CUCoreLib 与 CT 是第三方模组，Cuprum 不代装，只提示去 Nexus。
 - 卸载：删目录本身，限制仍是 Plugins 一级条目。
 
 ## 6. 玩家看到的流程

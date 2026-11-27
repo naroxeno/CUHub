@@ -1,12 +1,12 @@
-//! Bridge package rules: the fixed Plugins/CuhubBridge target and the two-DLL payload check. No writes.
+//! Bridge package rules: the fixed Plugins/CuprumBridge target and the two-DLL payload check. No writes.
 
 use std::path::{Path, PathBuf};
 
 use crate::install::PackagePayload;
 
-pub const BRIDGE_DIR: &str = "CuhubBridge";
-pub const PLUGIN_FILE: &str = "CuhubBridge.Plugin.dll";
-pub const CORE_FILE: &str = "CuhubBridge.Core.dll";
+pub const BRIDGE_DIR: &str = "CuprumBridge";
+pub const PLUGIN_FILE: &str = "CuprumBridge.Plugin.dll";
+pub const CORE_FILE: &str = "CuprumBridge.Core.dll";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BridgePayload {
@@ -107,7 +107,7 @@ mod tests {
     #[test]
     fn target_is_fixed_under_plugins() {
         let target = target_dir(Path::new("/game/BepInEx/plugins"));
-        assert_eq!(target, PathBuf::from("/game/BepInEx/plugins/CuhubBridge"));
+        assert_eq!(target, PathBuf::from("/game/BepInEx/plugins/CuprumBridge"));
     }
 
     #[test]
@@ -123,8 +123,8 @@ mod tests {
     #[test]
     fn rejects_the_bridge_pair_with_the_wrong_case() {
         let error = validate_payload(&payload(&[
-            "cuhubbridge.plugin.DLL",
-            "CuhubBridge.core.dll",
+            "cuprumbridge.plugin.DLL",
+            "CuprumBridge.core.dll",
         ]))
         .unwrap_err();
         assert!(error.contains("unexpected file"), "{error}");
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn rejects_a_nested_dll() {
         let error =
-            validate_payload(&payload(&["CuhubBridge/CuhubBridge.Plugin.dll"])).unwrap_err();
+            validate_payload(&payload(&["CuprumBridge/CuprumBridge.Plugin.dll"])).unwrap_err();
         assert!(error.contains("nests"), "{error}");
     }
 
@@ -164,7 +164,7 @@ mod tests {
     #[test]
     fn installed_plugin_finds_the_enabled_dll() {
         let root = std::env::temp_dir().join(format!(
-            "cuhub-bridge-target-{}-{}",
+            "cuprum-bridge-target-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -198,7 +198,7 @@ mod tests {
     #[test]
     fn payload_plans_both_dlls_inside_the_bridge_target() {
         let root = std::env::temp_dir().join(format!(
-            "cuhub-bridge-plan-{}-{}",
+            "cuprum-bridge-plan-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -206,13 +206,13 @@ mod tests {
                 .unwrap_or_default()
         ));
         let staging = root.join("staging");
-        std::fs::create_dir_all(staging.join("CuhubBridge")).unwrap();
+        std::fs::create_dir_all(staging.join("CuprumBridge")).unwrap();
         let mut files = Vec::new();
         for name in [PLUGIN_FILE, CORE_FILE] {
-            let path = staging.join("CuhubBridge").join(name);
+            let path = staging.join("CuprumBridge").join(name);
             std::fs::write(&path, b"test").unwrap();
             files.push(crate::install::StagedFile {
-                relative: PathBuf::from("CuhubBridge").join(name),
+                relative: PathBuf::from("CuprumBridge").join(name),
                 path,
                 size: 4,
             });
@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn planned_files_apply_into_the_target_with_a_backup() {
         let root = std::env::temp_dir().join(format!(
-            "cuhub-bridge-apply-{}-{}",
+            "cuprum-bridge-apply-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -253,16 +253,16 @@ mod tests {
                 .unwrap_or_default()
         ));
         let staging = root.join("staging");
-        std::fs::create_dir_all(staging.join("CuhubBridge")).unwrap();
+        std::fs::create_dir_all(staging.join("CuprumBridge")).unwrap();
         let mut files = Vec::new();
         for (name, body) in [
             (PLUGIN_FILE, b"new-plugin".as_slice()),
             (CORE_FILE, b"new-core"),
         ] {
-            let path = staging.join("CuhubBridge").join(name);
+            let path = staging.join("CuprumBridge").join(name);
             std::fs::write(&path, body).unwrap();
             files.push(crate::install::StagedFile {
-                relative: PathBuf::from("CuhubBridge").join(name),
+                relative: PathBuf::from("CuprumBridge").join(name),
                 path,
                 size: body.len() as u64,
             });
@@ -300,7 +300,7 @@ mod tests {
         use std::io::Write;
 
         let root = std::env::temp_dir().join(format!(
-            "cuhub-bridge-zip-{}-{}",
+            "cuprum-bridge-zip-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -308,12 +308,12 @@ mod tests {
                 .unwrap_or_default()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let archive = root.join("CuhubBridge.zip");
+        let archive = root.join("CuprumBridge.zip");
         let mut writer = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
         for name in [PLUGIN_FILE, CORE_FILE] {
             writer
                 .start_file(
-                    format!("CuhubBridge/{name}"),
+                    format!("CuprumBridge/{name}"),
                     zip::write::SimpleFileOptions::default(),
                 )
                 .unwrap();

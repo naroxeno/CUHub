@@ -1,10 +1,10 @@
 # W4 回归：技术事实与端口检测机制
 
-2026-11-21。本文件是 W4「游戏房间端口自动检测」的调研底稿，只写**已核实的事实**与**机制结论**，不写实现计划、不写代码改动。范围限定在两件事：游戏内联机端口（Together / QuickTest）到底在哪、以及 Cuhub 怎么在不改 Together、不读 `/proc` 的前提下把它读出来。
+2026-11-21。本文件是 W4「游戏房间端口自动检测」的调研底稿，只写**已核实的事实**与**机制结论**，不写实现计划、不写代码改动。范围限定在两件事：游戏内联机端口（Together / QuickTest）到底在哪、以及 Cuprum 怎么在不改 Together、不读 `/proc` 的前提下把它读出来。
 
 证据只有两类，所有结论都带其中一种：
 
-- **源码**：`ref/casualties-together`（与安装版 Together 5.5.4 同源，UI 文案与日志实测一致）、`ref/CUCoreLib`（1.1）、本仓库 `mods/cuhub-bridge`、`crates/`。
+- **源码**：`ref/casualties-together`（与安装版 Together 5.5.4 同源，UI 文案与日志实测一致）、`ref/CUCoreLib`（1.1）、本仓库 `mods/cuprum-bridge`、`crates/`。
 - **真机**：本机 Steam AppID 4576490（Windows 版，DW-Proton），BepInEx 5.4.23.6（Unity 2022.3.62），日志 `<game>/BepInEx/LogOutput.log`。命令见 §1.8。
 
 ---
@@ -88,21 +88,21 @@ CUCoreLib 侧的两个 QuickTest 入口只是薄封装：
 - 身份写入同一份静态字段：`TryConfigureLocalIdentity` 写 `UIMainMenu.USERINPUT_NAME` / `USERINPUT_IPPORT`（`MultiplayerBridge.cs:176-192`，`SetStaticString` `:1131-1148`）。所以 `mp.host` 的 `address` 参数确实会成为 `TransportLiteNetLib.port` 的来源。
 - `MultiplayerBridge.Initialize` 只有在 `TryResolveRuntime()` 成功时才 `IsAvailable = true`（`:228-233`），否则 `ScheduleRetry()`。
 
-### 1.6 桥侧现状（CuhubBridge 独立 assembly）
+### 1.6 桥侧现状（CuprumBridge 独立 assembly）
 
-- 已存在的通用反射解析器：`mods/cuhub-bridge/CuhubBridge.Plugin/MpBackend.cs:83-102` `FindType`，先遍历 `AppDomain.CurrentDomain.GetAssemblies()` 调 `assembly.GetType(fullName, false)`，再对 `AssemblyNames`（当前只有 `CUCoreLib`、`net.cucorelib`，`:14`）逐个 `Assembly.Load(name).GetType(...)`，逐个 try/catch。找不到返回 null，不抛。
+- 已存在的通用反射解析器：`mods/cuprum-bridge/CuprumBridge.Plugin/MpBackend.cs:83-102` `FindType`，先遍历 `AppDomain.CurrentDomain.GetAssemblies()` 调 `assembly.GetType(fullName, false)`，再对 `AssemblyNames`（当前只有 `CUCoreLib`、`net.cucorelib`，`:14`）逐个 `Assembly.Load(name).GetType(...)`，逐个 try/catch。找不到返回 null，不抛。
 - `Type ApiType() => _apiType ?? (_apiType = FindType(ApiTypeName));`（`:79`、`:81`）：`_apiType` 为 null 时每次都会重试查找，所以晚加载的程序集也能被后续命令看到（缓存只缓存成功结果）。
 - `MpBackend.State()`（`:22-43`）组装的 JSON 字段：`available`、`running`、`client`、`server`、`host`（`:15` 的 `StateProperties` 去掉 `Is` 前缀并小写）、`bridge_receivers_installed`、`krokmp_version`。**没有 port**。
 - `MpBackend.Start()`（`:45-77`）把 QuickTest 的所有失败都映射成 `Unavailable` + 固定文案（`:64-65` `"MultiplayerBridge." + startName + " returned false"`）。
-- 错误码集合：`CuhubBridge.Core/Contract.cs:48-56` —— `unknown_command` / `denied` / `invalid_params` / `busy` / `unavailable` / `timeout`。
-- 插件 GUID `dev.cuhub.bridge`（`BridgePlugin.cs:9`）；工程 `netstandard2.1`，只引用 BepInEx / UnityEngine / Newtonsoft（`CuhubBridge.Plugin.csproj`），**不引用 CasualtiesMP 或 CUCoreLib**，因此 Together 只能反射。
+- 错误码集合：`CuprumBridge.Core/Contract.cs:48-56` —— `unknown_command` / `denied` / `invalid_params` / `busy` / `unavailable` / `timeout`。
+- 插件 GUID `dev.cuprum.bridge`（`BridgePlugin.cs:9`）；工程 `netstandard2.1`，只引用 BepInEx / UnityEngine / Newtonsoft（`CuprumBridge.Plugin.csproj`），**不引用 CasualtiesMP 或 CUCoreLib**，因此 Together 只能反射。
 - 桥已把游戏 pid 报给宿主：`BridgeSession.cs:279` `["pid"] = CurrentPid()`（`:287-297`）。
 
-### 1.7 Cuhub 侧现状（端口在两个地方各自为政）
+### 1.7 Cuprum 侧现状（端口在两个地方各自为政）
 
 - `crates/core/src/bridge/mp.rs:6-15`：`MpState { available, running, client, server, host, krokmp_version }`，serde 默认字段名与 JSON 一致，**无 port**。未知字段被忽略（`from_value` 无 `deny_unknown_fields`，`:18-20`），所以 C# 侧加字段是向后兼容的。
 - 轮询：`crates/app/src/ui/bridge.rs:11` `POLL_MILLIS = 2_000`，循环里锁 Hub 调 `bridge_snapshot()`（`:20-52`）；`crates/core/src/hub/bridge_host.rs:96-134` 里只有 `status.running && status.session.is_some()` 才 `poll_mp_state()`（`:116-120`），后者是 `server.invoke_silent("mp.state", json!({}))`（`:130-134`）。请求超时 2 秒（`crates/core/src/bridge/server.rs:37` `request_timeout: Duration::from_secs(2)`）。
-- **另一套端口**：Multiplayer 页有自己的端口输入，默认 `"25565"`（`crates/app/src/ui/multiplayer.rs:91`），它是 EasyTier 的转发/白名单端口，经 `hub.start_host(port)`（`crates/core/src/hub.rs:757`）/ `join_room(input, port)`（`:778`）→ `TunnelConfig { port }`（`crates/core/src/easytier/tunnel.rs:30-37`）进入隧道。游戏里真正监听的端口（默认 7790）Cuhub **完全不知道**。
+- **另一套端口**：Multiplayer 页有自己的端口输入，默认 `"25565"`（`crates/app/src/ui/multiplayer.rs:91`），它是 EasyTier 的转发/白名单端口，经 `hub.start_host(port)`（`crates/core/src/hub.rs:757`）/ `join_room(input, port)`（`:778`）→ `TunnelConfig { port }`（`crates/core/src/easytier/tunnel.rs:30-37`）进入隧道。游戏里真正监听的端口（默认 7790）Cuprum **完全不知道**。
 - 端口在进程参数里烧死：host 侧 `Argument::TcpWhitelist(port)` / `UdpWhitelist(port)`（`tunnel.rs:76-77`），guest 侧 `Argument::PortForward`（`:88-96`）；主机名也由端口派生 `host_hostname(port) = HOST_PREFIX + port`（`crates/core/src/room.rs:151-153`），guest 靠这个名字发现房主（`room.rs:155-172`、`tunnel.rs:161-188`）。改端口 = 必须重启 EasyTier 进程；`Tunnel` 没有 set_port，唯二的重启是 guest 首次发现房主（`tunnel.rs:172-185`）和 Drop（`:211`）。
 
 ### 1.8 真机实测记录
@@ -122,7 +122,7 @@ CUCoreLib 侧的两个 QuickTest 入口只是薄封装：
 | ④ | 先 `python3` 绑 `0.0.0.0:25000`，输入改 `127.0.0.1:25000` 再启动主机 | 日志 `at LiteNetLib.LiteNetManager.BindSocket (...) , errorCode: AddressAlreadyInUse`，随后 `Status: LiteNetLib：服务器 NetManager.Start() 失败。`；UI「上一条状态消息」同文；游戏未占住 25000 |
 | ⑤ | QuickTest 单机自连 | **未验证**。需要 `multiplayerQuickTest` 开关（`CUCoreLib.cfg`）与两实例角色认领（`LaunchOverrideManager.cs:109-157`），属「改配置才能复现」的失败注入，没有做 |
 
-插件加载顺序（本次日志）：`Together 5.5.4`（第 16 行）→ `CuhubBridge 0.1.0`（43 行）→ `多模组汉化` → `CUCoreLib 1.1`（47 行）→ `QoL Unknown` → `Bark`。顺序由 BepInEx 排序决定，**不能当成保证**（见 §2.2）。
+插件加载顺序（本次日志）：`Together 5.5.4`（第 16 行）→ `CuprumBridge 0.1.0`（43 行）→ `多模组汉化` → `CUCoreLib 1.1`（47 行）→ `QoL Unknown` → `Bark`。顺序由 BepInEx 排序决定，**不能当成保证**（见 §2.2）。
 
 ---
 
@@ -130,19 +130,19 @@ CUCoreLib 侧的两个 QuickTest 入口只是薄封装：
 
 ### 2.1 结论
 
-**机制：CuhubBridge 在组装 `mp.state` 时，用反射从 `AppDomain` 里拿 `Together.Net.Transport`，再读实例上的 `port` 字段；读不到就回 `null`，永不抛异常。**
+**机制：CuprumBridge 在组装 `mp.state` 时，用反射从 `AppDomain` 里拿 `Together.Net.Transport`，再读实例上的 `port` 字段；读不到就回 `null`，永不抛异常。**
 
 成立的三条依据：
 
-1. **同进程**。BepInEx 5 把所有插件装进同一个 AppDomain（真机日志里 `Together` 与 `CuhubBridge` 并列在 `6 plugins to load` 下），两者共享静态类 `Together.Net`。桥已经用同一手法读 `CUCoreLib.Networking.MultiplayerApi`（`MpBackend.cs:83-102`），不是新机制。
+1. **同进程**。BepInEx 5 把所有插件装进同一个 AppDomain（真机日志里 `Together` 与 `CuprumBridge` 并列在 `6 plugins to load` 下），两者共享静态类 `Together.Net`。桥已经用同一手法读 `CUCoreLib.Networking.MultiplayerApi`（`MpBackend.cs:83-102`），不是新机制。
 2. **成员是公开的**。`Net.Transport` 的 getter 是 public（`Net.cs:221` `{ get; internal set; }`，`internal` 只限制 set），`TransportLiteNetLib.port` 是 `public readonly ushort`（`:951`）。readonly 只挡写，`FieldInfo.GetValue` 照读。
 3. **不依赖具体 transport 类型**。取 `transport.GetType()` 的具体类型再找 `port` 字段：LiteNetLib 有、Steamworks 没有（§1.2），所以 Steam 大厅天然回 `null`，不需要先判断角色。
 
 原方案（`pid` + `/proc` 或 `ss`）见 §2.8，已废弃。
 
-### 2.2 最小实现（CuhubBridge 侧，示意）
+### 2.2 最小实现（CuprumBridge 侧，示意）
 
-沿用现有 `FindType` 的形状；**不要**在插件加载时解析并缓存（Together 可能后于 CuhubBridge 加载，真机顺序只是「这次恰好如此」）。
+沿用现有 `FindType` 的形状；**不要**在插件加载时解析并缓存（Together 可能后于 CuprumBridge 加载，真机顺序只是「这次恰好如此」）。
 
     // 常量补上 "CasualtiesMP"，其余不动
     static readonly string[] TogetherAssemblies = { "CasualtiesMP" };
@@ -200,7 +200,7 @@ CUCoreLib 侧的两个 QuickTest 入口只是薄封装：
 
 ### 2.5 线格式与 Rust 侧改动建议（供后续实现任务引用）
 
-C# 侧：`state["port"] = ListeningPort();`（`ushort?` → JSON number 或 null）。因为 `MpState::from_value` 用 serde 默认（无 `deny_unknown_fields`），加字段不会打断老版本 Cuhub：
+C# 侧：`state["port"] = ListeningPort();`（`ushort?` → JSON number 或 null）。因为 `MpState::from_value` 用 serde 默认（无 `deny_unknown_fields`），加字段不会打断老版本 Cuprum：
 
 - Rust：把 `#[serde(default)] pub port: Option<u16>` 加到 `crates/core/src/bridge/mp.rs:7-15`，旧桥回包照常解析（缺字段 → `None`）。
 - 语义写死：**`port` 只在 `server == true` 时非空**；`client` 恒为 `null`。`mp.state` 的 `port` 是「本机游戏监听端口」，不是「隧道端口」（隧道端口仍由 `MultiplayerUi.port` 管，`crates/app/src/ui/multiplayer.rs:27`、`:91`）。
@@ -230,7 +230,7 @@ C# 侧：`state["port"] = ListeningPort();`（`ushort?` → JSON number 或 null
 链路（源码与实测可对）：
 
 1. 用户在游戏里「停止服务器」→ 改端口 → 「启动主机」：旧 transport `Shutdown`、`Transport = null`（`Net.cs:548-555`），新 transport 绑新端口（`:1023-1042`）。
-2. Cuhub 的 2 秒轮询（`crates/app/src/ui/bridge.rs:11`）下一拍拿快照，且必须满足 `status.running && status.session.is_some()`（`bridge_host.rs:116-120`），再等 `mp.state` 一次往返（超时上限 2 秒，`crates/core/src/bridge/server.rs:37`）。
+2. Cuprum 的 2 秒轮询（`crates/app/src/ui/bridge.rs:11`）下一拍拿快照，且必须满足 `status.running && status.session.is_some()`（`bridge_host.rs:116-120`），再等 `mp.state` 一次往返（超时上限 2 秒，`crates/core/src/bridge/server.rs:37`）。
 3. 所以**从端口真正变化到 UI 拿到新 port，最坏约 2 s（轮询间隔）+ 2 s（请求超时）≈ 4 s**；典型 2 s 出头。中间可能采到「停服中」的一拍（`running=false, port=null`），UI 必须容忍 port 有→无→有。
 4. **第 3 步之后没有任何自动动作**：`Tunnel.port` 在 `Tunnel::start` 时定死（`tunnel.rs:126-159`）；host 的 `--tcp/udp-whitelist`（`:76-77`）、guest 的 `--port-forward`（`:88-96`）、host 主机名 `host_hostname(port)`（`room.rs:151-153`）全是启动参数。
 
@@ -284,4 +284,4 @@ pid 只保留「桥会话识别」用途（`status.session.pid`，用于重启�
 
 ## 附：一句话摘要
 
-端口是 `Together.Net.Transport`（`Net.cs:221`）指向的 `TransportLiteNetLib.port`（`:951`），只在 server 角色下等于监听端口，由 `NetManager.Start(port)`（`:1042`）绑定全部接口；读它是同进程反射的一小段代码，失败原因由 `Together.Multiplayer.multiplayerStatusMessage`（`ScavMultiplayer.cs:436`）给出；Cuhub 侧 2 秒轮询只能「看到」，不会自动重建隧道，端口变化必须显式重启 EasyTier。
+端口是 `Together.Net.Transport`（`Net.cs:221`）指向的 `TransportLiteNetLib.port`（`:951`），只在 server 角色下等于监听端口，由 `NetManager.Start(port)`（`:1042`）绑定全部接口；读它是同进程反射的一小段代码，失败原因由 `Together.Multiplayer.multiplayerStatusMessage`（`ScavMultiplayer.cs:436`）给出；Cuprum 侧 2 秒轮询只能「看到」，不会自动重建隧道，端口变化必须显式重启 EasyTier。

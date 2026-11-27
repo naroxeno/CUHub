@@ -1,0 +1,16 @@
+<Project>
+
+  <PropertyGroup>
+    <CuprumGameDir Condition="'$(CuprumGameDir)' == '' and '$(CUPRUM_GAME_DIR)' != ''">$(CUPRUM_GAME_DIR)</CuprumGameDir>
+    <CuprumGameDir Condition="'$(CuprumGameDir)' == '' and '$(HOME)' != ''">$(HOME)/.steam/steam/steamapps/common/Casualties Unknown</CuprumGameDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PathMap>$(MSBuildThisFileDirectory)=/_/mods/cuprum-bridge/</PathMap>
+  </PropertyGroup>
+
+  <Target Name="RequireCuprumGameDir" BeforeTargets="ResolveAssemblyReferences" Condition="'$(CuprumGameDir)' == ''">
+    <Error Text="CuprumGameDir is empty. Set CUPRUM_GAME_DIR or pass -p:CuprumGameDir=&lt;game dir&gt;." />
+  </Target>
+
+</Project>

@@ -11,7 +11,7 @@ use crate::nexus_auth::{KeyStoreError, NexusKeyStore};
 
 const API_BASE: &str = "https://api.nexusmods.com/v1/games/scavprototype";
 const VALIDATE_URL: &str = "https://api.nexusmods.com/v1/users/validate.json";
-const APPLICATION_NAME: &str = "Cuhub";
+const APPLICATION_NAME: &str = "Cuprum";
 const APPLICATION_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MAX_RESPONSE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_DOWNLOAD_BYTES: u64 = 1024 * 1024 * 1024;

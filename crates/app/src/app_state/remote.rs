@@ -7,9 +7,9 @@ use super::install::{
 use super::rows::dll_stems;
 use super::rows::{NexusModRow, nexus_page_count, page_slice};
 use super::state::Ui;
-use cuhub_core::hub::{CheckOutcome, Hub, HubError};
-use cuhub_core::mods::InstalledMod;
-use cuhub_core::sources::{LocalMod, Repo, SourceEntry, SourceKind};
+use cuprum_core::hub::{CheckOutcome, Hub, HubError};
+use cuprum_core::mods::InstalledMod;
+use cuprum_core::sources::{LocalMod, Repo, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -382,6 +382,7 @@ impl Ui {
             ui.remote_busy.set(None);
             match result {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
+                    ui.clear_task_failure("task.issue_install");
                     let name = pending.mod_name.clone();
                     if accept_pending(&ui, *pending) {
                         ui.notice.set(t!("remote.ready", name = name));
@@ -394,8 +395,14 @@ impl Ui {
                     }));
                     ui.notice.set(t!("dependency.blocked"));
                 }
-                Ok(Err(error)) => ui.notice.set(t!("remote.failed", error = error)),
-                Err(error) => ui.notice.set(t!("remote.failed", error = error)),
+                Ok(Err(error)) => {
+                    ui.task_failed("task.issue_install", &error);
+                    ui.notice.set(t!("remote.failed", error = error));
+                }
+                Err(error) => {
+                    ui.task_failed_with("task.issue_install", "task.reason_failed");
+                    ui.notice.set(t!("remote.failed", error = error));
+                }
             }
         });
     }
@@ -433,6 +440,7 @@ impl Ui {
             ui.remote_busy.set(None);
             match result {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
+                    ui.clear_task_failure("task.issue_install");
                     let name = pending.mod_name.clone();
                     if accept_pending(&ui, *pending) {
                         ui.notice.set(t!("remote.ready", name = name));
@@ -445,8 +453,14 @@ impl Ui {
                     }));
                     ui.notice.set(t!("dependency.blocked"));
                 }
-                Ok(Err(error)) => ui.notice.set(t!("remote.failed", error = error)),
-                Err(error) => ui.notice.set(t!("remote.failed", error = error)),
+                Ok(Err(error)) => {
+                    ui.task_failed("task.issue_install", &error);
+                    ui.notice.set(t!("remote.failed", error = error));
+                }
+                Err(error) => {
+                    ui.task_failed_with("task.issue_install", "task.reason_failed");
+                    ui.notice.set(t!("remote.failed", error = error));
+                }
             }
         });
     }
@@ -493,6 +507,7 @@ impl Ui {
             ui.remote_busy.set(None);
             match result {
                 Ok(Ok(RemoteAttempt::Ready(pending))) => {
+                    ui.clear_task_failure("task.issue_install");
                     let name = pending.mod_name.clone();
                     let files = pending.plan.files.len();
                     if accept_pending(&ui, *pending) {
@@ -507,10 +522,15 @@ impl Ui {
                     }));
                     ui.notice.set(t!("dependency.blocked"));
                 }
-                Ok(Err(error)) => ui.notice.set(error.to_string()),
-                Err(error) => ui
-                    .notice
-                    .set(t!("notice.update_worker_stopped", error = error)),
+                Ok(Err(error)) => {
+                    ui.task_failed("task.issue_install", &error);
+                    ui.notice.set(error.to_string());
+                }
+                Err(error) => {
+                    ui.task_failed_with("task.issue_install", "task.reason_failed");
+                    ui.notice
+                        .set(t!("notice.update_worker_stopped", error = error));
+                }
             }
         });
     }
@@ -520,7 +540,7 @@ impl Ui {
 mod tests {
     use super::*;
     use crate::app_state::rows::build_nexus_rows;
-    use cuhub_core::{metadata::parse_mods, sources::SourceManifest};
+    use cuprum_core::{metadata::parse_mods, sources::SourceManifest};
 
     #[test]
     fn catalogue_links_explicit_ids_and_keeps_unlinked_names_separate() {

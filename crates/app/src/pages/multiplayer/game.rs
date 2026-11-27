@@ -1,14 +1,14 @@
 //! Game bridge controls and room handoff UI.
 
-use cuhub_core::multiplayer::RoomRole;
+use cuprum_core::multiplayer::RoomRole;
 
 use nsh_core::prelude::*;
 
 use crate::app_state::{
     GamePhase, HOST_ADDRESS, MpBusy, MultiplayerUi, Ui, bridge_color, bridge_text, detected_port,
-    game_address, game_phase, game_status_key,
+    game_address, game_status_key,
 };
-use crate::components::{button, pix, pix_c, scaled};
+use crate::components::{button, copy_button, pix, pix_c, scaled};
 use crate::palette::*;
 
 pub(super) fn bridge_bar(ui: &Ui) -> View {
@@ -52,6 +52,7 @@ fn bridge_control(ui: &Ui) -> View {
     let z = ui.zoom;
     let bridge = ui.bridge;
     let toggle_ui = ui.clone();
+    let mp = ui.mp;
     view()
         .flex_row()
         .items_center()
@@ -75,18 +76,28 @@ fn bridge_control(ui: &Ui) -> View {
             TEXT,
             &z,
         ))
-        .child(button(
-            &z,
-            move || {
-                if bridge.get().control {
-                    t!("multiplayer.bridge_control_disable")
-                } else {
-                    t!("multiplayer.bridge_control_enable")
-                }
-            },
-            !ui.mp.is_busy(),
-            move || toggle_ui.mp_toggle_bridge_control(),
-        ))
+        .child(
+            when(
+                move || !mp.is_busy(),
+                move || {
+                    let toggle = toggle_ui.clone();
+                    button(&z, bridge_control_label(bridge), true, move || {
+                        toggle.mp_toggle_bridge_control()
+                    })
+                },
+            )
+            .otherwise(move || button(&z, bridge_control_label(bridge), false, || {})),
+        )
+}
+
+fn bridge_control_label(bridge: Signal<cuprum_core::hub::BridgeSnapshot>) -> impl Fn() -> String {
+    move || {
+        if bridge.get().control {
+            t!("multiplayer.bridge_control_disable")
+        } else {
+            t!("multiplayer.bridge_control_enable")
+        }
+    }
 }
 
 pub(super) fn game_section(ui: &Ui) -> View {
@@ -96,6 +107,7 @@ pub(super) fn game_section(ui: &Ui) -> View {
     let address_ui = ui.clone();
     let actions_ui = ui.clone();
     let confirm_ui = ui.clone();
+    let issues = ui.clone();
     view()
         .flex_col()
         .gap(scaled(&z, 8.0))
@@ -108,19 +120,14 @@ pub(super) fn game_section(ui: &Ui) -> View {
             &z,
         ))
         .child(pix(
-            move || {
-                t!(game_status_key(
-                    game_phase(&bridge.get(), mp.role.get(), &mp.state.get()),
-                    mp.role.get()
-                ))
-            },
+            move || t!(game_status_key(mp.game_phase(&bridge.get()), mp.role.get())),
             11.0,
             TEXT,
             &z,
         ))
         .child(when(
             move || {
-                game_phase(&bridge.get(), mp.role.get(), &mp.state.get()) == GamePhase::Hosting
+                mp.game_phase(&bridge.get()) == GamePhase::Hosting
                     && detected_port(&bridge.get()).is_some()
             },
             move || {
@@ -168,7 +175,7 @@ pub(super) fn game_section(ui: &Ui) -> View {
         ))
         .child(when(
             move || !mp.game_error.get().is_empty(),
-            move || pix(move || mp.game_error.get(), 10.0, DANGER, &z),
+            move || super::issue_button(&issues, "multiplayer-game"),
         ))
         .child(when(
             move || mp.busy.get() == MpBusy::Game,
@@ -182,7 +189,7 @@ pub(super) fn game_section(ui: &Ui) -> View {
 
 fn room_game_address(
     mp: MultiplayerUi,
-    bridge: &cuhub_core::hub::BridgeSnapshot,
+    bridge: &cuprum_core::hub::BridgeSnapshot,
 ) -> Option<String> {
     let port = if mp.role.get() == RoomRole::Host {
         mp.host_room_port.get().map(|port| port.to_string())
@@ -199,7 +206,6 @@ fn game_address_row(ui: &Ui) -> View {
     let z = ui.zoom;
     let mp = ui.mp;
     let bridge = ui.bridge;
-    let copy_ui = ui.clone();
     view()
         .flex_row()
         .items_center()
@@ -216,18 +222,9 @@ fn game_address_row(ui: &Ui) -> View {
             ACCENT,
             &z,
         ))
-        .child(button(
-            &z,
-            move || t!("multiplayer.copy"),
-            true,
-            move || {
-                let address = room_game_address(copy_ui.mp, &copy_ui.bridge.get());
-                if let Some(address) = address {
-                    set_clipboard(address);
-                    copy_ui.notice.set(t!("multiplayer.game_copied"));
-                }
-            },
-        ))
+        .child(copy_button(&z, "multiplayer.copy", move || {
+            room_game_address(mp, &bridge.get())
+        }))
 }
 
 fn game_actions(ui: &Ui) -> View {
@@ -247,7 +244,8 @@ fn game_actions(ui: &Ui) -> View {
         .gap(scaled(&z, 8.0))
         .child(when(
             move || {
-                game_phase(&bridge.get(), mp.role.get(), &mp.state.get()) == GamePhase::Ready
+                mp.game_error.get().is_empty()
+                    && mp.game_phase(&bridge.get()) == GamePhase::Ready
                     && !mp.is_busy()
             },
             move || {
@@ -261,13 +259,17 @@ fn game_actions(ui: &Ui) -> View {
             },
         ))
         .child(when(
-            move || !mp.game_error.get().is_empty(),
+            move || {
+                !mp.game_error.get().is_empty()
+                    && mp.game_phase(&bridge.get()) == GamePhase::Ready
+                    && !mp.is_busy()
+            },
             move || {
                 let retry = retry_ui.clone();
                 button(
                     &z,
                     move || t!("multiplayer.game_retry"),
-                    !retry.mp.is_busy(),
+                    true,
                     move || retry.mp_retry_game_control(),
                 )
             },

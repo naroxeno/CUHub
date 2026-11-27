@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-namespace CuhubBridge
+namespace CuprumBridge
 {
     public sealed class BridgeClient
     {
@@ -47,8 +47,8 @@ namespace CuhubBridge
             if (_started) throw new InvalidOperationException("BridgeClient instances are single-use");
             _started = true;
             _running = true;
-            _readThread = new Thread(ReadLoop) { IsBackground = true, Name = "CuhubBridge.Read" };
-            _writeThread = new Thread(WriteLoop) { IsBackground = true, Name = "CuhubBridge.Write" };
+            _readThread = new Thread(ReadLoop) { IsBackground = true, Name = "CuprumBridge.Read" };
+            _writeThread = new Thread(WriteLoop) { IsBackground = true, Name = "CuprumBridge.Write" };
             _readThread.Start();
             _writeThread.Start();
         }
