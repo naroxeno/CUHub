@@ -19,6 +19,7 @@
 
 ## 导航模型
 
+- 模组搜索入口在远程模组与 Nexus 页面内，侧栏用于切页和启动游戏。
 - `NavKind::Page(fn(&Ui) -> AnyElement)` 进内容区；`NavKind::Action(fn(&Ui))` 只执行副作用（页脚启动）。
 - `group: Some("mods")` 的条目在宽模式归到 `GROUPS` 的组头下；`page` 存的是 id，不是索引，重排不影响页头。
 - `title(id)` 对组内条目返回「父 / 子」，其余返回自身 key；找不到时回退 settings。

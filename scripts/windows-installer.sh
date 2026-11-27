@@ -104,7 +104,7 @@ fi
 rm -rf "$dist/Output"
 if command -v iscc >/dev/null 2>&1; then
     iscc_cmd=iscc
-elif [ -x "$LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe" ]; then
+elif [ -n "${LOCALAPPDATA:-}" ] && [ -x "$LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe" ]; then
     iscc_cmd="$LOCALAPPDATA/Programs/Inno Setup 7/ISCC.exe"
 else
     echo "Inno Setup 7 is required to build Cuprum-setup.exe" >&2

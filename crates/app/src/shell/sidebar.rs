@@ -58,8 +58,6 @@ pub fn sidebar(ui: &Ui) -> impl IntoElement {
     let width = ui.clone();
     let wide = ui.clone();
     let narrow = ui.clone();
-    let wide_box = ui.clone();
-    let narrow_box = ui.clone();
     view()
         .element_ref(&area)
         .flex_col()
@@ -68,48 +66,12 @@ pub fn sidebar(ui: &Ui) -> impl IntoElement {
         .min_h(px(0.0))
         .overflow_hidden()
         .child(when(
-            move || !wide_box.nav_collapsed.get(),
-            move || search_box(wide_box.clone(), false),
-        ))
-        .child(when(
-            move || narrow_box.nav_collapsed.get(),
-            move || search_box(narrow_box.clone(), true),
-        ))
-        .child(when(
             move || !wide.nav_collapsed.get(),
             move || wide_rail(wide.clone()),
         ))
         .child(when(
             move || narrow.nav_collapsed.get(),
             move || narrow_rail(narrow.clone()),
-        ))
-}
-
-fn search_box(ui: Ui, narrow: bool) -> impl IntoElement {
-    let z = ui.zoom;
-    let press = ui.clone();
-    view()
-        .flex_row()
-        .items_center()
-        .justify_center()
-        .h(scaled(&z, 24.0))
-        .mx(scaled(&z, 5.0))
-        .my(scaled(&z, 6.0))
-        .gap(scaled(&z, 6.0))
-        .bg(theme_color(SURFACE_RAISED))
-        .border(scaled(&z, 1.0))
-        .border_color(theme_color(BORDER))
-        .transition()
-        .duration(STATE_MS)
-        .hover(|s| s.border_color(theme_color(ACCENT)))
-        .active(|s| s.bg(theme_color(BORDER_DIM)).translate_y(px(PRESS_SHIFT)))
-        .cursor(Cursor::Pointer)
-        .overflow_hidden()
-        .on_press(move || press.notice.set(t!("notice.search_soon")))
-        .child(pixel_icon(icon_masks::SEARCH, theme_color(TEXT_MUTED), &z))
-        .child(when(
-            move || !narrow,
-            move || pix(move || t!("nav.search"), 11.0, TEXT_MUTED, &z),
         ))
 }
 

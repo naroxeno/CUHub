@@ -29,7 +29,7 @@
 
 ### 从旧测试版升级
 
-首次启动新版前，关闭旧版和游戏。运行 `python3 scripts/migrate-app-data.py "<旧数据目录>"`，Windows 上把 `python3` 换成 `py -3`。传入包含 `Settings.json` 的目录。脚本会把数据移到同级的 `Cuprum`，并在旧位置保留目录链接，让原有模组路径继续有效。如果目标目录已存在，先手动移开再重试。
+首次启动新版前，关闭旧版和游戏。在源码目录运行 `python3 scripts/migrate-app-data.py "<旧数据目录>"`，Windows 上把 `python3` 换成 `py -3`。传入包含 `Settings.json` 的目录。脚本会把数据移到同级的 `Cuprum`，并在旧位置保留目录链接，让原有模组路径继续有效。如果目标目录已存在，先手动移开再重试。
 
 装过联机桥的用户，先把旧桥目录移出 BepInEx 的插件目录，再装新版桥。原来启用过游戏内自动开房和加入的用户需要重新打开该开关。联机双方升级后重新建房。
 
@@ -41,8 +41,11 @@
 git clone https://github.com/naroxeno/Cuprum.git
 cd Cuprum
 just dev
-just package
 ```
+
+Linux 发布包用 `just package-linux` 构建。Windows 的 ZIP 和安装器用 `just package-windows` 构建，此配方会补齐许可证和文档并重编译安装器。
+
+如果要把解压后的 Linux 包加入应用菜单，先安装 Python 3，再从源码目录运行 `bash scripts/register-linux-launcher.sh "<包含 Cuprum 的目录>"`。移动解压目录后重新执行这条命令。
 
 在 Linux 上运行 `just package-appimage`，AppImage 输出到 `dist/appimage/`。请把 `appimagetool` 加入 `PATH`，或用 `NSH_APPIMAGETOOL` 指定其路径。运行 AppImage 仍需要目标系统安装 GTK 4.14+。
 

@@ -29,7 +29,7 @@ For multiplayer, install **Casualties Together** and its dependencies, then open
 
 ### Upgrading an older test build
 
-Before launching the new build, close the old app and the game. With Python 3, run `python3 scripts/migrate-app-data.py "<old data folder>"` (`py -3` on Windows). Pass the folder containing `Settings.json`. The script moves the folder to a sibling named `Cuprum` and leaves a directory link so saved mod paths still work. An existing destination must be moved aside manually before retrying.
+Before launching the new build, close the old app and the game. From a source checkout, run `python3 scripts/migrate-app-data.py "<old data folder>"` (`py -3` on Windows). Pass the folder containing `Settings.json`. The script moves the folder to a sibling named `Cuprum` and leaves a directory link so saved mod paths still work. An existing destination must be moved aside manually before retrying.
 
 If you use the Bridge, move the old Bridge folder out of BepInEx's plugins directory before installing the new package. Turn automatic in-game hosting and joining back on if you used it before. Everyone in a multiplayer room should upgrade and use a newly created room.
 
@@ -41,8 +41,11 @@ Install stable Rust, [nsh](https://nsh.dev) 0.7.1, and `just`. On Linux, use Cla
 git clone https://github.com/naroxeno/Cuprum.git
 cd Cuprum
 just dev
-just package
 ```
+
+Use `just package-linux` for the Linux release archive and `just package-windows` for the Windows ZIP and setup executable. The Windows recipe adds the license and documentation and rebuilds the installer.
+
+To add an extracted Linux package to your application menu, run `bash scripts/register-linux-launcher.sh "<directory containing Cuprum>"` from a source checkout with Python 3 installed. Rerun it after moving the package.
 
 On Linux, `just package-appimage` writes the AppImage to `dist/appimage/`. Put `appimagetool` on `PATH` or set `NSH_APPIMAGETOOL` to its path. The AppImage uses the target system's GTK 4.14+.
 
