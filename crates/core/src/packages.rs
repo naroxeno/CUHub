@@ -3,10 +3,8 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Component, Path, PathBuf};
-
-use sha2::{Digest, Sha256};
 
 use crate::install::{FileAction, Layout, PackageFile, PlannedFile, UpgradePlan};
 use crate::links::{LinkError, LinkIndex};
@@ -14,7 +12,7 @@ use crate::profiles::{
     ApplyOp, ApplyReport, Profile, ProfileEntry, ProfileError, ProfileStore, apply_plan,
     check_deployment_targets, deployment_target, plan_apply,
 };
-use crate::store::{Store, StoreEntry, StoreError, StoredMod, scan_source_paths};
+use crate::store::{Store, StoreEntry, StoreError, StoredMod, hash_file, verify_payload};
 
 mod backup;
 
@@ -30,6 +28,7 @@ pub struct PackagePlan {
     pub files: Vec<PackageFile>,
     pub single: bool,
     pub warnings: Vec<String>,
+    pub dependencies: Vec<String>,
 }
 
 impl PackagePlan {
@@ -212,7 +211,9 @@ pub(crate) fn apply_to_profile(
         version: plan.version.clone(),
         enabled: true,
         source: profile_source.map(str::to_owned),
+        dependencies: plan.dependencies.clone(),
         link: None,
+        ..ProfileEntry::default()
     });
     let mut ops = plan_apply(
         &profile,
@@ -341,7 +342,7 @@ fn after_backup(
     }
 }
 
-fn import_package(plan: &PackagePlan, store: &Store) -> Result<StoredMod, PackageError> {
+pub(crate) fn import_package(plan: &PackagePlan, store: &Store) -> Result<StoredMod, PackageError> {
     let temporary = plan.staging.join("package-payload");
     if temporary.symlink_metadata().is_ok() {
         fs::remove_dir_all(&temporary).map_err(|source| PackageError::Io {
@@ -375,7 +376,7 @@ fn import_package(plan: &PackagePlan, store: &Store) -> Result<StoredMod, Packag
                     version: plan.version.clone(),
                 });
             }
-            verify_stored_payload(&path, &entry)?;
+            verify_payload(&path, &entry).map_err(PackageError::StoreChanged)?;
             Ok(StoredMod {
                 mod_id: plan.mod_id.clone(),
                 version: plan.version.clone(),
@@ -387,21 +388,6 @@ fn import_package(plan: &PackagePlan, store: &Store) -> Result<StoredMod, Packag
     }
 }
 
-fn verify_stored_payload(root: &Path, entry: &StoreEntry) -> Result<(), PackageError> {
-    let actual =
-        scan_source_paths(root).map_err(|_| PackageError::StoreChanged(root.to_path_buf()))?;
-    if actual.len() != entry.files.len() {
-        return Err(PackageError::StoreChanged(root.to_path_buf()));
-    }
-    for file in &entry.files {
-        let path = root.join(&file.path);
-        if actual.binary_search(&file.path).is_err() || hash_file(&path)? != file.sha256 {
-            return Err(PackageError::StoreChanged(path));
-        }
-    }
-    Ok(())
-}
-
 fn same_payload(plan: &PackagePlan, entry: &StoreEntry) -> Result<bool, PackageError> {
     if plan.files.len() != entry.files.len() {
         return Ok(false);
@@ -409,7 +395,11 @@ fn same_payload(plan: &PackagePlan, entry: &StoreEntry) -> Result<bool, PackageE
     let mut expected = BTreeMap::new();
     for file in &plan.files {
         let path = file.relative.to_string_lossy().replace('\\', "/");
-        expected.insert(path, (file.size, hash_file(&file.staged)?));
+        let hash = hash_file(&file.staged).map_err(|source| PackageError::Io {
+            path: file.staged.clone(),
+            source,
+        })?;
+        expected.insert(path, (file.size, hash));
     }
     for stored in &entry.files {
         let Some((size, hash)) = expected.remove(&stored.path) else {
@@ -420,26 +410,6 @@ fn same_payload(plan: &PackagePlan, entry: &StoreEntry) -> Result<bool, PackageE
         }
     }
     Ok(expected.is_empty())
-}
-
-fn hash_file(path: &Path) -> Result<String, PackageError> {
-    let mut input = fs::File::open(path).map_err(|source| PackageError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let mut hasher = Sha256::new();
-    let mut chunk = vec![0u8; 64 * 1024];
-    loop {
-        let read = input.read(&mut chunk).map_err(|source| PackageError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&chunk[..read]);
-    }
-    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn copy_payload(plan: &PackagePlan, root: &Path) -> Result<(), PackageError> {
@@ -482,6 +452,7 @@ pub(crate) fn active_or_default(
             enabled: true,
             source: None,
             link: Some(entry.kind),
+            ..ProfileEntry::default()
         });
     }
     Ok(profile)

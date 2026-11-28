@@ -267,6 +267,7 @@ impl Hub {
             mod_id: item.mod_id.clone(),
             version: item.version.clone(),
             source: LOCAL_SOURCE.into(),
+            dependencies: Vec::new(),
             target: item.target.clone(),
             previous: Some(item.source.clone()),
             managed_previous: None,

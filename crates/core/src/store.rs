@@ -459,6 +459,39 @@ fn write_entry(version_dir: &Path, entry: &StoreEntry) -> Result<(), StoreError>
         .map_err(|error| io_error(&path, error))
 }
 
+pub(crate) fn verify_payload(root: &Path, entry: &StoreEntry) -> Result<(), PathBuf> {
+    let mut actual = scan_source_paths(root)
+        .map_err(|_| root.to_path_buf())?
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>();
+    for file in &entry.files {
+        if !actual.remove(&file.path) {
+            return Err(root.to_path_buf());
+        }
+        let path = root.join(&file.path);
+        if hash_file(&path).as_ref().ok() != Some(&file.sha256) {
+            return Err(path);
+        }
+    }
+    if let Some(extra) = actual.first() {
+        return Err(root.join(extra));
+    }
+    Ok(())
+}
+
+pub(crate) fn hash_file(path: &Path) -> io::Result<String> {
+    let input = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let count = io::copy(&mut input.take(MAX_FILE_BYTES + 1), &mut hasher)?;
+    if count > MAX_FILE_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "file exceeds the Store size limit",
+        ));
+    }
+    Ok(hex_digest(hasher.finalize().as_ref()))
+}
+
 fn hex_digest(digest: &[u8]) -> String {
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }

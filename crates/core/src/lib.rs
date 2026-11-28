@@ -30,6 +30,7 @@ pub mod source_choice;
 pub mod sources;
 pub mod steam;
 pub mod store;
+pub mod thunderstore;
 pub mod version;
 
 #[cfg(test)]

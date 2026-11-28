@@ -33,6 +33,25 @@ impl Network {
     }
 
     pub fn with_user_agent(user_agent: &str) -> Result<Self, NetworkError> {
+        Self::with_redirect(user_agent, redirect_policy())
+    }
+
+    pub(crate) fn thunderstore() -> Result<Self, NetworkError> {
+        Self::with_redirect(
+            concat!("Cuprum/", env!("CARGO_PKG_VERSION")),
+            Policy::custom(|attempt| {
+                if attempt.previous().len() >= MAX_REDIRECTS {
+                    return attempt.error("too many redirects");
+                }
+                if !crate::thunderstore::allowed_url(attempt.url()) {
+                    return attempt.error("redirect left Thunderstore");
+                }
+                attempt.follow()
+            }),
+        )
+    }
+
+    fn with_redirect(user_agent: &str, policy: Policy) -> Result<Self, NetworkError> {
         let build = |redirect| {
             Client::builder()
                 .user_agent(user_agent)
@@ -44,7 +63,7 @@ impl Network {
                 .map_err(|error| NetworkError::Request(Box::new(error)))
         };
         Ok(Self {
-            client: build(redirect_policy())?,
+            client: build(policy)?,
             covers: build(Policy::none())?,
         })
     }
@@ -249,6 +268,31 @@ pub enum NetworkError {
     DestinationExists(PathBuf),
     Io { path: PathBuf, source: io::Error },
     Read { url: String, source: io::Error },
+}
+
+impl NetworkError {
+    pub(crate) fn without_url_parameters(self) -> Self {
+        let endpoint = |url: String| url.split(['?', '#']).next().unwrap_or_default().to_owned();
+        match self {
+            Self::InvalidUrl(url) => Self::InvalidUrl(endpoint(url)),
+            Self::InsecureUrl(url) => Self::InsecureUrl(endpoint(url)),
+            Self::UrlHasCredentials(_) => Self::UrlHasCredentials("[redacted]".into()),
+            Self::Request(error) => Self::Request(Box::new(error.without_url())),
+            Self::HttpStatus { url, status } => Self::HttpStatus {
+                url: endpoint(url),
+                status,
+            },
+            Self::TooLarge { url, limit } => Self::TooLarge {
+                url: endpoint(url),
+                limit,
+            },
+            Self::Read { url, source } => Self::Read {
+                url: endpoint(url),
+                source,
+            },
+            other => other,
+        }
+    }
 }
 
 impl std::fmt::Display for NetworkError {

@@ -53,7 +53,7 @@ Linux 发布包用 `just package-linux` 构建。Windows 的 ZIP 和安装器用
 
 ## 项目
 
-[功能清单](docs/FEATURES.md) · [架构](docs/ARCHITECTURE.md) · [路线图](docs/ROADMAP.md) · [测试计划](docs/TEST-PLAN.md)
+[功能清单](docs/FEATURES.md) · [路线图](docs/ROADMAP.md) · [测试计划](docs/TEST-PLAN.md)
 
 [AGPL-3.0-or-later](LICENSE) · [第三方许可](docs/third-party/)
 

@@ -15,6 +15,7 @@
 - 部署单元看 Store 的 manifest：恰好一个单段 `.dll` → 文件单元（`Plugins/<文件名>`），否则目录单元（`Plugins/<mod_id>`）。source 在 apply 时从 Store 重算，`ApplyOp` 只带目标。
 - `plan_apply` 只处理 `Links.json` 里位于 Plugins 下一层的条目；BepInEx/config 等部署不受 profile 切换影响。
 - 托管模组单项启停只生成该条目的部署或移除操作。仍检查目标路径、归属、启用条目的目标冲突和同 ID 冲突。其余模组的部署内容由档案切换校验。界面只重读目标模组的 DLL，并从已加载的条目重算依赖和兼容提示。
+- 写盘前校验即将部署的 Store 载荷，核对完整文件清单与哈希。
 - 目标路径统一由 `deployment_target` 计算（单 DLL 用文件名，否则 `Plugins/<mod_id>`）；`plan_apply`、Hub 的托管判定与禁用条目补全共用它，避免规则漂移。
 - `checkpoint` 供 Hub 迁移收尾调用：以当前激活档案为底，同 mod id 的条目被迁移结果替换，再补齐 `Links.json` 里尚未覆盖的条目，生成 active 档案；名称由 Hub 给（`adopt_%Y%m%d-%H%M%S`，重名加 `-序号`）。
 - `rename` 先按新名保存再删旧文件：激活档案改名时 `active.txt` 已由 `save` 指向新名，删旧文件不会清空激活；目标重名返回 `AlreadyExists`，旧档案原样保留。
@@ -26,3 +27,5 @@
 ## 边界
 
 configOverrides 只持久化不执行；`ProfileEntry::link`/`source` 是元数据，链接种类仍由 `LinkIndex::deploy` 决定。`source` 用 `github:owner/repo` 或 `nexus:<id>` 记录来源，Hub 只按 `github:` 解析身份；`link` 记录部署时的链接种类，供展示与后续阶段使用。
+
+Thunderstore 安装记录清单声明的精确依赖和安装原因。旧档案缺省视为显式安装。档案页从显式条目遍历已记录的依赖，包括禁用的显式条目；未被引用的自动条目显示为孤立提示，由玩家决定是否保留。

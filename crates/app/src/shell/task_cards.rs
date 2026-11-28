@@ -289,6 +289,11 @@ fn press_action(ui: &Ui, action: TaskAction) {
         TaskAction::Discard => ui.discard_pending(),
         TaskAction::InstallDependencies => ui.install_dependencies(),
         TaskAction::DismissDependencies => ui.dismiss_dependency_prompt(),
+        TaskAction::ApplyThunderstoreDependencies { confirm_local } => ui.apply_thunderstore_dependencies(confirm_local),
+        TaskAction::DismissThunderstoreDependencies => {
+            ui.thunderstore_dependency_plan.set(None);
+            ui.task_focus.set(None);
+        }
         TaskAction::ApplyBepInEx => ui.apply_bepinex(),
         TaskAction::CancelBepInEx => ui.cancel_bepinex(),
         TaskAction::UpdateSelected => ui.start_batch(BatchMode::Selected),

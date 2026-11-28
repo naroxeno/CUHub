@@ -432,6 +432,9 @@ V 的清单只定义文件与校验，界面里没有入口，用户看不到清
 - **Y6 (P0)** 更新：已装行复用 `prepare_update`，来源固定为该行的 GitHub 仓库与 asset（精确名缺失时仅回退到唯一同形的版本号资产，同形多资产报错），不再按 Nexus Premium 重新选源；生成 `PackagePlan` 后同样跑 G7，阻断时显示依赖提示；若下载包内版本低于已装版本，则拒绝并清 staging，不允许借更新降级；由 `Links.json` 托管的条目允许更新：新版本进 Store 后替换活动档案里的同 `modId` 条目，并重排链接，不再以 `ManagedByProfile` 拒绝。更新不会自动续跑，装完依赖后需要用户再点一次更新；同样进任务中心的安装卡。
 - **Y7 (P1)** 空态：清单缺失、清单无条目、过滤后为空三种情况分开提示；只有清单缺失时显示路径小字。
 - **Y8 (P1)** 语言：新增文案全部走 `nav.mods` / `nav.remote_mods` / `nav.breadcrumb` / `remote.*` / `dependency.*` / `panel.dependencies`；界面不出现 sha256、staging、plan、文件数等实现词。
+- **Y9 (P0)** Thunderstore 单包：远程模组默认展示 Thunderstore，GitHub 与 Nexus 仍可通过来源筛选打开。浏览 CU 社区分块目录、选精确版本，任一分块刷新失败时保留最后一次完整目录。普通 Plugins 包在任务中心确认后入库，再部署到活动档案。待安装依赖由 Y10 处理。版本冲突、已有包或插件冲突，以及包含 loader、patchers、config 的包均阻止整包安装。来源限定的包身份独立于 DLL 的 GUID 和版本。
+  `BepInEx-BepInExPack-5.4.2305` 由已安装的完整 Mono BepInEx 5 运行时满足，最低版本为 5.4.23.5。普通模组依赖仍要求当前档案启用精确版本。
+- **Y10 (P0)** Thunderstore 依赖预览：准备安装时递归展开精确版本，以依赖优先的顺序在任务中心显示已满足、待安装和阻塞项。相同依赖只列一次，检测循环、目录缺项、版本冲突与档案内禁用或部署失效的条目。依赖全部满足时可沿用单包确认流程。无阻塞的新增包可一次确认安装。整组先暂存、入库，再按依赖顺序部署，最后提交活动档案。中断后任务中心可离线继续。档案记录直接选择与自动安装原因，并提示失去引用的自动依赖。CUCoreLib 与缓存的 Thunderstore 包内容一致时可直接复用。本地或 GitHub 部署的 DLL 若只匹配 GUID 和插件版本，须明确确认复用，确认绑定文件 SHA-256。
 
 实现状态（2026-11-19）：`crates/app/src/app_state/remote.rs` 负责行模型、过滤切片与安装/更新 worker；本地与远端的安装/更新都已统一为 `PackagePlan → Store → 活动档案 → Links`，任务中心卡片与 `apply_pending` 复用同一套；旧 `plan_download` / `apply_install` 仅保留给 BepInEx 与回退。安装计划会跳过包内与已装模组同 GUID 的 DLL。GitHub 发布版本可按需查询，操作按钮按安装状态显示。清单已改为启动拉取 `naroxeno/Cuprum-Store` 的远程 manifest（6h 缓存、ETag），Remote Mods 页有手动刷新。2026-11-20：GitHub 更新支持清单 asset 精确名缺失时按版本号形状唯一回退，同形多资产仍报错。
 

@@ -49,8 +49,10 @@ mod migration;
 mod local_import;
 mod package_plan;
 mod profile_deployment;
+mod thunderstore;
 pub use bridge_host::{BridgeInstallReport, BridgeInstallStatus, BridgeSnapshot, HubEvent};
 pub use migration::{MigrationPreview, MigrationRow, MigrationSession};
+pub use thunderstore::{DependencyPlan, DependencyState, PlannedDependency};
 
 #[derive(Debug)]
 pub enum HubError {
@@ -587,6 +589,7 @@ impl Hub {
     }
 
     pub fn set_active_profile(&mut self, name: Option<&str>) -> Result<(), HubError> {
+        self.check_pending_install()?;
         self.profiles.set_active(name).map_err(HubError::Io)?;
         Ok(())
     }
@@ -645,6 +648,7 @@ impl Hub {
                 enabled: true,
                 source: None,
                 link: self.links.get(&item.target).map(|link| link.kind),
+                ..ProfileEntry::default()
             })
             .collect();
         let name = self.adopt_profile_name();
@@ -1053,6 +1057,7 @@ impl Hub {
     }
 
     pub fn launch_game(&self) -> Result<String, HubError> {
+        self.check_pending_install()?;
         let game = self.game_folder().ok_or(HubError::NoGameFolder)?;
         let app_id = launch::launch_game(&game)?;
         self.logs.activity(
@@ -1518,14 +1523,29 @@ impl Hub {
     }
 
     fn check_link_index(&self) -> Result<(), HubError> {
+        self.check_pending_install()?;
         self.links.check_loaded().map_err(|source| {
-            ProfileError::Io { path: self.links.path().to_path_buf(), source }.into()
+            ProfileError::Io {
+                path: self.links.path().to_path_buf(),
+                source,
+            }
+            .into()
         })
     }
 
     fn ensure_game_closed(&self) -> Result<(), HubError> {
+        self.check_pending_install()?;
         if self.game_running()? {
             return Err(HubError::GameRunning);
+        }
+        Ok(())
+    }
+
+    fn check_pending_install(&self) -> Result<(), HubError> {
+        if self.interrupted_thunderstore_plan()?.is_some() {
+            return Err(HubError::Plan(String::from(
+                "Resume the pending Thunderstore installation in the Task Center first",
+            )));
         }
         Ok(())
     }

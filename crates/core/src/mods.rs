@@ -15,6 +15,7 @@ mod dotnet;
 
 pub use dependencies::{DependencyIssue, IssueKind};
 pub(crate) use dependencies::{check_requirements, requirements_for};
+pub(crate) use dotnet::read_dll as read_dll_evidence;
 
 pub(crate) fn read_assembly_version(path: &Path) -> Option<String> {
     dotnet::read_dll(path).and_then(|evidence| evidence.assembly_version)
@@ -494,7 +495,7 @@ fn is_dll_name(name: &str) -> bool {
     lower.ends_with(DLL_SUFFIX) || lower.ends_with(&format!("{DLL_SUFFIX}{DISABLED_SUFFIX}"))
 }
 
-fn is_disabled_path(path: &Path) -> bool {
+pub(crate) fn is_disabled_path(path: &Path) -> bool {
     path.file_name()
         .and_then(|value| value.to_str())
         .is_some_and(|name| {
@@ -516,7 +517,7 @@ fn dll_stem(path: &Path) -> Option<String> {
     Some(without_disabled[..stem_len].to_string())
 }
 
-fn collect_dlls(path: &Path) -> Vec<PathBuf> {
+pub(crate) fn collect_dlls(path: &Path) -> Vec<PathBuf> {
     let mut dlls = Vec::new();
     if path.is_file() {
         if is_dll_name(

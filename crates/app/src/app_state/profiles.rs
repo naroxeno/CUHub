@@ -28,6 +28,7 @@ pub struct ProfileRow {
     pub name: String,
     pub active: bool,
     pub entries: usize,
+    pub orphans: Vec<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -94,15 +95,16 @@ fn profile_rows(hub: &Hub) -> Vec<ProfileRow> {
         .list()
         .into_iter()
         .map(|name| {
-            let entries = hub
-                .profiles()
-                .load(&name)
-                .map(|profile| profile.entries.len())
-                .unwrap_or(0);
+            let profile = hub.profiles().load(&name);
+            let entries = profile.as_ref().map_or(0, |p| p.entries.len());
+            let orphans = profile
+                .map(|p| p.orphaned_dependencies())
+                .unwrap_or_default();
             ProfileRow {
                 name: name.clone(),
                 active: name == active,
                 entries,
+                orphans,
             }
         })
         .collect()
@@ -111,9 +113,21 @@ fn profile_rows(hub: &Hub) -> Vec<ProfileRow> {
 fn write_profile(hub: &Hub, name: &str, snapshot: bool) -> io::Result<()> {
     let mut profile = Profile::new(name);
     if snapshot {
+        let active = hub
+            .profiles()
+            .active()
+            .and_then(|name| hub.profiles().load(&name));
         let mut seen = BTreeSet::new();
         for (_, entry) in hub.links().entries() {
             if !seen.insert(entry.mod_id.clone()) {
+                continue;
+            }
+            if let Some(saved) = active.as_ref().and_then(|p| {
+                p.entries
+                    .iter()
+                    .find(|e| e.mod_id == entry.mod_id && e.version == entry.version && e.enabled)
+            }) {
+                profile.entries.push(saved.clone());
                 continue;
             }
             profile.entries.push(ProfileEntry {
@@ -122,6 +136,7 @@ fn write_profile(hub: &Hub, name: &str, snapshot: bool) -> io::Result<()> {
                 enabled: true,
                 source: None,
                 link: Some(entry.kind),
+                ..ProfileEntry::default()
             });
         }
     }
@@ -185,6 +200,10 @@ impl Ui {
     }
 
     pub(crate) fn profiles_request_create(&self, snapshot: bool) {
+        if self.thunderstore_recovery.get() || self.remote_busy.get().is_some() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.profiles.is_busy() {
             return;
         }
@@ -226,6 +245,10 @@ impl Ui {
     }
 
     pub(crate) fn profiles_confirm_create(&self) {
+        if self.thunderstore_recovery.get() || self.remote_busy.get().is_some() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.profiles.is_busy() {
             return;
         }
@@ -285,6 +308,10 @@ impl Ui {
     }
 
     pub(crate) fn profiles_confirm_rename(&self) {
+        if self.thunderstore_recovery.get() || self.remote_busy.get().is_some() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.profiles.is_busy() {
             return;
         }
@@ -427,6 +454,10 @@ impl Ui {
     }
 
     pub(crate) fn profiles_confirm_remove(&self) {
+        if self.thunderstore_recovery.get() || self.remote_busy.get().is_some() {
+            self.notice.set(t!("notice.busy"));
+            return;
+        }
         if self.profiles.is_busy() {
             return;
         }

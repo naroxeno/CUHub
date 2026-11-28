@@ -12,6 +12,9 @@ use cuprum_core::mods::InstalledMod;
 use cuprum_core::sources::{LocalMod, Repo, SourceEntry, SourceKind};
 use nsh_core::prelude::*;
 
+mod thunderstore;
+pub(super) use thunderstore::append_thunderstore;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoteFilter {
     All,
@@ -24,6 +27,7 @@ pub enum RemoteSource {
     All,
     Github,
     Nexus,
+    Thunderstore,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -32,10 +36,15 @@ pub struct RemoteRow {
     pub github: Option<SourceEntry>,
     pub nexus: Option<NexusModRow>,
     pub installed: Option<InstalledMod>,
+    pub thunderstore: Option<cuprum_core::thunderstore::Package>,
+    pub thunderstore_version: Option<String>,
 }
 
 impl RemoteRow {
     pub fn row_key(&self) -> String {
+        if let Some(package) = &self.thunderstore {
+            return format!("{}|{package:?}|{:?}", self.key, self.thunderstore_version);
+        }
         format!(
             "{}|{:?}|{:?}|{:?}|{:?}",
             self.key,
@@ -55,11 +64,20 @@ impl RemoteRow {
             .as_ref()
             .map(|entry| entry.name.as_str())
             .or_else(|| self.nexus.as_ref().map(|entry| entry.name.as_str()))
+            .or_else(|| self.thunderstore.as_ref().map(|entry| entry.name.as_str()))
             .unwrap_or_default()
     }
 
+    pub(super) fn adult(&self) -> bool {
+        self.nexus.as_ref().is_some_and(|entry| entry.adult)
+            || self
+                .thunderstore
+                .as_ref()
+                .is_some_and(|entry| entry.has_nsfw_content)
+    }
+
     pub fn is_installed(&self) -> bool {
-        self.installed.is_some()
+        self.installed.is_some() || self.thunderstore_version.is_some()
     }
 }
 
@@ -116,6 +134,8 @@ pub(super) fn merge_catalogues(
                 github: Some(entry.clone()),
                 nexus,
                 installed,
+                thunderstore: None,
+                thunderstore_version: None,
             }
         })
         .collect();
@@ -128,6 +148,8 @@ pub(super) fn merge_catalogues(
                 key: format!("nexus:{}:{index}", row.id),
                 github: None,
                 nexus: Some(row.clone()),
+                thunderstore: None,
+                thunderstore_version: None,
                 installed: mods
                     .iter()
                     .find(|item| item.metadata_id.as_deref() == Some(row.id.as_str()))
@@ -232,21 +254,25 @@ impl Ui {
                         [&entry.name, &entry.author, &entry.description]
                             .iter()
                             .any(|text| text.to_lowercase().contains(&query))
+                    })
+                    || row.thunderstore.as_ref().is_some_and(|entry| {
+                        entry.full_name.to_lowercase().contains(&query)
+                            || entry.versions.first().is_some_and(|version| {
+                                version.description.to_lowercase().contains(&query)
+                            })
                     });
                 let matches_source = match source {
                     RemoteSource::All => true,
                     RemoteSource::Github => row.github.is_some(),
                     RemoteSource::Nexus => row.nexus.is_some(),
+                    RemoteSource::Thunderstore => row.thunderstore.is_some(),
                 };
                 let matches_filter = match filter {
                     RemoteFilter::All => true,
                     RemoteFilter::Installed => row.is_installed(),
                     RemoteFilter::Missing => !row.is_installed(),
                 };
-                matches_query
-                    && matches_filter
-                    && matches_source
-                    && (adult || !row.nexus.as_ref().is_some_and(|entry| entry.adult))
+                matches_query && matches_filter && matches_source && (adult || !row.adult())
             })
             .collect();
         let total = rows.len();
@@ -370,7 +396,6 @@ impl Ui {
                 }
                 Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
                     mod_name: name,
-                    source: Some(SourceKind::Nexus),
                     plan: package.preview(),
                     staging: package.staging.clone(),
                     package,

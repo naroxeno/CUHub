@@ -14,11 +14,13 @@ use std::path::PathBuf;
 #[derive(Clone, PartialEq, Eq)]
 pub enum PendingNote {
     NexusFallback { error: String },
+    ThunderstoreDependency(cuprum_core::hub::PlannedDependency),
 }
 
 impl PendingNote {
     pub fn text(&self) -> String {
         match self {
+            Self::ThunderstoreDependency(entry) => super::tasks::thunderstore_dependency_line(entry).0,
             Self::NexusFallback { error } => {
                 t!("pending.nexus_fallback", error = error.clone())
             }
@@ -40,12 +42,23 @@ pub(super) fn accept_pending(ui: &Ui, pending: PendingInstall) -> bool {
 #[derive(Clone, PartialEq, Eq)]
 pub struct PendingInstall {
     pub mod_name: String,
-    pub source: Option<SourceKind>,
     pub plan: UpgradePlan,
     pub package: PackagePlan,
     pub staging: PathBuf,
     pub notes: Vec<PendingNote>,
     pub game_running: bool,
+}
+
+impl PendingInstall {
+    pub(super) fn is_local(&self) -> bool {
+        self.package.source == "local"
+    }
+
+    fn is_thunderstore(&self) -> bool {
+        self.package
+            .source
+            .starts_with(cuprum_core::thunderstore::SOURCE_PREFIX)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -88,7 +101,6 @@ pub(super) fn prepare_remote_pending(
             let game_running = hub.game_running()?;
             Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
                 mod_name: name,
-                source: Some(SourceKind::Github),
                 plan,
                 package,
                 staging,
@@ -153,7 +165,6 @@ pub(super) fn prepare_update(
     let game_running = hub.game_running()?;
     Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
         mod_name: item.name.clone(),
-        source: Some(source),
         plan,
         package,
         staging,
@@ -235,7 +246,7 @@ impl Ui {
         self.apply_cancel.set(false);
         self.apply_status.set(if pending.game_running {
             t!("notice.waiting_for_game")
-        } else if pending.source.is_none() {
+        } else if pending.is_local() {
             t!("local.import_applying")
         } else {
             t!("notice.applying")
@@ -268,7 +279,7 @@ impl Ui {
                     hub.apply_package(&package)
                 })
                 .await;
-                let operation = if pending.source.is_none() {
+                let operation = if pending.is_local() {
                     "task.issue_import"
                 } else {
                     "task.issue_install"
@@ -295,13 +306,15 @@ impl Ui {
                         ui.pending_install.set(None);
                         ui.apply_status.set(String::new());
                         ui.refresh_mods();
-                        if pending.source.is_none() {
+                        if pending.is_local() || pending.is_thunderstore() {
                             ui.profiles_refresh();
-                            ui.notice.set(t!(
-                                "local.import_installed",
-                                name = name,
-                                profile = report.profile
-                            ));
+                            let key = if pending.is_local() {
+                                "local.import_installed"
+                            } else {
+                                "remote.thunderstore_installed"
+                            };
+                            ui.notice
+                                .set(t!(key, name = name, profile = report.profile));
                         } else {
                             ui.notice.set(t!(
                                 "notice.updated",
@@ -318,7 +331,7 @@ impl Ui {
                             ..pending.clone()
                         }));
                         ui.apply_status.set(String::new());
-                        ui.notice.set(if pending.source.is_none() {
+                        ui.notice.set(if pending.is_local() {
                             t!("local.import_game_running")
                         } else {
                             t!("notice.game_still_running")
@@ -359,7 +372,7 @@ impl Ui {
         }
         self.pending_install.set(None);
         self.apply_status.set(String::new());
-        self.notice.set(if pending.source.is_none() {
+        self.notice.set(if pending.is_local() {
             t!("local.import_discarded")
         } else {
             t!("notice.discarded")

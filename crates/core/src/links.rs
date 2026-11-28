@@ -120,6 +120,10 @@ fn lexical_inside(candidate: &Path, container: &Path) -> bool {
             .all(|part| matches!(part, Component::Normal(_)))
 }
 
+pub(crate) fn verify_copy(path: &Path, entry: &LinkEntry) -> Result<(), LinkError> {
+    if inspect(path, entry)? == TargetState::Owned { Ok(()) } else { Err(LinkError::ChangedTarget(path.to_owned())) }
+}
+
 impl LinkIndex {
     pub fn load(app_data: &Path) -> Self {
         let file = app_data.join(INDEX_FILE);
@@ -200,6 +204,16 @@ impl LinkIndex {
             .map(String::as_str);
         #[cfg(not(windows))]
         None
+    }
+
+    pub(crate) fn record_copy(&mut self, target: &Path, entry: LinkEntry) -> Result<(), LinkError> {
+        if self.get(target).is_some_and(|existing| existing != &entry)
+            || inspect(target, &entry)? != TargetState::Owned {
+            return Err(LinkError::ChangedTarget(target.to_owned()));
+        }
+        self.entries.insert(key(target), entry);
+        self.dirty = true;
+        Ok(())
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&str, &LinkEntry)> {
@@ -342,11 +356,16 @@ fn deploy_new(target: &Path, source: &Path) -> Result<(LinkKind, Vec<String>), L
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(io_error(target, error)),
     }
-    if source_metadata(source)?.is_dir() {
-        deploy_dir(target, source)
-    } else {
-        Ok((deploy_file(target, source)?, Vec::new()))
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
     }
+    let files = if source_metadata(source)?.is_dir() {
+        copy_tree(source, target)?
+    } else {
+        copy_file(source, target)?;
+        Vec::new()
+    };
+    Ok((LinkKind::Copy, files))
 }
 
 fn source_metadata(source: &Path) -> Result<fs::Metadata, LinkError> {
@@ -451,90 +470,6 @@ fn prune_empty_dirs(target: &Path, files: &[String]) -> Result<(), LinkError> {
         }
     }
     Ok(())
-}
-
-fn deploy_dir(target: &Path, source: &Path) -> Result<(LinkKind, Vec<String>), LinkError> {
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
-    }
-    if dir_link(target, source).is_ok() {
-        let kind = if cfg!(windows) {
-            LinkKind::Junction
-        } else {
-            LinkKind::Symlink
-        };
-        return Ok((kind, Vec::new()));
-    }
-    let files = copy_tree(source, target)?;
-    Ok((LinkKind::Copy, files))
-}
-
-fn deploy_file(target: &Path, source: &Path) -> Result<LinkKind, LinkError> {
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|error| io_error(parent, error))?;
-    }
-    if fs::hard_link(source, target).is_ok() {
-        return Ok(LinkKind::Hardlink);
-    }
-    if file_link(target, source).is_ok() {
-        return Ok(LinkKind::Symlink);
-    }
-    copy_file(source, target)?;
-    Ok(LinkKind::Copy)
-}
-
-#[cfg(windows)]
-fn dir_link(target: &Path, source: &Path) -> io::Result<()> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let target = target.components().collect::<PathBuf>();
-    let source = source.components().collect::<PathBuf>();
-    let (Some(target), Some(source)) = (target.to_str(), source.to_str()) else {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid junction path",
-        ));
-    };
-    // cmd still expands percent expressions inside quotes.
-    if [target, source]
-        .iter()
-        .any(|path| path.contains(['%', '"', '\r', '\n']))
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "unsupported junction path",
-        ));
-    }
-    let output = std::process::Command::new("cmd")
-        .creation_flags(CREATE_NO_WINDOW)
-        .arg("/D")
-        .arg("/V:OFF")
-        .arg("/C")
-        .arg("mklink")
-        .arg("/J")
-        .raw_arg(format!("\"{target}\""))
-        .raw_arg(format!("\"{source}\""))
-        .output()?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other("mklink /J failed"))
-    }
-}
-
-#[cfg(not(windows))]
-fn dir_link(target: &Path, source: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(source, target)
-}
-
-#[cfg(windows)]
-fn file_link(target: &Path, source: &Path) -> io::Result<()> {
-    std::os::windows::fs::symlink_file(source, target)
-}
-
-#[cfg(not(windows))]
-fn file_link(target: &Path, source: &Path) -> io::Result<()> {
-    std::os::unix::fs::symlink(source, target)
 }
 
 #[cfg(test)]

@@ -103,6 +103,8 @@ fn profile_row(ui: &Ui, row: &ProfileRow) -> View {
     let name = row.name.clone();
     let active = row.active;
     let entries = row.entries;
+    let orphans = row.orphans.join(", ");
+    let show_orphans = !orphans.is_empty();
     let rename_ui = ui.clone();
     let apply_ui = ui.clone();
     let remove_ui = ui.clone();
@@ -176,6 +178,18 @@ fn profile_row(ui: &Ui, row: &ProfileRow) -> View {
                         )),
                 ),
         )
+        .child(when(
+            move || show_orphans,
+            move || {
+                let list = orphans.clone();
+                pix(
+                    move || t!("profiles.orphaned", list = list.clone()),
+                    10.0,
+                    WARN,
+                    &z,
+                )
+            },
+        ))
         .child(when(
             move || apply_watch.profiles.apply_name.get() == apply_watch_name,
             move || apply_confirm_block(&apply_confirm_ui, &apply_confirm_name),

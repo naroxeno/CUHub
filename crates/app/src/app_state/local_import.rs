@@ -93,7 +93,6 @@ fn local_pending(hub: &Hub, path: PathBuf) -> Result<RemoteAttempt, HubError> {
         .unwrap_or(&package.mod_id);
     Ok(RemoteAttempt::Ready(Box::new(PendingInstall {
         mod_name: mod_name.to_owned(),
-        source: None,
         plan: package.preview(),
         staging: package.staging.clone(),
         package,

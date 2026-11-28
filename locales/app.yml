@@ -2476,6 +2476,36 @@ remote.refresh_nexus:
   zh-CN: "刷新 Nexus 目录"
   ja: "Nexus カタログを更新"
 
+remote.thunderstore_source:
+  en: "Thunderstore"
+  zh-CN: "Thunderstore"
+  ja: "Thunderstore"
+
+remote.refresh_thunderstore:
+  en: "Refresh Thunderstore catalogue"
+  zh-CN: "刷新 Thunderstore 目录"
+  ja: "Thunderstore カタログを更新"
+
+remote.thunderstore_refresh_failed:
+  en: "Thunderstore refresh failed. Previously loaded packages remain available. %{error}"
+  zh-CN: "Thunderstore 刷新失败。此前加载的包仍可查看。%{error}"
+  ja: "Thunderstore の更新に失敗しました。読み込み済みのパッケージは引き続き表示できます。%{error}"
+
+remote.thunderstore_versions:
+  en: "Choose version"
+  zh-CN: "选择版本"
+  ja: "バージョンを選択"
+
+remote.thunderstore_install_version:
+  en: "Prepare %{version}"
+  zh-CN: "准备安装 %{version}"
+  ja: "%{version} のインストールを準備"
+
+remote.thunderstore_installed:
+  en: "%{name} was installed in %{profile}."
+  zh-CN: "已将 %{name} 安装到档案 %{profile}。"
+  ja: "%{name} を %{profile} にインストールしました。"
+
 remote.github_source:
   en: "GitHub"
   zh-CN: "GitHub"
@@ -2726,3 +2756,90 @@ keyboard.batch_select:
   en: Select mod for update
   zh-CN: 选中模组以批量更新
   ja: 更新するModを選択
+
+dependency.thunderstore_preview:
+  en: "Thunderstore dependency preview"
+  zh-CN: "Thunderstore 依赖预览"
+  ja: "Thunderstore 依存関係のプレビュー"
+dependency.thunderstore_profile:
+  en: "Profile %{profile}"
+  zh-CN: "档案 %{profile}"
+  ja: "プロファイル %{profile}"
+dependency.thunderstore_satisfied:
+  en: "Satisfied"
+  zh-CN: "已满足"
+  ja: "充足済み"
+dependency.thunderstore_install:
+  en: "To install"
+  zh-CN: "待安装"
+  ja: "インストール予定"
+dependency.thunderstore_unavailable:
+  en: "Version unavailable in the catalogue"
+  zh-CN: "目录中没有此版本"
+  ja: "カタログにこのバージョンがありません"
+dependency.thunderstore_cycle:
+  en: "Circular dependency"
+  zh-CN: "循环依赖"
+  ja: "循環依存"
+dependency.thunderstore_conflict:
+  en: "Version conflict with %{other}"
+  zh-CN: "与版本 %{other} 冲突"
+  ja: "バージョン %{other} と競合"
+dependency.thunderstore_installed_version:
+  en: "The profile has version %{installed}"
+  zh-CN: "档案已有版本 %{installed}"
+  ja: "プロファイルにバージョン %{installed} があります"
+dependency.thunderstore_inactive:
+  en: "The profile entry is disabled or its deployment cannot be verified"
+  zh-CN: "档案条目已禁用或无法核对部署"
+  ja: "プロファイルの項目が無効か、配置を確認できません"
+dependency.thunderstore_runtime:
+  en: "Requires a complete Mono BepInEx 5 installation, 5.4.23.5 or later"
+  zh-CN: "需要完整的 Mono BepInEx 5.4.23.5 或更新的 BepInEx 5 版本"
+  ja: "完全な Mono 版 BepInEx 5 が必要です (5.4.23.5 以降)"
+dependency.thunderstore_read_only:
+  en: "Resolve the listed blockers and prepare again."
+  zh-CN: "请处理列出的阻塞项，再重新准备安装。"
+  ja: "表示された問題を解決してから再試行してください。"
+dependency.thunderstore_apply:
+  en: "Install listed packages"
+  zh-CN: "确认安装所列包"
+  ja: "一覧のパッケージをインストール"
+dependency.thunderstore_working:
+  en: "Installing packages…"
+  zh-CN: "正在安装所列包…"
+  ja: "インストール中…"
+dependency.thunderstore_destination:
+  en: "New plugin files will be deployed to %{path}."
+  zh-CN: "新增插件文件将部署到 %{path}。"
+  ja: "新しいプラグインを %{path} に配置します。"
+profiles.orphaned:
+  en: "Dependencies with no requesting package: %{list}"
+  zh-CN: "没有包依赖这些自动安装项：%{list}"
+  ja: "要求元のない自動インストール項目：%{list}"
+dependency.thunderstore_resume:
+  en: "Resume installation"
+  zh-CN: "继续上次安装"
+  ja: "インストールを再開"
+
+dependency.thunderstore_reuse_local:
+  en: "Reuse installed plugin at %{path}"
+  zh-CN: "复用已安装的插件 %{path}"
+  ja: "インストール済みプラグインを使用 %{path}"
+dependency.thunderstore_local_conflict:
+  en: "Local plugin conflict · %{details}"
+  zh-CN: "本地插件冲突 · %{details}"
+  ja: "ローカルプラグインの競合 · %{details}"
+
+dependency.thunderstore_local_candidate:
+  en: "Local plugin %{version} at %{path} (GUID and version match; package contents unverified)"
+  zh-CN: "本地插件 %{version}，位于 %{path}。GUID 和版本匹配，尚未核实包内容"
+  ja: "ローカルプラグイン %{version}（%{path}）。GUID とバージョンが一致し、パッケージ内容は未確認"
+dependency.thunderstore_verified_local:
+  en: "Reuse verified package contents at %{path}"
+  zh-CN: "复用内容已校验的本地文件 %{path}"
+  ja: "内容を検証済みのローカルファイルを使用 %{path}"
+dependency.thunderstore_confirm_local:
+  en: "Use local plugin and install"
+  zh-CN: "确认复用本地插件并安装"
+  ja: "ローカルプラグインを使用してインストール"

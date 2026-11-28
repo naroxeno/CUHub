@@ -194,6 +194,7 @@ impl Hub {
             mod_id,
             version,
             source: source.to_string(),
+            dependencies: Vec::new(),
             target,
             previous,
             managed_previous,
@@ -282,6 +283,22 @@ impl Hub {
         staging: &Path,
         source: &str,
     ) -> Result<PackagePlan, HubError> {
+        if self
+            .profile_entry_index(&installed.source_path)
+            .is_some_and(|(_, profile, index)| {
+                profile.entries[index]
+                    .source
+                    .as_ref()
+                    .is_some_and(|previous| {
+                        previous.starts_with(crate::thunderstore::SOURCE_PREFIX)
+                            && previous != source
+                    })
+            })
+        {
+            return Err(HubError::Update(String::from(
+                "a Thunderstore package cannot be updated from a different source",
+            )));
+        }
         let staged = self.stage_download(download, staging)?;
         let requirements = self
             .catalogs
@@ -335,11 +352,15 @@ impl Hub {
     }
 
     pub fn apply_package(&mut self, plan: &PackagePlan) -> Result<PackageReport, HubError> {
+        let thunderstore = plan.source.starts_with(crate::thunderstore::SOURCE_PREFIX);
+        let _lock = thunderstore.then(|| self.thunderstore_apply_lock()).transpose()?;
         self.ensure_game_closed()?;
         let game = self.game_folder().ok_or(HubError::NoGameFolder)?;
         let plugins = self.plugins_dir()?;
         if plan.source == super::local_import::SOURCE {
             self.check_local_import(plan, &plugins, true)?;
+        } else if thunderstore {
+            self.check_thunderstore_plan(plan, &plugins, true)?;
         }
         let backup = self.backup_root();
         let report = packages::apply(

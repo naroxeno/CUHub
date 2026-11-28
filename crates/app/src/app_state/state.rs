@@ -4,7 +4,7 @@ use super::delete::DeletePrompt;
 use super::install::{DependencyPrompt, PendingInstall};
 use super::multiplayer::MultiplayerUi;
 use super::profiles::ProfilesUi;
-use super::remote::{RemoteFilter, RemoteRow, RemoteSource, merge_catalogues};
+use super::remote::{RemoteFilter, RemoteRow, RemoteSource, append_thunderstore, merge_catalogues};
 use super::rows::CheckState;
 use super::rows::LocalModRow;
 use super::rows::NexusModRow;
@@ -55,6 +55,10 @@ pub struct Ui {
     pub nexus_error: Signal<String>,
     pub local_rows: Signal<Vec<LocalModRow>>,
     pub checks: Signal<BTreeMap<String, CheckState>>,
+    pub(super) thunderstore_packages: Signal<Vec<cuprum_core::thunderstore::Package>>,
+    pub thunderstore_refreshing: Signal<bool>,
+    pub thunderstore_error: Signal<Option<String>>,
+    pub(super) thunderstore_install_error: Signal<Option<String>>,
     pub remote_rows: Signal<Vec<RemoteRow>>,
     pub remote_all: Signal<Vec<RemoteRow>>,
     pub remote_page: Signal<usize>,
@@ -69,6 +73,8 @@ pub struct Ui {
     pub remote_busy: Signal<Option<String>>,
     pub local_import_busy: Signal<bool>,
     pub pending_install: Signal<Option<PendingInstall>>,
+    pub thunderstore_recovery: Signal<bool>,
+    pub thunderstore_dependency_plan: Signal<Option<cuprum_core::hub::DependencyPlan>>,
     pub dependency_prompt: Signal<Option<DependencyPrompt>>,
     pub update_busy: Signal<Option<String>>,
     pub toggle_busy: Signal<Option<String>>,
@@ -137,13 +143,16 @@ impl Ui {
         let entries = hub
             .sources()
             .map_or(&[][..], |manifest| manifest.entries.as_slice());
-        let remote_all = merge_catalogues(entries, &mut nexus_rows, &mods);
+        let thunderstore_packages = hub.thunderstore_catalogue().cached().unwrap_or_default();
+        let mut remote_all = merge_catalogues(entries, &mut nexus_rows, &mods);
+        append_thunderstore(
+            &mut remote_all,
+            &thunderstore_packages,
+            &hub.thunderstore_installed(),
+        );
         let visible = remote_all
             .iter()
-            .filter(|row| {
-                settings.dashboard_show_adult_mods
-                    || !row.nexus.as_ref().is_some_and(|entry| entry.adult)
-            })
+            .filter(|row| row.thunderstore.is_some() && (settings.dashboard_show_adult_mods || !row.adult()))
             .cloned()
             .collect::<Vec<_>>();
         let remote_total = visible.len();
@@ -176,7 +185,10 @@ impl Ui {
         let bridge_install = hub.bridge_install_status().ok();
         let owner = Owner::current();
         let setup = Setup::new(&settings, setup_due);
-        let notice = if let Some(warning) = theme_warning {
+        let interrupted = hub.interrupted_thunderstore_plan();
+        let notice = if let Err(error) = &interrupted {
+            error.to_string()
+        } else if let Some(warning) = theme_warning {
             warning
         } else if settings.game_path.trim().is_empty() {
             t!("notice.no_game_folder")
@@ -209,13 +221,17 @@ impl Ui {
             checks: signal(checks),
             nav_collapsed: signal(false),
             nav_closed_group: signal(""),
+            thunderstore_packages: signal(thunderstore_packages),
+            thunderstore_refreshing: signal(false),
+            thunderstore_error: signal(None),
+            thunderstore_install_error: signal(None),
             remote_rows: signal(remote_rows),
             remote_all: signal(remote_all),
             remote_page: signal(0usize),
             remote_total: signal(remote_total),
             remote_query: signal(String::new()),
             remote_filter: signal(RemoteFilter::All),
-            remote_source: signal(RemoteSource::All),
+            remote_source: signal(RemoteSource::Thunderstore),
             remote_versions: signal(BTreeMap::new()),
             sources_ready: signal(has_sources),
             sources_refreshing: signal(false),
@@ -223,6 +239,8 @@ impl Ui {
             remote_busy: signal(None::<String>),
             local_import_busy: signal(false),
             pending_install: signal(None::<PendingInstall>),
+            thunderstore_recovery: signal(matches!(interrupted, Ok(Some(_)))),
+            thunderstore_dependency_plan: signal(interrupted.ok().flatten()),
             dependency_prompt: signal(None::<DependencyPrompt>),
             update_busy: signal(None::<String>),
             toggle_busy: signal(None::<String>),
@@ -288,6 +306,7 @@ impl Ui {
         if needs_sources {
             self.refresh_sources();
         }
+        self.refresh_thunderstore();
         self.profiles_refresh();
         self.watch_downloads();
         self.watch_bridge();
@@ -332,7 +351,13 @@ impl Ui {
             let entries = hub
                 .sources()
                 .map_or(&[][..], |manifest| manifest.entries.as_slice());
-            merge_catalogues(entries, &mut rows, &mods)
+            let mut remote = merge_catalogues(entries, &mut rows, &mods);
+            append_thunderstore(
+                &mut remote,
+                &self.thunderstore_packages.get(),
+                &hub.thunderstore_installed(),
+            );
+            remote
         };
         let total = rows.len();
         self.nexus_rows.set(rows);

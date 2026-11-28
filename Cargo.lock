@@ -693,6 +693,7 @@ dependencies = [
  "chrono",
  "dirs",
  "dotnetdll",
+ "flate2",
  "rars",
  "reqwest",
  "serde",

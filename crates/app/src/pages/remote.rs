@@ -6,6 +6,8 @@ use crate::palette::*;
 use crate::shell::nav;
 use nsh_core::prelude::*;
 
+mod thunderstore;
+
 pub fn remote_mods(ui: &Ui) -> impl IntoElement {
     let z = ui.zoom;
     let count = ui.clone();
@@ -38,9 +40,11 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
                 )
                 .child(remote_filters(&z, ui))
                 .child(remote_refresh(&z, ui))
-                .child(nexus_refresh(&z, ui)),
+                .child(nexus_refresh(&z, ui))
+                .child(thunderstore::refresh(&z, ui)),
         )
         .child(source_filters(&z, ui))
+        .child(thunderstore::refresh_error(&z, ui))
         .child(pix(
             move || t!("remote.total", count = count.remote_total.get()),
             11.0,
@@ -56,7 +60,12 @@ pub fn remote_mods(ui: &Ui) -> impl IntoElement {
             |row| row.row_key(),
             move |row, _| {
                 let row = row.get();
-                remote_row(&list_z, &row, &rows_ui)
+                match &row.thunderstore {
+                    Some(package) => {
+                        thunderstore::row(&list_z, package, row.thunderstore_version, &rows_ui)
+                    }
+                    None => remote_row(&list_z, &row, &rows_ui),
+                }
             },
         ))
         .child(when(
@@ -115,6 +124,7 @@ fn source_filters(z: &Signal<u8>, ui: &Ui) -> View {
         (RemoteSource::All, "remote.all_sources"),
         (RemoteSource::Github, "remote.github_source"),
         (RemoteSource::Nexus, "remote.nexus_source"),
+        (RemoteSource::Thunderstore, "remote.thunderstore_source"),
     ] {
         let ui = ui.clone();
         row = row.child(choice_button(

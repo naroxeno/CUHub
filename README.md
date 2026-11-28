@@ -53,7 +53,7 @@ Run `just check` and `just test` for validation. See the [justfile](justfile) fo
 
 ## Project
 
-[Features](docs/FEATURES.md) · [Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md) · [Test plan](docs/TEST-PLAN.md)
+[Features](docs/FEATURES.md) · [Roadmap](docs/ROADMAP.md) · [Test plan](docs/TEST-PLAN.md)
 
 [AGPL-3.0-or-later](LICENSE) · [Third-party notices](docs/third-party/)
 

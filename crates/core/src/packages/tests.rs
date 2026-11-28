@@ -65,6 +65,7 @@ impl Case {
             mod_id: mod_id.to_owned(),
             version: version.to_owned(),
             source: "test".to_owned(),
+            dependencies: Vec::new(),
             target,
             previous,
             managed_previous: None,

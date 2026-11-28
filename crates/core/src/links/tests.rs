@@ -17,15 +17,22 @@ fn a_replacement_failure_restores_the_previous_target() {
 }
 
 #[test]
-fn same_name_and_bytes_do_not_make_a_file_owned() {
+fn a_legacy_hardlink_replaced_by_equal_bytes_is_not_owned() {
     let dir = crate::test_support::temp_dir("links-replaced");
     let target = dir.join("plugin.dll");
     let source = dir.join("stored.dll");
     fs::write(&source, b"original").unwrap();
     let mut index = LinkIndex::load(&dir);
-    assert_eq!(
-        index.deploy(&dir, &target, &source, "plugin", "1").unwrap(),
-        LinkKind::Hardlink
+    fs::hard_link(&source, &target).unwrap();
+    index.entries.insert(
+        key(&target),
+        LinkEntry {
+            mod_id: "plugin".to_owned(),
+            version: "1".to_owned(),
+            kind: LinkKind::Hardlink,
+            store_path: key(&source),
+            files: Vec::new(),
+        },
     );
     fs::remove_file(&target).unwrap();
     fs::write(&target, b"original").unwrap();
@@ -117,10 +124,7 @@ fn deploy_file_then_remove_keeps_store() {
     let mut index = LinkIndex::load(&dir);
     let target = game.join("BepInEx/Plugins/plugin.dll");
     let kind = index.deploy(&game, &target, &source, "mod", "1.0").unwrap();
-    assert!(matches!(
-        kind,
-        LinkKind::Hardlink | LinkKind::Symlink | LinkKind::Copy
-    ));
+    assert_eq!(kind, LinkKind::Copy);
     assert!(target.is_file());
     index.remove(&game, &target).unwrap();
     assert!(!target.exists());
@@ -188,4 +192,48 @@ fn index_round_trips() {
     assert!(loaded.get(&target).is_some());
     assert_eq!(loaded.deployed_for("mod", "1.0").len(), 1);
     let _ = fs::remove_dir_all(dir);
+}
+
+#[cfg(windows)]
+fn dir_link(target: &Path, source: &Path) -> io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let target = target.components().collect::<PathBuf>();
+    let source = source.components().collect::<PathBuf>();
+    let (Some(target), Some(source)) = (target.to_str(), source.to_str()) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid junction path",
+        ));
+    };
+    // cmd still expands percent expressions inside quotes.
+    if [target, source]
+        .iter()
+        .any(|path| path.contains(['%', '"', '\r', '\n']))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "unsupported junction path",
+        ));
+    }
+    let output = std::process::Command::new("cmd")
+        .creation_flags(CREATE_NO_WINDOW)
+        .arg("/D")
+        .arg("/V:OFF")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .raw_arg(format!("\"{target}\""))
+        .raw_arg(format!("\"{source}\""))
+        .output()?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other("mklink /J failed"))
+    }
+}
+
+#[cfg(not(windows))]
+fn dir_link(target: &Path, source: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(source, target)
 }

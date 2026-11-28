@@ -41,6 +41,10 @@ pub struct ProfileEntry {
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<LinkKind>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub automatic: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dependencies: Vec<String>,
 }
 
 impl Default for Profile {
@@ -56,6 +60,51 @@ impl Default for Profile {
 }
 
 impl Profile {
+    pub fn orphaned_dependencies(&self) -> Vec<String> {
+        let by_source: std::collections::BTreeMap<_, _> = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                let package = entry
+                    .source
+                    .as_deref()?
+                    .strip_prefix(crate::thunderstore::SOURCE_PREFIX)?;
+                Some((
+                    format!("{package}-{}", entry.version).to_ascii_lowercase(),
+                    entry,
+                ))
+            })
+            .collect();
+        let mut pending: Vec<_> = self
+            .entries
+            .iter()
+            .filter(|entry| !entry.automatic)
+            .collect();
+        let mut required = BTreeSet::new();
+        while let Some(entry) = pending.pop() {
+            if required.insert(&entry.mod_id) {
+                pending.extend(
+                    entry
+                        .dependencies
+                        .iter()
+                        .filter_map(|id| by_source.get(&id.to_ascii_lowercase()).copied()),
+                );
+            }
+        }
+        self.entries
+            .iter()
+            .filter(|entry| entry.automatic && !required.contains(&entry.mod_id))
+            .map(|entry| {
+                entry
+                    .source
+                    .as_deref()
+                    .and_then(|s| s.strip_prefix(crate::thunderstore::SOURCE_PREFIX))
+                    .unwrap_or(&entry.mod_id)
+                    .to_owned()
+            })
+            .collect()
+    }
+
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -72,6 +121,8 @@ impl Default for ProfileEntry {
             enabled: true,
             source: None,
             link: None,
+            automatic: false,
+            dependencies: Vec::new(),
         }
     }
 }
@@ -451,6 +502,7 @@ pub(crate) fn checkpoint(
             enabled: true,
             source: None,
             link: Some(link.kind),
+            ..ProfileEntry::default()
         });
     }
     profile
@@ -623,6 +675,10 @@ fn apply_one(
             let manifest = store
                 .read_entry(mod_id, version)
                 .ok_or_else(|| missing_version(mod_id, version))?;
+            crate::store::verify_payload(&payload, &manifest).map_err(|path| ProfileError::Io {
+                path,
+                source: io::Error::new(io::ErrorKind::InvalidData, "stored payload has changed"),
+            })?;
             let source = match deployment(&manifest.files) {
                 Deployment::File(name) => payload.join(name),
                 Deployment::Directory => payload,

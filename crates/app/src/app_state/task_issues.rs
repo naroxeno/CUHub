@@ -181,6 +181,15 @@ pub(super) fn failure_cards(ui: &Ui) -> Vec<TaskCard> {
             let title = t!(operation);
             let blocked_by_game = reason == "task.game_running";
             let summary = t!(reason);
+            let mut lines = vec![(summary.clone(), if blocked_by_game { WARN } else { DANGER })];
+            let mut copy_details = format!("{title}\n{summary}\n[{reason}]");
+            if operation == "task.issue_install"
+                && let Some(detail) = ui.thunderstore_install_error.get()
+            {
+                copy_details.push('\n');
+                copy_details.push_str(&detail);
+                lines.push((detail, TEXT_MUTED));
+            }
             TaskCard {
                 key: operation.into(),
                 kind: if blocked_by_game {
@@ -190,7 +199,7 @@ pub(super) fn failure_cards(ui: &Ui) -> Vec<TaskCard> {
                 },
                 title: title.clone(),
                 subtitle: String::new(),
-                lines: vec![(summary.clone(), if blocked_by_game { WARN } else { DANGER })],
+                lines,
                 progress: None,
                 status: String::new(),
                 buttons: (!blocked_by_game)
@@ -202,7 +211,7 @@ pub(super) fn failure_cards(ui: &Ui) -> Vec<TaskCard> {
                     .into_iter()
                     .collect(),
                 busy: false,
-                copy_details: Some(format!("{title}\n{summary}\n[{reason}]")),
+                copy_details: Some(copy_details),
             }
         })
         .collect()
@@ -233,12 +242,18 @@ impl Ui {
     }
 
     pub(crate) fn task_failed_with(&self, operation: &'static str, reason: &'static str) {
+        if operation == "task.issue_install" {
+            self.thunderstore_install_error.set(None);
+        }
         self.task_failures.update(|failures| {
             failures.insert(operation, reason);
         });
     }
 
     pub(crate) fn clear_task_failure(&self, operation: &'static str) {
+        if operation == "task.issue_install" {
+            self.thunderstore_install_error.set(None);
+        }
         self.task_failures.update(|failures| {
             failures.remove(operation);
         });

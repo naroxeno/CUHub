@@ -14,6 +14,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::Duration;
 
+mod thunderstore;
+pub(super) use thunderstore::thunderstore_dependency_line;
+
 const POLL_MS: u64 = 120;
 const BYTE_UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
 
@@ -41,6 +44,8 @@ pub enum TaskAction {
     Discard,
     InstallDependencies,
     DismissDependencies,
+    ApplyThunderstoreDependencies { confirm_local: bool },
+    DismissThunderstoreDependencies,
     ApplyBepInEx,
     CancelBepInEx,
     UpdateSelected,
@@ -175,6 +180,7 @@ pub fn bytes_label(bytes: u64) -> String {
 
 pub fn attention_count(ui: &Ui) -> usize {
     let mut count = blocker_cards(ui).len() + ui.task_failures.get().len();
+    count += usize::from(ui.thunderstore_dependency_plan.get().is_some());
     count += usize::from(ui.dependency_prompt.get().is_some() && ui.remote_busy.get().is_none());
     count += usize::from(ui.pending_install.get().is_some() && !ui.apply_running.get());
     count += usize::from(ui.bepinex_pending.get().is_some() && !ui.bepinex_busy.get());
@@ -183,6 +189,9 @@ pub fn attention_count(ui: &Ui) -> usize {
 
 pub fn cards(ui: &Ui) -> Vec<TaskCard> {
     let mut cards = blocker_cards(ui);
+    if let Some(plan) = ui.thunderstore_dependency_plan.get() {
+        cards.push(thunderstore::card(plan, ui.install_preparing(), ui.thunderstore_recovery.get()));
+    }
     if let Some(prompt) = ui.dependency_prompt.get() {
         cards.push(dependency_card(ui, &prompt));
     }
@@ -293,7 +302,7 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
         .count();
     let created = pending.plan.files.len().saturating_sub(replaced);
     let files = file_summary(replaced, created);
-    let source = if pending.source.is_none() {
+    let source = if pending.is_local() {
         t!("local.import_source")
     } else {
         pending.package.source.clone()
@@ -344,7 +353,7 @@ fn install_card(ui: &Ui, pending: &PendingInstall) -> TaskCard {
         buttons: vec![
             TaskButton {
                 action: TaskAction::Apply,
-                label: if pending.source.is_none() {
+                label: if pending.is_local() {
                     t!("local.import_apply")
                 } else {
                     t!("common.apply")
